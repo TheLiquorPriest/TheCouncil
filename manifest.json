@@ -3,6 +3,5 @@
   "version": "0.1.0",
   "author": "Robert Kyser",
   "description": "Intercepts prompts to run a multi-agent consensus loop (Editor, Advocate, Librarian) before generating a response.",
-  "js": "index.js",
-  "css": "styles.css"
+  "js": "index.js"
 }
