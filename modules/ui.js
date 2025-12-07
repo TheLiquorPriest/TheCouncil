@@ -176,6 +176,7 @@ const CouncilUI = {
         <div class="council-pipeline-header">
           <h3>⚖️ The Council Pipeline</h3>
           <div class="council-header-buttons">
+            <button class="council-header-btn" id="council-data-viewer-btn" title="Data Viewer">📊</button>
             <button class="council-header-btn" id="council-settings-btn" title="Settings">⚙️</button>
             <button class="council-header-btn" id="council-minimize-btn" title="Minimize">─</button>
             <button class="council-header-btn" id="council-close-btn" title="Close">×</button>
@@ -244,6 +245,18 @@ const CouncilUI = {
     const minBtn = document.getElementById("council-minimize-btn");
     if (minBtn) {
       minBtn.addEventListener("click", () => this.toggleMinimize());
+    }
+
+    // Data Viewer button
+    const dataViewerBtn = document.getElementById("council-data-viewer-btn");
+    if (dataViewerBtn) {
+      dataViewerBtn.addEventListener("click", () => {
+        if (typeof window.DataViewer !== "undefined") {
+          window.DataViewer.toggle();
+        } else {
+          console.warn("[Council UI] Data Viewer not available");
+        }
+      });
     }
 
     // Settings button

@@ -7,11 +7,12 @@
   // ===== EXTENSION METADATA =====
   const EXTENSION_NAME = "The_Council";
   const EXTENSION_PATH = "scripts/extensions/third-party/TheCouncil";
-  const VERSION = "0.3.0";
+  const VERSION = "0.4.0";
   const DEBUG = true;
 
   // ===== MODULE REFERENCES =====
   const Modules = {
+    // Legacy modules
     Config: null,
     State: null,
     Stores: null,
@@ -21,6 +22,15 @@
     Agents: null,
     Pipeline: null,
     UI: null,
+
+    // New modular architecture
+    Core: null,
+    ContextManager: null,
+    OutputManager: null,
+    ThreadManager: null,
+    PipelineSchemas: null,
+    PipelineExecutor: null,
+    DataViewer: null,
   };
 
   // ===== SETTINGS =====
@@ -66,7 +76,8 @@
   async function loadModules() {
     log("Loading modules...");
 
-    const moduleFiles = [
+    // Legacy modules (load first for backward compatibility)
+    const legacyModuleFiles = [
       "config.js",
       "state.js",
       "stores.js",
@@ -78,12 +89,35 @@
       "ui.js",
     ];
 
+    // New modular architecture modules
+    const newModuleFiles = [
+      "context/manager.js",
+      "pipeline/schemas.js",
+      "pipeline/output-manager.js",
+      "threads/manager.js",
+      "core/index.js",
+      "pipeline/executor.js",
+      "ui/data-viewer.js",
+    ];
+
     try {
-      for (const file of moduleFiles) {
+      // Load legacy modules
+      for (const file of legacyModuleFiles) {
         await loadScript(`${EXTENSION_PATH}/modules/${file}`);
       }
 
-      // Get references to loaded modules
+      // Load new architecture modules
+      for (const file of newModuleFiles) {
+        try {
+          await loadScript(`${EXTENSION_PATH}/modules/${file}`);
+          debug(`Loaded new module: ${file}`);
+        } catch (e) {
+          // New modules are optional for backward compatibility
+          debug(`Optional module not loaded: ${file}`, e.message);
+        }
+      }
+
+      // Get references to legacy modules
       Modules.Config = window.CouncilConfig;
       Modules.State = window.CouncilState;
       Modules.Stores = window.CouncilStores;
@@ -94,7 +128,26 @@
       Modules.Pipeline = window.CouncilPipeline;
       Modules.UI = window.CouncilUI;
 
+      // Get references to new architecture modules
+      Modules.ContextManager = window.ContextManager || null;
+      Modules.OutputManager = window.OutputManager || null;
+      Modules.ThreadManager = window.ThreadManager || null;
+      Modules.PipelineSchemas = window.PipelineSchemas || null;
+      Modules.Core = window.CouncilCore || null;
+      Modules.PipelineExecutor = window.PipelineExecutor || null;
+      Modules.DataViewer = window.DataViewer || null;
+
       log("All modules loaded successfully");
+      debug("New architecture modules:", {
+        ContextManager: !!Modules.ContextManager,
+        OutputManager: !!Modules.OutputManager,
+        ThreadManager: !!Modules.ThreadManager,
+        PipelineSchemas: !!Modules.PipelineSchemas,
+        Core: !!Modules.Core,
+        PipelineExecutor: !!Modules.PipelineExecutor,
+        DataViewer: !!Modules.DataViewer,
+      });
+
       return true;
     } catch (e) {
       error("Failed to load modules:", e);
@@ -193,7 +246,7 @@
     log("Initializing modules...");
 
     // Log which modules are available
-    debug("Modules loaded:", {
+    debug("Legacy modules loaded:", {
       Config: !!Modules.Config,
       State: !!Modules.State,
       Stores: !!Modules.Stores,
@@ -203,6 +256,16 @@
       Agents: !!Modules.Agents,
       Pipeline: !!Modules.Pipeline,
       UI: !!Modules.UI,
+    });
+
+    debug("New architecture modules loaded:", {
+      ContextManager: !!Modules.ContextManager,
+      OutputManager: !!Modules.OutputManager,
+      ThreadManager: !!Modules.ThreadManager,
+      PipelineSchemas: !!Modules.PipelineSchemas,
+      Core: !!Modules.Core,
+      PipelineExecutor: !!Modules.PipelineExecutor,
+      DataViewer: !!Modules.DataViewer,
     });
 
     // Initialize State first (no dependencies)
@@ -243,7 +306,64 @@
       Modules.Agents.loadConfigs(extensionSettings.agents);
     }
 
-    // Initialize Pipeline (depends on all other modules)
+    // ===== NEW ARCHITECTURE INITIALIZATION =====
+
+    // Get team IDs from config for thread initialization
+    const teamIds = getTeamIds();
+
+    // Initialize new architecture modules if available
+    if (Modules.Core) {
+      Modules.Core.init({
+        contextManager: Modules.ContextManager,
+        outputManager: Modules.OutputManager,
+        threadManager: Modules.ThreadManager,
+        pipelineSchemas: Modules.PipelineSchemas,
+        threads: { teams: teamIds },
+      });
+      debug("Council Core initialized");
+    } else {
+      // Initialize modules individually if Core not available
+      if (Modules.ContextManager) {
+        Modules.ContextManager.init();
+        debug("ContextManager initialized");
+      }
+      if (Modules.OutputManager) {
+        Modules.OutputManager.init();
+        debug("OutputManager initialized");
+      }
+      if (Modules.ThreadManager) {
+        Modules.ThreadManager.init({ teams: teamIds });
+        debug("ThreadManager initialized");
+      }
+    }
+
+    // Initialize Pipeline Executor (new architecture pipeline runner)
+    if (Modules.PipelineExecutor) {
+      Modules.PipelineExecutor.init({
+        config: Modules.Config,
+        state: Modules.State,
+        stores: Modules.Stores,
+        context: Modules.Context,
+        topology: Modules.Topology,
+        generation: Modules.Generation,
+        agents: Modules.Agents,
+        // New modules
+        core: Modules.Core,
+        contextManager: Modules.ContextManager,
+        outputManager: Modules.OutputManager,
+        threadManager: Modules.ThreadManager,
+        pipelineSchemas: Modules.PipelineSchemas,
+      });
+      debug(
+        "Pipeline Executor initialized with",
+        Modules.PipelineExecutor.getPhases()?.length || 0,
+        "phases",
+      );
+    }
+
+    // ===== LEGACY PIPELINE (kept for backward compatibility) =====
+
+    // Initialize Legacy Pipeline (depends on all other modules)
     if (Modules.Pipeline) {
       Modules.Pipeline.init({
         config: Modules.Config,
@@ -255,7 +375,7 @@
         agents: Modules.Agents,
       });
       debug(
-        "Pipeline initialized with",
+        "Legacy Pipeline initialized with",
         Modules.Pipeline.getPhases()?.length || 0,
         "phases",
       );
@@ -268,7 +388,7 @@
       Modules.UI.init({
         config: Modules.Config,
         state: Modules.State,
-        pipeline: Modules.Pipeline,
+        pipeline: Modules.PipelineExecutor || Modules.Pipeline, // Prefer new executor
       });
       debug("UI module initialized");
     } else {
@@ -281,6 +401,39 @@
     if (!Modules.Pipeline || !Modules.State || !Modules.Generation) {
       error("Critical modules missing! Pipeline may not work correctly.");
     }
+
+    // Initialize Data Viewer
+    if (Modules.DataViewer) {
+      Modules.DataViewer.init({
+        stores: Modules.Stores,
+        contextManager: Modules.ContextManager,
+        outputManager: Modules.OutputManager,
+        threadManager: Modules.ThreadManager,
+      });
+      debug("Data Viewer initialized");
+    }
+
+    // Log new architecture status
+    if (Modules.Core && Modules.PipelineExecutor) {
+      log("New modular architecture enabled");
+    } else {
+      log("Running in legacy mode (new modules not fully loaded)");
+    }
+  }
+
+  /**
+   * Get team IDs from agent configuration
+   */
+  function getTeamIds() {
+    if (!Modules.Config?.AGENT_ROLES) return [];
+
+    const teams = new Set();
+    for (const role of Object.values(Modules.Config.AGENT_ROLES)) {
+      if (role.team) {
+        teams.add(role.team);
+      }
+    }
+    return Array.from(teams);
   }
 
   // ===== EVENT WIRING =====
@@ -314,8 +467,14 @@
   async function runPipelineWithInput(userInput) {
     log("Pipeline triggered with input:", userInput.substring(0, 50) + "...");
 
+    // Determine which pipeline to use (prefer new executor)
+    const useNewExecutor = !!Modules.PipelineExecutor;
+    const pipeline = useNewExecutor
+      ? Modules.PipelineExecutor
+      : Modules.Pipeline;
+
     // Verify pipeline module is available
-    if (!Modules.Pipeline) {
+    if (!pipeline) {
       error("Pipeline module not available!");
       if (typeof toastr !== "undefined") {
         toastr.error("Pipeline module not loaded", EXTENSION_NAME);
@@ -324,8 +483,10 @@
     }
 
     // Check if pipeline has phases
-    const phases = Modules.Pipeline.getPhases();
+    const phases = pipeline.getPhases();
     debug("Pipeline phases count:", phases?.length || 0);
+    debug("Using new executor:", useNewExecutor);
+
     if (!phases || phases.length === 0) {
       error("No pipeline phases defined!");
       if (typeof toastr !== "undefined") {
@@ -346,17 +507,41 @@
     try {
       log("Starting pipeline execution...");
 
-      const result = await Modules.Pipeline.run(userInput, {
+      const runOptions = {
         onPhaseStart: (phase, index, total) => {
           log(`Phase ${index + 1}/${total}: ${phase.name}`);
         },
         onPhaseComplete: (phase, result, index, total) => {
           debug(`Phase ${phase.id} complete`);
         },
-        onError: (err) => {
-          error("Pipeline phase error:", err);
+        onPhaseError: (phase, err, index) => {
+          error(`Pipeline phase ${phase.id} error:`, err);
         },
-      });
+        onError: (err) => {
+          error("Pipeline error:", err);
+        },
+      };
+
+      // Add RAG callbacks if using new executor
+      if (useNewExecutor) {
+        runOptions.onRAGRequest = (request) => {
+          debug(
+            "RAG request:",
+            request.requestId,
+            request.query?.substring(0, 50),
+          );
+        };
+        runOptions.onRAGResponse = (response) => {
+          debug(
+            "RAG response:",
+            response.requestId,
+            response.content?.substring(0, 50),
+          );
+        };
+        runOptions.useNewArchitecture = true;
+      }
+
+      const result = await pipeline.run(userInput, runOptions);
 
       debug("Pipeline result:", result);
 
@@ -485,6 +670,9 @@
    * Expose public API for external access
    */
   function exposePublicAPI() {
+    // Determine preferred pipeline
+    const preferredPipeline = Modules.PipelineExecutor || Modules.Pipeline;
+
     window.TheCouncil = {
       version: VERSION,
       modules: Modules,
@@ -492,24 +680,66 @@
 
       // Methods
       run: (userInput) => Modules.State?.emit("council:run", { userInput }),
-      abort: () => Modules.Pipeline?.abort(),
-      isRunning: () => Modules.Pipeline?.isRunning() || false,
-      getProgress: () => Modules.Pipeline?.getProgress(),
-      getSummary: () => Modules.Pipeline?.getSummary(),
+      abort: () => preferredPipeline?.abort(),
+      isRunning: () => preferredPipeline?.isRunning() || false,
+      getProgress: () => preferredPipeline?.getProgress(),
+      getSummary: () => preferredPipeline?.getSummary(),
 
-      // Module access
+      // Module access - Legacy
       getState: () => Modules.State,
       getStores: () => Modules.Stores,
       getContext: () => Modules.Context,
       getTopology: () => Modules.Topology,
 
+      // Module access - New Architecture
+      getCore: () => Modules.Core,
+      getContextManager: () => Modules.ContextManager,
+      getOutputManager: () => Modules.OutputManager,
+      getThreadManager: () => Modules.ThreadManager,
+      getPipelineExecutor: () => Modules.PipelineExecutor,
+      getPipelineSchemas: () => Modules.PipelineSchemas,
+      getDataViewer: () => Modules.DataViewer,
+
+      // Data Viewer shortcuts
+      showDataViewer: () => Modules.DataViewer?.show(),
+      hideDataViewer: () => Modules.DataViewer?.hide(),
+      toggleDataViewer: () => Modules.DataViewer?.toggle(),
+
+      // Architecture info
+      isNewArchitectureEnabled: () =>
+        !!(Modules.Core && Modules.PipelineExecutor),
+      getArchitectureStatus: () => ({
+        newArchitecture: !!(Modules.Core && Modules.PipelineExecutor),
+        modules: {
+          core: !!Modules.Core,
+          contextManager: !!Modules.ContextManager,
+          outputManager: !!Modules.OutputManager,
+          threadManager: !!Modules.ThreadManager,
+          pipelineSchemas: !!Modules.PipelineSchemas,
+          pipelineExecutor: !!Modules.PipelineExecutor,
+          dataViewer: !!Modules.DataViewer,
+        },
+      }),
+
       // Settings
       saveSettings: () => saveSettings(),
       reloadSettings: () => loadSettings(),
 
-      // Debug
+      // Debug utilities
       debug: DEBUG,
       log: log,
+      getDebugSnapshot: () => {
+        return {
+          version: VERSION,
+          state: Modules.State?.getSnapshot(),
+          stores: Modules.Stores?.getSummary(),
+          context: Modules.Context?.getSummary(),
+          core: Modules.Core?.getSummary(),
+          pipeline: preferredPipeline?.getSummary(),
+          stores: Modules.Stores?.getSummary(),
+          storedStories: Modules.Stores?.listStoredStories?.(),
+        };
+      },
     };
 
     log("Public API exposed as window.TheCouncil");
