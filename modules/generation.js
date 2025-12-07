@@ -23,7 +23,8 @@ const CouncilGeneration = {
    * Initialize the generation module
    */
   init(state = null) {
-    this._state = state || (typeof window !== "undefined" ? window.CouncilState : null);
+    this._state =
+      state || (typeof window !== "undefined" ? window.CouncilState : null);
     this._queue = [];
     this._activeRequests = 0;
     this._isProcessingQueue = false;
@@ -45,11 +46,23 @@ const CouncilGeneration = {
    * This is the primary interface for the pipeline
    */
   async generateForAgent(agentId, agentConfig, prompt, options = {}) {
+    console.log(`[Council Generation] generateForAgent called for: ${agentId}`);
+    console.log(`[Council Generation] Config:`, {
+      useMainApi: agentConfig.useMainApi,
+      hasApiEndpoint: !!agentConfig.apiEndpoint,
+      hasApiKey: !!agentConfig.apiKey,
+      model: agentConfig.model,
+    });
+
     const {
       systemPrompt = agentConfig.systemPrompt || "",
       timeout = this.config.defaultTimeout,
       priority = "normal",
     } = options;
+
+    console.log(
+      `[Council Generation] Prompt length: ${prompt?.length || 0}, System prompt length: ${systemPrompt?.length || 0}`,
+    );
 
     const startTime = Date.now();
     let result = null;
@@ -59,17 +72,34 @@ const CouncilGeneration = {
     try {
       // Determine which API to use
       if (agentConfig.useMainApi) {
-        result = await this.generateWithSTApi(prompt, systemPrompt, { timeout });
+        console.log(`[Council Generation] Using ST main API for ${agentId}`);
+        result = await this.generateWithSTApi(prompt, systemPrompt, {
+          timeout,
+        });
       } else {
-        result = await this.generateWithCustomApi(prompt, systemPrompt, agentConfig, { timeout });
+        console.log(`[Council Generation] Using custom API for ${agentId}`);
+        result = await this.generateWithCustomApi(
+          prompt,
+          systemPrompt,
+          agentConfig,
+          { timeout },
+        );
       }
 
       // Estimate tokens (rough: ~4 chars per token)
-      tokenEstimate = Math.ceil((prompt.length + systemPrompt.length + (result?.length || 0)) / 4);
-
+      tokenEstimate = Math.ceil(
+        (prompt.length + systemPrompt.length + (result?.length || 0)) / 4,
+      );
+      console.log(
+        `[Council Generation] ${agentId} generation successful, result length: ${result?.length || 0}`,
+      );
     } catch (e) {
       error = e;
-      console.error(`[Council Generation] Agent ${agentId} generation failed:`, e);
+      console.error(
+        `[Council Generation] Agent ${agentId} generation failed:`,
+        e,
+      );
+      console.error(`[Council Generation] Error details:`, e.message, e.stack);
     }
 
     const duration = Date.now() - startTime;
@@ -81,7 +111,7 @@ const CouncilGeneration = {
         Math.ceil((prompt.length + systemPrompt.length) / 4),
         Math.ceil((result?.length || 0) / 4),
         duration,
-        !error
+        !error,
       );
     }
 
@@ -104,8 +134,13 @@ const CouncilGeneration = {
       const chunk = agentTasks.slice(i, i + maxConcurrent);
       const chunkResults = await Promise.allSettled(
         chunk.map((task) =>
-          this.generateForAgent(task.agentId, task.agentConfig, task.prompt, task.options)
-        )
+          this.generateForAgent(
+            task.agentId,
+            task.agentConfig,
+            task.prompt,
+            task.options,
+          ),
+        ),
       );
 
       for (const [idx, result] of chunkResults.entries()) {
@@ -132,31 +167,59 @@ const CouncilGeneration = {
    * Generate using SillyTavern's main API via slash command
    */
   async generateWithSTApi(prompt, systemPrompt = "", options = {}) {
+    console.log(`[Council Generation] generateWithSTApi called`);
     const { timeout = this.config.defaultTimeout } = options;
 
     const context = this.getSTContext();
+    console.log(
+      `[Council Generation] ST context obtained, has executeSlashCommands: ${typeof context.executeSlashCommands === "function"}`,
+    );
 
     if (typeof context.executeSlashCommands !== "function") {
+      console.error(`[Council Generation] executeSlashCommands not available!`);
       throw new Error("SillyTavern executeSlashCommands not available");
     }
 
     // Build the full prompt
     const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
+    console.log(
+      `[Council Generation] Full prompt length: ${fullPrompt.length}`,
+    );
 
     // Escape special characters for slash command
     const escapedPrompt = this.escapeForSlashCommand(fullPrompt);
 
     // Use /genraw to generate without modifying chat
     const command = `/genraw lock=on "${escapedPrompt}"`;
-
-    const result = await this.withTimeout(
-      context.executeSlashCommands(command),
-      timeout,
-      "SillyTavern generation timed out"
+    console.log(
+      `[Council Generation] Executing slash command (length: ${command.length})`,
     );
 
-    // Extract result from pipe or direct return
-    return result?.pipe || (typeof result === "string" ? result : "") || "";
+    try {
+      const result = await this.withTimeout(
+        context.executeSlashCommands(command),
+        timeout,
+        "SillyTavern generation timed out",
+      );
+
+      console.log(`[Council Generation] ST API returned:`, {
+        hasResult: !!result,
+        hasPipe: !!result?.pipe,
+        resultType: typeof result,
+        pipeLength: result?.pipe?.length || 0,
+      });
+
+      // Extract result from pipe or direct return
+      const extracted =
+        result?.pipe || (typeof result === "string" ? result : "") || "";
+      console.log(
+        `[Council Generation] Extracted result length: ${extracted.length}`,
+      );
+      return extracted;
+    } catch (stError) {
+      console.error(`[Council Generation] ST API error:`, stError);
+      throw stError;
+    }
   },
 
   /**
@@ -177,7 +240,7 @@ const CouncilGeneration = {
     const result = await this.withTimeout(
       context.generateQuietPrompt(fullPrompt, false, false),
       timeout,
-      "SillyTavern quiet generation timed out"
+      "SillyTavern quiet generation timed out",
     );
 
     return result || "";
@@ -189,6 +252,7 @@ const CouncilGeneration = {
    * Generate using a custom API endpoint (OpenRouter, OpenAI compatible, etc.)
    */
   async generateWithCustomApi(prompt, systemPrompt, agentConfig, options = {}) {
+    console.log(`[Council Generation] generateWithCustomApi called`);
     const { timeout = this.config.defaultTimeout } = options;
 
     const {
@@ -202,11 +266,19 @@ const CouncilGeneration = {
       presencePenalty = 0,
     } = agentConfig;
 
+    console.log(`[Council Generation] Custom API config:`, {
+      endpoint: apiEndpoint,
+      hasKey: !!apiKey,
+      model: model,
+    });
+
     if (!apiEndpoint) {
+      console.error(`[Council Generation] No API endpoint configured`);
       throw new Error("API endpoint is required for custom API");
     }
 
     if (!apiKey) {
+      console.error(`[Council Generation] No API key configured`);
       throw new Error("API key is required for custom API");
     }
 
@@ -228,7 +300,8 @@ const CouncilGeneration = {
     };
 
     if (apiEndpoint.includes("openrouter")) {
-      headers["HTTP-Referer"] = window?.location?.origin || "https://sillytavern.app";
+      headers["HTTP-Referer"] =
+        window?.location?.origin || "https://sillytavern.app";
       headers["X-Title"] = "The Council - SillyTavern Extension";
     }
 
@@ -239,7 +312,7 @@ const CouncilGeneration = {
         body: JSON.stringify(requestBody),
       }),
       timeout,
-      "Custom API request timed out"
+      "Custom API request timed out",
     );
 
     if (!response.ok) {
@@ -310,16 +383,27 @@ const CouncilGeneration = {
    * Generate with retries
    */
   async generateWithRetry(agentId, agentConfig, prompt, options = {}) {
-    const { maxRetries = this.config.maxRetries, retryDelay = this.config.retryDelay } = options;
+    const {
+      maxRetries = this.config.maxRetries,
+      retryDelay = this.config.retryDelay,
+    } = options;
 
     let lastError = null;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        return await this.generateForAgent(agentId, agentConfig, prompt, options);
+        return await this.generateForAgent(
+          agentId,
+          agentConfig,
+          prompt,
+          options,
+        );
       } catch (e) {
         lastError = e;
-        console.warn(`[Council Generation] Attempt ${attempt + 1} failed for ${agentId}:`, e.message);
+        console.warn(
+          `[Council Generation] Attempt ${attempt + 1} failed for ${agentId}:`,
+          e.message,
+        );
 
         if (attempt < maxRetries) {
           await this.delay(retryDelay * (attempt + 1)); // Exponential backoff
@@ -368,7 +452,7 @@ Please synthesize these into a coherent consensus that incorporates the best ele
       "synthesizer",
       synthesizerConfig,
       synthesisPrompt,
-      options
+      options,
     );
 
     return {
@@ -381,15 +465,29 @@ Please synthesize these into a coherent consensus that incorporates the best ele
    * Generate with streaming (if supported)
    */
   async generateStream(agentId, agentConfig, prompt, onChunk, options = {}) {
-    const { systemPrompt = agentConfig.systemPrompt || "", timeout = this.config.defaultTimeout } = options;
+    const {
+      systemPrompt = agentConfig.systemPrompt || "",
+      timeout = this.config.defaultTimeout,
+    } = options;
 
     // For custom API, we can try streaming
     if (!agentConfig.useMainApi && agentConfig.apiEndpoint) {
-      return this.streamFromCustomApi(prompt, systemPrompt, agentConfig, onChunk, { timeout });
+      return this.streamFromCustomApi(
+        prompt,
+        systemPrompt,
+        agentConfig,
+        onChunk,
+        { timeout },
+      );
     }
 
     // Fallback to non-streaming
-    const result = await this.generateForAgent(agentId, agentConfig, prompt, options);
+    const result = await this.generateForAgent(
+      agentId,
+      agentConfig,
+      prompt,
+      options,
+    );
     onChunk(result, true);
     return result;
   },
@@ -397,10 +495,22 @@ Please synthesize these into a coherent consensus that incorporates the best ele
   /**
    * Stream from custom API endpoint
    */
-  async streamFromCustomApi(prompt, systemPrompt, agentConfig, onChunk, options = {}) {
+  async streamFromCustomApi(
+    prompt,
+    systemPrompt,
+    agentConfig,
+    onChunk,
+    options = {},
+  ) {
     const { timeout = this.config.defaultTimeout } = options;
 
-    const { apiEndpoint, apiKey, model, temperature = 0.7, maxTokens = 1000 } = agentConfig;
+    const {
+      apiEndpoint,
+      apiKey,
+      model,
+      temperature = 0.7,
+      maxTokens = 1000,
+    } = agentConfig;
 
     const requestBody = {
       model: model || "gpt-3.5-turbo",
@@ -441,7 +551,9 @@ Please synthesize these into a coherent consensus that incorporates the best ele
         if (done) break;
 
         const chunk = decoder.decode(value);
-        const lines = chunk.split("\n").filter((line) => line.startsWith("data: "));
+        const lines = chunk
+          .split("\n")
+          .filter((line) => line.startsWith("data: "));
 
         for (const line of lines) {
           const data = line.slice(6);
@@ -490,11 +602,19 @@ Please synthesize these into a coherent consensus that incorporates the best ele
     if (this._isProcessingQueue) return;
     this._isProcessingQueue = true;
 
-    while (this._queue.length > 0 && this._activeRequests < this.config.maxConcurrent) {
+    while (
+      this._queue.length > 0 &&
+      this._activeRequests < this.config.maxConcurrent
+    ) {
       const task = this._queue.shift();
       this._activeRequests++;
 
-      this.generateForAgent(task.agentId, task.agentConfig, task.prompt, task.options)
+      this.generateForAgent(
+        task.agentId,
+        task.agentConfig,
+        task.prompt,
+        task.options,
+      )
         .then(task.resolve)
         .catch(task.reject)
         .finally(() => {
@@ -524,7 +644,10 @@ Please synthesize these into a coherent consensus that incorporates the best ele
    * Escape string for slash command
    */
   escapeForSlashCommand(str) {
-    return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+    return str
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, "\\n");
   },
 
   /**
@@ -533,7 +656,9 @@ Please synthesize these into a coherent consensus that incorporates the best ele
   withTimeout(promise, ms, errorMsg) {
     return Promise.race([
       promise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms)),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(errorMsg)), ms),
+      ),
     ]);
   },
 

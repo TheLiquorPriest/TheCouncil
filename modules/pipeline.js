@@ -63,6 +63,11 @@ const CouncilPipeline = {
    * Run the complete pipeline
    */
   async run(userInput, options = {}) {
+    console.log(
+      "[Council Pipeline] run() called with input:",
+      userInput?.substring(0, 50),
+    );
+
     const {
       skipPhases = [],
       onPhaseStart = null,
@@ -70,26 +75,43 @@ const CouncilPipeline = {
       onError = null,
     } = options;
 
+    // Debug: Check module references
+    console.log("[Council Pipeline] Module check:", {
+      hasConfig: !!this._config,
+      hasState: !!this._state,
+      hasContext: !!this._context,
+      hasStores: !!this._stores,
+      hasAgents: !!this._agents,
+      hasGeneration: !!this._generation,
+      phasesCount: this._phases?.length || 0,
+    });
+
     // Validate
     if (!userInput || !userInput.trim()) {
+      console.error("[Council Pipeline] No user input provided");
       throw new Error("User input is required");
     }
 
     if (this._state?.pipeline?.isProcessing) {
+      console.error("[Council Pipeline] Pipeline already running");
       throw new Error("Pipeline is already running");
     }
 
     this._aborted = false;
 
     // Initialize pipeline run
-    console.log("[Council Pipeline] Starting pipeline run");
+    console.log(
+      "[Council Pipeline] Starting pipeline run with",
+      this._phases?.length,
+      "phases",
+    );
     this._state?.startPipeline(userInput);
 
-    // Retrieve and process ST context
-    await this.initializeContext(userInput);
-
-    // Load stores for this story
+    // Load stores for this story FIRST (before context processing needs them)
     this.initializeStores();
+
+    // Retrieve and process ST context (uses stores)
+    await this.initializeContext(userInput);
 
     // Create dynamic character agents for present characters
     this.initializeCharacterAgents();
@@ -126,7 +148,20 @@ const CouncilPipeline = {
         );
 
         // Execute the phase
-        const phaseResult = await this.executePhase(phase);
+        let phaseResult;
+        try {
+          phaseResult = await this.executePhase(phase);
+          console.log(
+            `[Council Pipeline] Phase ${phase.id} returned:`,
+            typeof phaseResult,
+          );
+        } catch (phaseError) {
+          console.error(
+            `[Council Pipeline] Phase ${phase.id} threw error:`,
+            phaseError,
+          );
+          throw phaseError;
+        }
 
         // Store result
         this._state?.setPhaseResult(phase.id, phaseResult);
@@ -158,9 +193,15 @@ const CouncilPipeline = {
       this._state?.completePipeline();
 
       // Return final draft
+      const finalDraft = this._state?.pipeline?.drafts?.final || "";
+      console.log(
+        "[Council Pipeline] Pipeline complete. Final draft length:",
+        finalDraft.length,
+      );
+
       return {
         success: true,
-        finalDraft: this._state?.pipeline?.drafts?.final || "",
+        finalDraft: finalDraft,
         outline: this._state?.pipeline?.outline || "",
         phaseResults: this._state?.pipeline?.phaseResults || {},
       };
@@ -225,20 +266,30 @@ const CouncilPipeline = {
       return;
     }
 
-    // Get story ID from ST context
-    const rawContext = this._context?.getRaw();
-    const storyId = rawContext?.chatId || "default";
+    // Get story ID from ST context - retrieve basic info first
+    let storyId = "default";
+    let characterName = null;
+    let userName = null;
+    let chatId = null;
+
+    try {
+      const context = SillyTavern.getContext();
+      storyId = context.chatId || "default";
+      characterName = context.name2;
+      userName = context.name1;
+      chatId = context.chatId;
+    } catch (e) {
+      console.warn(
+        "[Council Pipeline] Could not get ST context for stores:",
+        e,
+      );
+    }
 
     // Initialize stores
     this._stores.init(storyId);
 
     // Update story context in state
-    this._state?.setStoryContext(
-      storyId,
-      rawContext?.characterName,
-      rawContext?.userName,
-      rawContext?.chatId,
-    );
+    this._state?.setStoryContext(storyId, characterName, userName, chatId);
 
     console.log("[Council Pipeline] Stores initialized for story:", storyId);
   },
@@ -314,6 +365,8 @@ const CouncilPipeline = {
    * Execute a single phase
    */
   async executePhase(phase) {
+    console.log(`[Council Pipeline] executePhase called for: ${phase.id}`);
+
     const { id, agents, threads, async: isAsync } = phase;
 
     // Add phase marker to threads
@@ -332,10 +385,27 @@ const CouncilPipeline = {
 
     // Route to specific phase handler
     const handler = this.phaseHandlers[id];
+    console.log(
+      `[Council Pipeline] Looking for handler for phase: ${id}, found: ${!!handler}`,
+    );
+
     if (handler) {
-      return await handler.call(this, phase);
+      console.log(`[Council Pipeline] Calling handler for phase: ${id}`);
+      try {
+        const result = await handler.call(this, phase);
+        console.log(`[Council Pipeline] Handler for ${id} completed`);
+        return result;
+      } catch (handlerError) {
+        console.error(
+          `[Council Pipeline] Handler for ${id} failed:`,
+          handlerError,
+        );
+        throw handlerError;
+      }
     } else {
-      console.warn(`[Council Pipeline] No handler for phase: ${id}`);
+      console.warn(
+        `[Council Pipeline] No handler for phase: ${id}, using generic`,
+      );
       return await this.executeGenericPhase(phase);
     }
   },
@@ -378,9 +448,16 @@ const CouncilPipeline = {
      * Phase: Curate Persistent Stores
      */
     async curate_stores(phase) {
+      console.log("[Council Pipeline] curate_stores phase starting");
+
       const userInput = this._state?.pipeline?.userInput || "";
       const recentChat =
         this._context?.getProcessed()?.formattedChat?.formatted || "";
+
+      console.log(
+        "[Council Pipeline] curate_stores - userInput length:",
+        userInput.length,
+      );
 
       const prompt = `Review the current story state and identify what needs to be recorded or updated.
 
@@ -403,11 +480,26 @@ Identify:
 
 Be specific about what should be updated.`;
 
-      const archivistResult = await this._agents?.executeAgent(
-        "archivist",
-        prompt,
-        { phase },
-      );
+      console.log("[Council Pipeline] curate_stores - calling archivist agent");
+
+      let archivistResult;
+      try {
+        archivistResult = await this._agents?.executeAgent(
+          "archivist",
+          prompt,
+          { phase },
+        );
+        console.log(
+          "[Council Pipeline] curate_stores - archivist returned:",
+          archivistResult?.substring(0, 100),
+        );
+      } catch (agentError) {
+        console.error(
+          "[Council Pipeline] curate_stores - archivist failed:",
+          agentError,
+        );
+        archivistResult = "Agent execution failed: " + agentError.message;
+      }
 
       this._state?.addToThread(
         "recordkeeping",
@@ -860,14 +952,35 @@ ${contributions}
 Create a unified, flowing narrative that incorporates the best elements from each specialist.
 Maintain consistent voice and style throughout.`;
 
-      const editorResult = await this._agents?.executeAgent(
-        "editor",
-        synthesisPrompt,
-        { phase },
+      console.log(
+        "[Council Pipeline] first_draft - calling editor for synthesis",
       );
+
+      let editorResult;
+      try {
+        editorResult = await this._agents?.executeAgent(
+          "editor",
+          synthesisPrompt,
+          { phase },
+        );
+        console.log(
+          "[Council Pipeline] first_draft - editor returned:",
+          editorResult?.substring(0, 100),
+        );
+      } catch (editorError) {
+        console.error(
+          "[Council Pipeline] first_draft - editor failed:",
+          editorError,
+        );
+        editorResult = "Editor synthesis failed: " + editorError.message;
+      }
 
       // Store first draft
       this._state?.setDraft("first", editorResult);
+      console.log(
+        "[Council Pipeline] first_draft - draft stored, length:",
+        editorResult?.length,
+      );
       this._state?.addToThread(
         "prose",
         "editor",
@@ -1069,12 +1182,33 @@ This is the final pass. Ensure:
 4. Voice and style are consistent
 5. The ending is satisfying (or appropriately hooks for continuation)`;
 
-      const editorResult = await this._agents?.executeAgent("editor", prompt, {
-        phase,
-      });
+      console.log(
+        "[Council Pipeline] final_draft - calling editor for final polish",
+      );
+
+      let editorResult;
+      try {
+        editorResult = await this._agents?.executeAgent("editor", prompt, {
+          phase,
+        });
+        console.log(
+          "[Council Pipeline] final_draft - editor returned:",
+          editorResult?.substring(0, 100),
+        );
+      } catch (editorError) {
+        console.error(
+          "[Council Pipeline] final_draft - editor failed:",
+          editorError,
+        );
+        editorResult = "Final draft generation failed: " + editorError.message;
+      }
 
       // Store final draft
       this._state?.setDraft("final", editorResult);
+      console.log(
+        "[Council Pipeline] final_draft - stored, length:",
+        editorResult?.length,
+      );
       this._state?.addToThread(
         "prose",
         "editor",
@@ -1155,7 +1289,13 @@ Note any final thoughts or observations for the record.`;
      * Phase: Final Response
      */
     async final_response(phase) {
+      console.log("[Council Pipeline] final_response phase starting");
+
       const finalDraft = this._state?.pipeline?.drafts?.final || "";
+      console.log(
+        "[Council Pipeline] final_response - draft length:",
+        finalDraft.length,
+      );
 
       // Post to final thread
       this._state?.addToThread("final", "system", "System", finalDraft, {

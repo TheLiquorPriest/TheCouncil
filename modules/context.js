@@ -121,7 +121,9 @@ const CouncilContext = {
       // Formatted sources
       formattedChat: this.formatChatHistory(this._rawContext.chat),
       formattedWorldInfo: this.formatWorldInfo(this._rawContext.worldInfo),
-      formattedCharacter: this.formatCharacterCard(this._rawContext.characterCard),
+      formattedCharacter: this.formatCharacterCard(
+        this._rawContext.characterCard,
+      ),
 
       // Extracted entities
       entities: this.extractEntities(),
@@ -162,7 +164,11 @@ const CouncilContext = {
     } = options;
 
     if (!chat || chat.length === 0) {
-      return { formatted: "No chat history.", messages: [], speakers: new Set() };
+      return {
+        formatted: "No chat history.",
+        messages: [],
+        speakers: new Set(),
+      };
     }
 
     const messages = chat.slice(-maxMessages);
@@ -177,7 +183,9 @@ const CouncilContext = {
 
       switch (format) {
         case "compact":
-          formatted.push(`${speaker}: ${msg.mes.substring(0, 200)}${msg.mes.length > 200 ? "..." : ""}`);
+          formatted.push(
+            `${speaker}: ${msg.mes.substring(0, 200)}${msg.mes.length > 200 ? "..." : ""}`,
+          );
           break;
         case "detailed":
           formatted.push({
@@ -194,9 +202,10 @@ const CouncilContext = {
     }
 
     return {
-      formatted: Array.isArray(formatted) && typeof formatted[0] === "string"
-        ? formatted.join("\n\n")
-        : formatted,
+      formatted:
+        Array.isArray(formatted) && typeof formatted[0] === "string"
+          ? formatted.join("\n\n")
+          : formatted,
       messages,
       speakers,
       messageCount: messages.length,
@@ -322,7 +331,11 @@ const CouncilContext = {
         source: "character_card",
       });
 
-      this.extractEntitiesFromText(card.description, "character_card", entities);
+      this.extractEntitiesFromText(
+        card.description,
+        "character_card",
+        entities,
+      );
       this.extractEntitiesFromText(card.scenario, "scenario", entities);
     }
 
@@ -395,7 +408,8 @@ const CouncilContext = {
           index: i,
           type: msg.is_user ? "user_message" : "character_message",
           speaker: msg.is_user ? this._rawContext.userName : msg.name,
-          summary: msg.mes.substring(0, 100) + (msg.mes.length > 100 ? "..." : ""),
+          summary:
+            msg.mes.substring(0, 100) + (msg.mes.length > 100 ? "..." : ""),
           timestamp: msg.send_date,
           fullContent: msg.mes,
         });
@@ -555,14 +569,17 @@ const CouncilContext = {
 
     // Proximity bonus (words appearing close together)
     if (queryWords.length > 1) {
-      const positions = queryWords.map((w) => textLower.indexOf(w)).filter((p) => p >= 0);
+      const positions = queryWords
+        .map((w) => textLower.indexOf(w))
+        .filter((p) => p >= 0);
       if (positions.length > 1) {
         positions.sort((a, b) => a - b);
         const avgDistance =
           positions.reduce((sum, pos, i) => {
             if (i === 0) return 0;
             return sum + (pos - positions[i - 1]);
-          }, 0) / (positions.length - 1);
+          }, 0) /
+          (positions.length - 1);
 
         if (avgDistance < 50) score += proximityBonus;
       }
@@ -651,8 +668,10 @@ const CouncilContext = {
     };
 
     // Always include basic situation
-    context.sections.currentSituation = this._processedContext?.storeData?.currentSituation ||
-      stores?.getCurrentSituation?.() || "Not established";
+    context.sections.currentSituation =
+      this._processedContext?.storeData?.currentSituation ||
+      stores?.getCurrentSituation?.() ||
+      "Not established";
 
     // Add context based on agent needs
     for (const need of contextNeeds) {
@@ -666,57 +685,68 @@ const CouncilContext = {
           break;
 
         case "story_synopsis":
-          context.sections.storySynopsis = this._processedContext?.storeData?.storySynopsis ||
+          context.sections.storySynopsis =
+            this._processedContext?.storeData?.storySynopsis ||
             stores?.get?.("storySynopsis");
           break;
 
         case "story_outline":
-          context.sections.storyOutline = this._processedContext?.storeData?.storyOutline ||
+          context.sections.storyOutline =
+            this._processedContext?.storeData?.storyOutline ||
             stores?.get?.("storyOutline");
           break;
 
         case "story_draft":
-          context.sections.storyDraft = this._processedContext?.storeData?.storyDraft ||
+          context.sections.storyDraft =
+            this._processedContext?.storeData?.storyDraft ||
             stores?.get?.("storyDraft");
           break;
 
         case "plot_lines":
-          context.sections.plotLines = this._processedContext?.storeData?.activePlots ||
+          context.sections.plotLines =
+            this._processedContext?.storeData?.activePlots ||
             stores?.getActivePlotLines?.();
           break;
 
         case "scenes":
-          context.sections.recentScenes = this._processedContext?.storeData?.recentScenes ||
+          context.sections.recentScenes =
+            this._processedContext?.storeData?.recentScenes ||
             stores?.getRecentScenes?.(5);
           break;
 
         case "dialogue_history":
-          context.sections.dialogueHistory = this._processedContext?.storeData?.recentDialogue ||
+          context.sections.dialogueHistory =
+            this._processedContext?.storeData?.recentDialogue ||
             stores?.getRecentDialogue?.(15);
           break;
 
         case "character_sheets":
-          context.sections.characters = this._processedContext?.storeData?.presentCharacters ||
+          context.sections.characters =
+            this._processedContext?.storeData?.presentCharacters ||
             stores?.getPresentCharacters?.();
           break;
 
         case "character_development":
-          context.sections.characterDevelopment = this._processedContext?.storeData?.characterDevelopment ||
+          context.sections.characterDevelopment =
+            this._processedContext?.storeData?.characterDevelopment ||
             stores?.get?.("characterDevelopment");
           break;
 
         case "character_positions":
-          context.sections.characterPositions = this._processedContext?.storeData?.characterPositions ||
+          context.sections.characterPositions =
+            this._processedContext?.storeData?.characterPositions ||
             stores?.get?.("characterPositions");
           break;
 
         case "character_inventory":
-          context.sections.characterInventory = this._processedContext?.storeData?.characterInventory ||
+          context.sections.characterInventory =
+            this._processedContext?.storeData?.characterInventory ||
             stores?.get?.("characterInventory");
           break;
 
         case "character_relationships":
-          context.sections.relationships = this._processedContext?.relationships;
+          context.sections.relationships =
+            this._processedContext?.relationships;
           break;
 
         case "faction_sheets":
@@ -728,7 +758,8 @@ const CouncilContext = {
           break;
 
         case "world_info":
-          context.sections.worldInfo = this._processedContext?.formattedWorldInfo?.formatted;
+          context.sections.worldInfo =
+            this._processedContext?.formattedWorldInfo?.formatted;
           break;
 
         case "environment_details":
@@ -807,17 +838,26 @@ const CouncilContext = {
 
     if (this._processedContext) {
       if (this._processedContext.formattedChat?.formatted) {
-        estimates.chat = Math.ceil(this._processedContext.formattedChat.formatted.length / 4);
+        estimates.chat = Math.ceil(
+          this._processedContext.formattedChat.formatted.length / 4,
+        );
       }
       if (this._processedContext.formattedWorldInfo?.formatted) {
-        estimates.worldInfo = Math.ceil(this._processedContext.formattedWorldInfo.formatted.length / 4);
+        estimates.worldInfo = Math.ceil(
+          this._processedContext.formattedWorldInfo.formatted.length / 4,
+        );
       }
       if (this._processedContext.formattedCharacter?.formatted) {
-        estimates.character = Math.ceil(this._processedContext.formattedCharacter.formatted.length / 4);
+        estimates.character = Math.ceil(
+          this._processedContext.formattedCharacter.formatted.length / 4,
+        );
       }
     }
 
-    estimates.total = Object.values(estimates).reduce((sum, val) => sum + val, 0);
+    estimates.total = Object.values(estimates).reduce(
+      (sum, val) => sum + val,
+      0,
+    );
 
     return estimates;
   },
@@ -901,6 +941,9 @@ const CouncilContext = {
 };
 
 // Export for use in other modules
+if (typeof window !== "undefined") {
+  window.CouncilContext = CouncilContext;
+}
 if (typeof module !== "undefined" && module.exports) {
   module.exports = CouncilContext;
 }

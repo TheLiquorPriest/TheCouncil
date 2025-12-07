@@ -192,9 +192,25 @@
   function initializeModules() {
     log("Initializing modules...");
 
+    // Log which modules are available
+    debug("Modules loaded:", {
+      Config: !!Modules.Config,
+      State: !!Modules.State,
+      Stores: !!Modules.Stores,
+      Context: !!Modules.Context,
+      Topology: !!Modules.Topology,
+      Generation: !!Modules.Generation,
+      Agents: !!Modules.Agents,
+      Pipeline: !!Modules.Pipeline,
+      UI: !!Modules.UI,
+    });
+
     // Initialize State first (no dependencies)
     if (Modules.State) {
       Modules.State.init(extensionSettings);
+      debug("State module initialized");
+    } else {
+      error("State module not available!");
     }
 
     // Initialize Generation (depends on State)
@@ -238,6 +254,13 @@
         generation: Modules.Generation,
         agents: Modules.Agents,
       });
+      debug(
+        "Pipeline initialized with",
+        Modules.Pipeline.getPhases()?.length || 0,
+        "phases",
+      );
+    } else {
+      error("Pipeline module not available!");
     }
 
     // Initialize UI last (depends on Config, State, Pipeline)
@@ -247,9 +270,17 @@
         state: Modules.State,
         pipeline: Modules.Pipeline,
       });
+      debug("UI module initialized");
+    } else {
+      error("UI module not available!");
     }
 
     log("All modules initialized");
+
+    // Verify critical modules
+    if (!Modules.Pipeline || !Modules.State || !Modules.Generation) {
+      error("Critical modules missing! Pipeline may not work correctly.");
+    }
   }
 
   // ===== EVENT WIRING =====
@@ -258,40 +289,15 @@
    * Set up event handlers to wire modules together
    */
   function setupEventHandlers() {
-    if (!Modules.State) return;
+    if (!Modules.State) {
+      error("State module not available for event setup");
+      return;
+    }
 
     // Handle council:run event from UI
-    Modules.State.on("council:run", async ({ userInput }) => {
-      log("Pipeline triggered with input:", userInput.substring(0, 50) + "...");
-
-      // Add user message to ST chat
-      await addUserMessageToChat(userInput);
-
-      // Run the pipeline
-      try {
-        const result = await Modules.Pipeline.run(userInput, {
-          onPhaseStart: (phase, index, total) => {
-            debug(`Phase ${index + 1}/${total}: ${phase.name}`);
-          },
-          onPhaseComplete: (phase, result, index, total) => {
-            debug(`Phase ${phase.id} complete`);
-          },
-          onError: (err) => {
-            error("Pipeline error:", err);
-          },
-        });
-
-        if (result.success && result.finalDraft) {
-          // Add final response to ST chat
-          await addAssistantMessageToChat(result.finalDraft);
-          log("Pipeline completed successfully");
-        } else if (!result.success) {
-          log("Pipeline failed:", result.error);
-        }
-      } catch (e) {
-        error("Pipeline execution error:", e);
-        Modules.State.failPipeline(e.message);
-      }
+    // Wrap in an immediately-invoked async function to properly catch errors
+    Modules.State.on("council:run", (data) => {
+      runPipelineWithInput(data.userInput);
     });
 
     // Handle settings changes
@@ -300,6 +306,86 @@
     });
 
     log("Event handlers set up");
+  }
+
+  /**
+   * Run the pipeline with user input (separated for better error handling)
+   */
+  async function runPipelineWithInput(userInput) {
+    log("Pipeline triggered with input:", userInput.substring(0, 50) + "...");
+
+    // Verify pipeline module is available
+    if (!Modules.Pipeline) {
+      error("Pipeline module not available!");
+      if (typeof toastr !== "undefined") {
+        toastr.error("Pipeline module not loaded", EXTENSION_NAME);
+      }
+      return;
+    }
+
+    // Check if pipeline has phases
+    const phases = Modules.Pipeline.getPhases();
+    debug("Pipeline phases count:", phases?.length || 0);
+    if (!phases || phases.length === 0) {
+      error("No pipeline phases defined!");
+      if (typeof toastr !== "undefined") {
+        toastr.error("Pipeline has no phases configured", EXTENSION_NAME);
+      }
+      return;
+    }
+
+    // Add user message to ST chat
+    try {
+      await addUserMessageToChat(userInput);
+      debug("User message added to chat");
+    } catch (e) {
+      error("Failed to add user message:", e);
+    }
+
+    // Run the pipeline
+    try {
+      log("Starting pipeline execution...");
+
+      const result = await Modules.Pipeline.run(userInput, {
+        onPhaseStart: (phase, index, total) => {
+          log(`Phase ${index + 1}/${total}: ${phase.name}`);
+        },
+        onPhaseComplete: (phase, result, index, total) => {
+          debug(`Phase ${phase.id} complete`);
+        },
+        onError: (err) => {
+          error("Pipeline phase error:", err);
+        },
+      });
+
+      debug("Pipeline result:", result);
+
+      if (result.success && result.finalDraft) {
+        // Add final response to ST chat
+        await addAssistantMessageToChat(result.finalDraft);
+        log("Pipeline completed successfully with response");
+      } else if (result.success && !result.finalDraft) {
+        log("Pipeline completed but no final draft was generated");
+        if (typeof toastr !== "undefined") {
+          toastr.warning(
+            "Pipeline completed but generated no output",
+            EXTENSION_NAME,
+          );
+        }
+      } else if (!result.success) {
+        error("Pipeline failed:", result.error);
+        if (typeof toastr !== "undefined") {
+          toastr.error(`Pipeline failed: ${result.error}`, EXTENSION_NAME);
+        }
+      }
+    } catch (e) {
+      error("Pipeline execution error:", e);
+      console.error(e);
+      Modules.State?.failPipeline(e.message);
+      if (typeof toastr !== "undefined") {
+        toastr.error(`Pipeline error: ${e.message}`, EXTENSION_NAME);
+      }
+    }
   }
 
   // ===== SILLYTAVERN CHAT INTEGRATION =====

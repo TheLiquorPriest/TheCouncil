@@ -291,7 +291,7 @@ MIT License - See LICENSE file for details
 
 ## Credits
 
-Built for SillyTavern by the community.
+Wild Turkey 101 Bourbon
 
 ---
 

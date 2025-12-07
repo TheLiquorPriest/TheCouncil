@@ -117,7 +117,11 @@ const CouncilConfig = {
         "Quality control on final output",
       ],
       isLead: true,
-      contextNeeds: ["current_situation", "user_instructions", "story_synopsis"],
+      contextNeeds: [
+        "current_situation",
+        "user_instructions",
+        "story_synopsis",
+      ],
     },
 
     // === Prose Team ===
@@ -132,7 +136,12 @@ const CouncilConfig = {
         "Final prose polish",
       ],
       isLead: true,
-      contextNeeds: ["story_draft", "character_sheets", "dialogue_history", "current_situation"],
+      contextNeeds: [
+        "story_draft",
+        "character_sheets",
+        "dialogue_history",
+        "current_situation",
+      ],
     },
     writer_scene: {
       name: "Scene Writer",
@@ -158,7 +167,11 @@ const CouncilConfig = {
         "Conversation pacing",
       ],
       isLead: false,
-      contextNeeds: ["character_sheets", "dialogue_history", "character_relationships"],
+      contextNeeds: [
+        "character_sheets",
+        "dialogue_history",
+        "character_relationships",
+      ],
     },
     writer_action: {
       name: "Action Writer",
@@ -171,7 +184,11 @@ const CouncilConfig = {
         "Consequences of actions",
       ],
       isLead: false,
-      contextNeeds: ["character_positions", "character_inventory", "location_sheets"],
+      contextNeeds: [
+        "character_positions",
+        "character_inventory",
+        "location_sheets",
+      ],
     },
     writer_character: {
       name: "Character Writer",
@@ -184,7 +201,11 @@ const CouncilConfig = {
         "Character growth moments",
       ],
       isLead: false,
-      contextNeeds: ["character_sheets", "character_development", "current_situation"],
+      contextNeeds: [
+        "character_sheets",
+        "character_development",
+        "current_situation",
+      ],
     },
 
     // === Plot Team ===
@@ -238,7 +259,12 @@ const CouncilConfig = {
         "Detail tracking",
       ],
       isLead: false,
-      contextNeeds: ["plot_lines", "scenes", "dialogue_history", "character_positions"],
+      contextNeeds: [
+        "plot_lines",
+        "scenes",
+        "dialogue_history",
+        "character_positions",
+      ],
     },
 
     // === World Team ===
@@ -253,7 +279,12 @@ const CouncilConfig = {
         "Setting authenticity",
       ],
       isLead: true,
-      contextNeeds: ["world_info", "location_sheets", "faction_sheets", "story_synopsis"],
+      contextNeeds: [
+        "world_info",
+        "location_sheets",
+        "faction_sheets",
+        "story_synopsis",
+      ],
     },
     lore_specialist: {
       name: "Lore Specialist",
@@ -294,7 +325,11 @@ const CouncilConfig = {
         "Manage character relationships",
       ],
       isLead: true,
-      contextNeeds: ["character_sheets", "character_development", "character_relationships"],
+      contextNeeds: [
+        "character_sheets",
+        "character_development",
+        "character_relationships",
+      ],
     },
     // Note: Individual character agents are created dynamically
 
@@ -390,7 +425,11 @@ const CouncilConfig = {
         "Update character sheets",
       ],
       isLead: false,
-      contextNeeds: ["character_sheets", "character_development", "dialogue_history"],
+      contextNeeds: [
+        "character_sheets",
+        "character_development",
+        "dialogue_history",
+      ],
     },
     scene_topologist: {
       name: "Scene Topologist",
@@ -426,22 +465,54 @@ const CouncilConfig = {
     firearms: {
       name: "Firearms & Ballistics Expert",
       domain: "Weapons, ammunition, combat tactics, gun mechanics",
-      keywords: ["gun", "shoot", "bullet", "rifle", "pistol", "ammunition", "weapon", "firearm"],
+      keywords: [
+        "gun",
+        "shoot",
+        "bullet",
+        "rifle",
+        "pistol",
+        "ammunition",
+        "weapon",
+        "firearm",
+      ],
     },
     physics: {
       name: "Physics Expert",
       domain: "Physical laws, mechanics, realistic movement, forces",
-      keywords: ["fall", "gravity", "momentum", "force", "energy", "physics", "velocity"],
+      keywords: [
+        "fall",
+        "gravity",
+        "momentum",
+        "force",
+        "energy",
+        "physics",
+        "velocity",
+      ],
     },
     survivalism: {
       name: "Survivalism Expert",
       domain: "Survival skills, wilderness, resources, emergency situations",
-      keywords: ["survive", "wilderness", "shelter", "fire", "water", "hunt", "forage"],
+      keywords: [
+        "survive",
+        "wilderness",
+        "shelter",
+        "fire",
+        "water",
+        "hunt",
+        "forage",
+      ],
     },
     history_us: {
       name: "US History Expert",
       domain: "American history, culture, events, periods",
-      keywords: ["american", "usa", "civil war", "revolution", "colonial", "western"],
+      keywords: [
+        "american",
+        "usa",
+        "civil war",
+        "revolution",
+        "colonial",
+        "western",
+      ],
     },
     history_world: {
       name: "World History Expert",
@@ -451,22 +522,54 @@ const CouncilConfig = {
     medicine: {
       name: "Medical Expert",
       domain: "Medicine, injuries, treatments, anatomy, diseases",
-      keywords: ["injury", "wound", "heal", "doctor", "medical", "blood", "surgery", "disease"],
+      keywords: [
+        "injury",
+        "wound",
+        "heal",
+        "doctor",
+        "medical",
+        "blood",
+        "surgery",
+        "disease",
+      ],
     },
     psychology: {
       name: "Psychology Expert",
       domain: "Human behavior, mental states, motivations, trauma",
-      keywords: ["trauma", "mental", "behavior", "emotion", "psychology", "fear", "anxiety"],
+      keywords: [
+        "trauma",
+        "mental",
+        "behavior",
+        "emotion",
+        "psychology",
+        "fear",
+        "anxiety",
+      ],
     },
     military: {
       name: "Military Expert",
       domain: "Military operations, hierarchy, tactics, combat",
-      keywords: ["military", "soldier", "army", "tactics", "combat", "war", "battle"],
+      keywords: [
+        "military",
+        "soldier",
+        "army",
+        "tactics",
+        "combat",
+        "war",
+        "battle",
+      ],
     },
     technology: {
       name: "Technology Expert",
       domain: "Computers, electronics, modern tech, hacking",
-      keywords: ["computer", "hack", "technology", "software", "electronic", "digital"],
+      keywords: [
+        "computer",
+        "hack",
+        "technology",
+        "software",
+        "electronic",
+        "digital",
+      ],
     },
     maritime: {
       name: "Maritime Expert",
@@ -476,12 +579,27 @@ const CouncilConfig = {
     legal: {
       name: "Legal Expert",
       domain: "Law, legal procedures, courts, rights",
-      keywords: ["law", "legal", "court", "attorney", "trial", "crime", "police"],
+      keywords: [
+        "law",
+        "legal",
+        "court",
+        "attorney",
+        "trial",
+        "crime",
+        "police",
+      ],
     },
     science: {
       name: "Science Expert",
       domain: "General science, chemistry, biology, research",
-      keywords: ["science", "chemical", "biology", "experiment", "research", "laboratory"],
+      keywords: [
+        "science",
+        "chemical",
+        "biology",
+        "experiment",
+        "research",
+        "laboratory",
+      ],
     },
   },
 
@@ -499,7 +617,8 @@ const CouncilConfig = {
         "scene_topologist",
         "location_topologist",
       ],
-      description: "Update and build persistent data stores from recent activity",
+      description:
+        "Update and build persistent data stores from recent activity",
       userGavel: false,
       contextRequired: ["chat_history", "world_info", "character_card"],
     },
@@ -508,7 +627,8 @@ const CouncilConfig = {
       name: "Preliminary Context",
       threads: ["main", "context"],
       agents: ["archivist", "scholar", "plot_architect"],
-      description: "Deliberate to determine what preliminary context should be retrieved",
+      description:
+        "Deliberate to determine what preliminary context should be retrieved",
       userGavel: false,
       contextRequired: ["stores", "world_info"],
     },
@@ -538,13 +658,23 @@ const CouncilConfig = {
       agents: ["plot_architect", "macro_plot", "micro_plot", "continuity"],
       description: "Plot Team drafts initial response outline",
       userGavel: false,
-      contextRequired: ["interpreted_instructions", "plot_lines", "current_situation"],
+      contextRequired: [
+        "interpreted_instructions",
+        "plot_lines",
+        "current_situation",
+      ],
     },
     {
       id: "outline_review",
       name: "Outline Review",
       threads: ["world", "prose", "plot", "main"],
-      agents: ["scholar", "lore_specialist", "story_specialist", "editor", "plot_architect"],
+      agents: [
+        "scholar",
+        "lore_specialist",
+        "story_specialist",
+        "editor",
+        "plot_architect",
+      ],
       description: "Teams review initial outline, Plot may request SMEs",
       async: true,
       userGavel: false,
@@ -564,11 +694,22 @@ const CouncilConfig = {
       id: "first_draft",
       name: "First Draft",
       threads: ["prose", "drafting"],
-      agents: ["editor", "writer_scene", "writer_dialogue", "writer_action", "writer_character"],
+      agents: [
+        "editor",
+        "writer_scene",
+        "writer_dialogue",
+        "writer_action",
+        "writer_character",
+      ],
       description: "Prose Team produces first draft from outline",
       userGavel: true,
       gavelPrompt: "Review and edit the first draft:",
-      contextRequired: ["final_outline", "character_sheets", "location_sheets", "current_situation"],
+      contextRequired: [
+        "final_outline",
+        "character_sheets",
+        "location_sheets",
+        "current_situation",
+      ],
     },
     {
       id: "first_draft_review",
@@ -584,7 +725,13 @@ const CouncilConfig = {
       id: "second_draft",
       name: "Second Draft",
       threads: ["prose", "drafting"],
-      agents: ["editor", "writer_scene", "writer_dialogue", "writer_action", "writer_character"],
+      agents: [
+        "editor",
+        "writer_scene",
+        "writer_dialogue",
+        "writer_action",
+        "writer_character",
+      ],
       description: "Prose Team refines first draft based on feedback",
       userGavel: true,
       gavelPrompt: "Review and edit the second draft:",
@@ -604,7 +751,13 @@ const CouncilConfig = {
       id: "final_draft",
       name: "Final Draft",
       threads: ["prose", "drafting"],
-      agents: ["editor", "writer_scene", "writer_dialogue", "writer_action", "writer_character"],
+      agents: [
+        "editor",
+        "writer_scene",
+        "writer_dialogue",
+        "writer_action",
+        "writer_character",
+      ],
       description: "Prose Team produces final polished draft",
       userGavel: true,
       gavelPrompt: "Review and edit the final draft:",
@@ -658,7 +811,15 @@ const CouncilConfig = {
       name: "Story Synopsis",
       description: "Detailed synopsis using 5 W's and How",
       type: "object",
-      default: { who: "", what: "", when: "", where: "", why: "", how: "", summary: "" },
+      default: {
+        who: "",
+        what: "",
+        when: "",
+        where: "",
+        why: "",
+        how: "",
+        summary: "",
+      },
     },
 
     // Plot tracking
@@ -804,7 +965,15 @@ const CouncilConfig = {
       name: "Current Situation",
       description: "Current situation synopsis using 5 W's and How",
       type: "object",
-      default: { who: "", what: "", when: "", where: "", why: "", how: "", summary: "" },
+      default: {
+        who: "",
+        what: "",
+        when: "",
+        where: "",
+        why: "",
+        how: "",
+        summary: "",
+      },
     },
 
     // Meta/Archive
@@ -850,20 +1019,53 @@ const CouncilConfig = {
   // Maps context types to which agents need them
   CONTEXT_ROUTING: {
     user_input: ["publisher", "editor", "plot_architect", "scholar"],
-    current_situation: ["publisher", "editor", "plot_architect", "character_director"],
+    current_situation: [
+      "publisher",
+      "editor",
+      "plot_architect",
+      "character_director",
+    ],
     story_synopsis: ["publisher", "plot_architect", "macro_plot", "scholar"],
     story_outline: ["plot_architect", "macro_plot", "micro_plot", "editor"],
     story_draft: ["editor", "story_topologist"],
     plot_lines: ["plot_architect", "macro_plot", "micro_plot", "continuity"],
-    scenes: ["micro_plot", "scene_topologist", "writer_scene", "environment_director"],
+    scenes: [
+      "micro_plot",
+      "scene_topologist",
+      "writer_scene",
+      "environment_director",
+    ],
     dialogue_history: ["writer_dialogue", "character_topologist", "continuity"],
-    character_sheets: ["character_director", "writer_character", "writer_dialogue", "character_topologist"],
-    character_development: ["character_director", "writer_character", "character_topologist"],
-    character_positions: ["continuity", "environment_director", "writer_action"],
+    character_sheets: [
+      "character_director",
+      "writer_character",
+      "writer_dialogue",
+      "character_topologist",
+    ],
+    character_development: [
+      "character_director",
+      "writer_character",
+      "character_topologist",
+    ],
+    character_positions: [
+      "continuity",
+      "environment_director",
+      "writer_action",
+    ],
     character_inventory: ["continuity", "writer_action"],
     faction_sheets: ["scholar", "lore_specialist", "lore_topologist"],
-    location_sheets: ["environment_director", "interior_specialist", "exterior_specialist", "location_topologist"],
-    world_info: ["scholar", "lore_specialist", "story_specialist", "lore_topologist"],
+    location_sheets: [
+      "environment_director",
+      "interior_specialist",
+      "exterior_specialist",
+      "location_topologist",
+    ],
+    world_info: [
+      "scholar",
+      "lore_specialist",
+      "story_specialist",
+      "lore_topologist",
+    ],
   },
 };
 
@@ -877,6 +1079,9 @@ Object.keys(CouncilConfig.AGENT_ROLES).forEach((agentId) => {
 });
 
 // Export for use in other modules
+if (typeof window !== "undefined") {
+  window.CouncilConfig = CouncilConfig;
+}
 if (typeof module !== "undefined" && module.exports) {
   module.exports = CouncilConfig;
 }

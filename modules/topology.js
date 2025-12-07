@@ -1273,6 +1273,10 @@ class Graph {
 }
 
 // Export for use in other modules
+if (typeof window !== "undefined") {
+  window.CouncilTopology = CouncilTopology;
+  window.Graph = Graph;
+}
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { CouncilTopology, Graph };
 }

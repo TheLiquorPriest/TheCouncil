@@ -19,11 +19,21 @@ const CouncilAgents = {
    * Initialize the agents module
    */
   init(modules = {}) {
-    this._config = modules.config || (typeof window !== "undefined" ? window.CouncilConfig : null);
-    this._state = modules.state || (typeof window !== "undefined" ? window.CouncilState : null);
-    this._context = modules.context || (typeof window !== "undefined" ? window.CouncilContext : null);
-    this._generation = modules.generation || (typeof window !== "undefined" ? window.CouncilGeneration : null);
-    this._stores = modules.stores || (typeof window !== "undefined" ? window.CouncilStores : null);
+    this._config =
+      modules.config ||
+      (typeof window !== "undefined" ? window.CouncilConfig : null);
+    this._state =
+      modules.state ||
+      (typeof window !== "undefined" ? window.CouncilState : null);
+    this._context =
+      modules.context ||
+      (typeof window !== "undefined" ? window.CouncilContext : null);
+    this._generation =
+      modules.generation ||
+      (typeof window !== "undefined" ? window.CouncilGeneration : null);
+    this._stores =
+      modules.stores ||
+      (typeof window !== "undefined" ? window.CouncilStores : null);
 
     this._dynamicAgents.clear();
     this._activeSMEs.clear();
@@ -69,20 +79,24 @@ const CouncilAgents = {
   getAgentConfig(agentId) {
     // Check for specific agent config
     if (this._agentConfigs[agentId]) {
+      console.log(`[Council Agents] Found specific config for ${agentId}`);
       return this._agentConfigs[agentId];
     }
 
     // Return default config
-    return this._config?.DEFAULT_AGENT_CONFIG || {
-      enabled: true,
-      useMainApi: true,
-      apiEndpoint: "",
-      apiKey: "",
-      model: "",
-      temperature: 0.7,
-      maxTokens: 1000,
-      systemPrompt: "",
-    };
+    console.log(`[Council Agents] Using default config for ${agentId}`);
+    return (
+      this._config?.DEFAULT_AGENT_CONFIG || {
+        enabled: true,
+        useMainApi: true,
+        apiEndpoint: "",
+        apiKey: "",
+        model: "",
+        temperature: 0.7,
+        maxTokens: 1000,
+        systemPrompt: "",
+      }
+    );
   },
 
   /**
@@ -205,12 +219,14 @@ const CouncilAgents = {
 
     if (character.motivations) {
       parts.push(
-        `\n## Motivations\n${Array.isArray(character.motivations) ? character.motivations.join(", ") : character.motivations}`
+        `\n## Motivations\n${Array.isArray(character.motivations) ? character.motivations.join(", ") : character.motivations}`,
       );
     }
 
     if (character.fears) {
-      parts.push(`\n## Fears\n${Array.isArray(character.fears) ? character.fears.join(", ") : character.fears}`);
+      parts.push(
+        `\n## Fears\n${Array.isArray(character.fears) ? character.fears.join(", ") : character.fears}`,
+      );
     }
 
     parts.push(`\nWhen reviewing content, focus on:
@@ -242,7 +258,10 @@ const CouncilAgents = {
 
     for (const [charId, character] of Object.entries(characterSheets)) {
       if (character.isPresent) {
-        const agentId = this.createCharacterAgent(character, character.type || "supporting");
+        const agentId = this.createCharacterAgent(
+          character,
+          character.type || "supporting",
+        );
         createdAgents.push(agentId);
       }
     }
@@ -268,7 +287,10 @@ const CouncilAgents = {
       name: sme.name,
       team: "sme",
       role: sme.domain,
-      responsibilities: [`Provide expert knowledge on ${sme.domain}`, `Identify issues within domain expertise`],
+      responsibilities: [
+        `Provide expert knowledge on ${sme.domain}`,
+        `Identify issues within domain expertise`,
+      ],
       isLead: false,
       isSME: true,
       smeId,
@@ -344,7 +366,9 @@ Focus only on matters within your area of expertise.`;
       if (this._activeSMEs.has(smeId)) continue;
 
       const keywords = sme.keywords || [];
-      const matched = keywords.some((kw) => contentLower.includes(kw.toLowerCase()));
+      const matched = keywords.some((kw) =>
+        contentLower.includes(kw.toLowerCase()),
+      );
 
       if (matched) {
         this.activateSME(smeId);
@@ -361,7 +385,12 @@ Focus only on matters within your area of expertise.`;
    * Build a complete prompt for an agent
    */
   buildAgentPrompt(agentId, basePrompt, options = {}) {
-    const { phase = null, includeContext = true, contextOverride = null, additionalInstructions = "" } = options;
+    const {
+      phase = null,
+      includeContext = true,
+      contextOverride = null,
+      additionalInstructions = "",
+    } = options;
 
     const role = this.getAgentRole(agentId);
     if (!role) {
@@ -385,7 +414,8 @@ Focus only on matters within your area of expertise.`;
 
     // Add context if requested and available
     if (includeContext) {
-      const contextContent = contextOverride || this.getAgentContext(agentId, role, phase);
+      const contextContent =
+        contextOverride || this.getAgentContext(agentId, role, phase);
       if (contextContent) {
         parts.push("\n---\n## Context");
         parts.push(contextContent);
@@ -423,10 +453,18 @@ Focus only on matters within your area of expertise.`;
     }
 
     try {
-      const contextData = this._context.getContextForAgent(agentId, role, phase, this._stores);
+      const contextData = this._context.getContextForAgent(
+        agentId,
+        role,
+        phase,
+        this._stores,
+      );
       return contextData?.formatted || null;
     } catch (e) {
-      console.error(`[Council Agents] Failed to get context for ${agentId}:`, e);
+      console.error(
+        `[Council Agents] Failed to get context for ${agentId}:`,
+        e,
+      );
       return null;
     }
   },
@@ -440,7 +478,8 @@ Focus only on matters within your area of expertise.`;
       curate_stores: {
         archivist:
           "Review the recent activity and identify what needs to be recorded or updated in our persistent stores.",
-        story_topologist: "Analyze the story structure and update plot mappings.",
+        story_topologist:
+          "Analyze the story structure and update plot mappings.",
         lore_topologist: "Check for any new lore elements that need indexing.",
         character_topologist: "Update character data based on recent events.",
         scene_topologist: "Record scene details and transitions.",
@@ -456,7 +495,8 @@ Focus only on matters within your area of expertise.`;
 
       // Understanding phase
       understand_instructions: {
-        publisher: "Analyze the user's request and determine the overall direction.",
+        publisher:
+          "Analyze the user's request and determine the overall direction.",
         editor: "Consider what prose style and tone would be appropriate.",
         plot_architect: "Identify any plot implications in the request.",
         scholar: "Note any world-building or lore considerations.",
@@ -464,7 +504,8 @@ Focus only on matters within your area of expertise.`;
 
       // Outline phases
       outline_draft: {
-        plot_architect: "Create a structured outline with clear beats and progression.",
+        plot_architect:
+          "Create a structured outline with clear beats and progression.",
         macro_plot: "Ensure alignment with overarching story arcs.",
         micro_plot: "Detail scene-level beats and immediate developments.",
         continuity: "Flag any potential continuity concerns.",
@@ -536,8 +577,12 @@ Focus only on matters within your area of expertise.`;
 
     parts.push("---");
     parts.push("");
-    parts.push("Please synthesize these perspectives into a coherent consensus.");
-    parts.push("Identify points of agreement, resolve any conflicts, and produce a unified recommendation.");
+    parts.push(
+      "Please synthesize these perspectives into a coherent consensus.",
+    );
+    parts.push(
+      "Identify points of agreement, resolve any conflicts, and produce a unified recommendation.",
+    );
 
     return parts.join("\n");
   },
@@ -552,9 +597,12 @@ Focus only on matters within your area of expertise.`;
       general: "Review the following content and provide feedback.",
       prose: "Review the prose quality, style, voice, and readability.",
       plot: "Review for plot coherence, pacing, and narrative structure.",
-      character: "Review character portrayal, voice consistency, and authenticity.",
-      world: "Review for world consistency, lore accuracy, and setting details.",
-      continuity: "Review for continuity issues, contradictions, or inconsistencies.",
+      character:
+        "Review character portrayal, voice consistency, and authenticity.",
+      world:
+        "Review for world consistency, lore accuracy, and setting details.",
+      continuity:
+        "Review for continuity issues, contradictions, or inconsistencies.",
     };
 
     return `## Review Task (${reviewType})
@@ -580,31 +628,62 @@ Provide specific, actionable feedback. Note both strengths and areas for improve
    * Execute an agent (generate a response)
    */
   async executeAgent(agentId, prompt, options = {}) {
+    console.log(`[Council Agents] executeAgent called for: ${agentId}`);
+
     const role = this.getAgentRole(agentId);
     const config = this.getAgentConfig(agentId);
 
+    console.log(
+      `[Council Agents] Agent ${agentId} - role found: ${!!role}, config found: ${!!config}`,
+    );
+
     if (!role) {
+      console.error(`[Council Agents] Unknown agent: ${agentId}`);
       throw new Error(`Unknown agent: ${agentId}`);
     }
 
     if (!this.isAgentEnabled(agentId)) {
+      console.warn(`[Council Agents] Agent disabled: ${agentId}`);
       throw new Error(`Agent is disabled: ${agentId}`);
     }
 
     if (!this._generation) {
+      console.error(`[Council Agents] Generation module not available`);
       throw new Error("Generation module not available");
     }
 
     // Build the full prompt
+    console.log(
+      `[Council Agents] Building prompt for ${agentId}, base prompt length: ${prompt?.length || 0}`,
+    );
     const fullPrompt = this.buildAgentPrompt(agentId, prompt, options);
+    console.log(
+      `[Council Agents] Full prompt built for ${agentId}, length: ${fullPrompt?.length || 0}`,
+    );
 
     // Generate
-    const response = await this._generation.generateForAgent(agentId, config, fullPrompt, {
-      systemPrompt: config.systemPrompt,
-      ...options,
-    });
-
-    return response;
+    console.log(`[Council Agents] Calling generation for ${agentId}...`);
+    try {
+      const response = await this._generation.generateForAgent(
+        agentId,
+        config,
+        fullPrompt,
+        {
+          systemPrompt: config.systemPrompt,
+          ...options,
+        },
+      );
+      console.log(
+        `[Council Agents] Generation returned for ${agentId}, response length: ${response?.length || 0}`,
+      );
+      return response;
+    } catch (genError) {
+      console.error(
+        `[Council Agents] Generation failed for ${agentId}:`,
+        genError,
+      );
+      throw genError;
+    }
   },
 
   /**
@@ -618,7 +697,11 @@ Provide specific, actionable feedback. Note both strengths and areas for improve
     const tasks = agentTasks.map((task) => ({
       agentId: task.agentId,
       agentConfig: this.getAgentConfig(task.agentId),
-      prompt: this.buildAgentPrompt(task.agentId, task.prompt, task.options || {}),
+      prompt: this.buildAgentPrompt(
+        task.agentId,
+        task.prompt,
+        task.options || {},
+      ),
       options: {
         systemPrompt: this.getAgentConfig(task.agentId).systemPrompt,
         ...(task.options || {}),
@@ -633,7 +716,9 @@ Provide specific, actionable feedback. Note both strengths and areas for improve
    */
   async executeTeam(teamId, prompt, options = {}) {
     const teamAgents = this.getTeamAgents(teamId);
-    const enabledAgents = teamAgents.filter((a) => this.isAgentEnabled(a.agentId));
+    const enabledAgents = teamAgents.filter((a) =>
+      this.isAgentEnabled(a.agentId),
+    );
 
     if (enabledAgents.length === 0) {
       throw new Error(`No enabled agents in team: ${teamId}`);
@@ -679,10 +764,18 @@ Provide specific, actionable feedback. Note both strengths and areas for improve
       const results = [];
       for (const task of tasks) {
         try {
-          const result = await this.executeAgent(task.agentId, task.prompt, task.options);
+          const result = await this.executeAgent(
+            task.agentId,
+            task.prompt,
+            task.options,
+          );
           results.push({ agentId: task.agentId, success: true, result });
         } catch (e) {
-          results.push({ agentId: task.agentId, success: false, error: e.message });
+          results.push({
+            agentId: task.agentId,
+            success: false,
+            error: e.message,
+          });
         }
       }
       return results;

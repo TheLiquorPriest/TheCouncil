@@ -189,8 +189,15 @@ const CouncilStores = {
     const merged = { ...defaults };
     for (const key of Object.keys(stored)) {
       if (key === "_meta") {
-        merged._meta = { ...defaults._meta, ...stored._meta, updatedAt: Date.now() };
-      } else if (typeof defaults[key] === "object" && !Array.isArray(defaults[key])) {
+        merged._meta = {
+          ...defaults._meta,
+          ...stored._meta,
+          updatedAt: Date.now(),
+        };
+      } else if (
+        typeof defaults[key] === "object" &&
+        !Array.isArray(defaults[key])
+      ) {
         merged[key] = { ...defaults[key], ...stored[key] };
       } else {
         merged[key] = stored[key];
@@ -241,8 +248,14 @@ const CouncilStores = {
   updatePlotLine(id, updates) {
     const index = this._stores.plotLines.findIndex((p) => p.id === id);
     if (index !== -1) {
-      this._stores.plotLines[index] = { ...this._stores.plotLines[index], ...updates };
-      if (updates.status === "resolved" && !this._stores.plotLines[index].resolvedAt) {
+      this._stores.plotLines[index] = {
+        ...this._stores.plotLines[index],
+        ...updates,
+      };
+      if (
+        updates.status === "resolved" &&
+        !this._stores.plotLines[index].resolvedAt
+      ) {
         this._stores.plotLines[index].resolvedAt = Date.now();
       }
       this.autoSave();
@@ -285,7 +298,10 @@ const CouncilStores = {
   updateScene(id, updates) {
     const index = this._stores.scenes.findIndex((s) => s.id === id);
     if (index !== -1) {
-      this._stores.scenes[index] = { ...this._stores.scenes[index], ...updates };
+      this._stores.scenes[index] = {
+        ...this._stores.scenes[index],
+        ...updates,
+      };
       this.autoSave();
       return this._stores.scenes[index];
     }
@@ -320,7 +336,7 @@ const CouncilStores = {
 
   getDialogueByCharacter(characterName) {
     return this._stores.dialogueHistory.filter(
-      (d) => d.speaker.toLowerCase() === characterName.toLowerCase()
+      (d) => d.speaker.toLowerCase() === characterName.toLowerCase(),
     );
   },
 
@@ -392,7 +408,7 @@ const CouncilStores = {
 
   getCharacterByName(name) {
     return Object.values(this._stores.characterSheets).find(
-      (c) => c.name.toLowerCase() === name.toLowerCase()
+      (c) => c.name.toLowerCase() === name.toLowerCase(),
     );
   },
 
@@ -401,11 +417,15 @@ const CouncilStores = {
   },
 
   getCharactersByType(type) {
-    return Object.values(this._stores.characterSheets).filter((c) => c.type === type);
+    return Object.values(this._stores.characterSheets).filter(
+      (c) => c.type === type,
+    );
   },
 
   getPresentCharacters() {
-    return Object.values(this._stores.characterSheets).filter((c) => c.isPresent);
+    return Object.values(this._stores.characterSheets).filter(
+      (c) => c.isPresent,
+    );
   },
 
   // ===== CHARACTER DEVELOPMENT =====
@@ -454,9 +474,10 @@ const CouncilStores = {
 
   removeFromInventory(characterId, itemId) {
     if (this._stores.characterInventory[characterId]) {
-      this._stores.characterInventory[characterId] = this._stores.characterInventory[
-        characterId
-      ].filter((i) => i.id !== itemId);
+      this._stores.characterInventory[characterId] =
+        this._stores.characterInventory[characterId].filter(
+          (i) => i.id !== itemId,
+        );
       this.autoSave();
     }
   },
@@ -533,7 +554,7 @@ const CouncilStores = {
 
   getLocationByName(name) {
     return Object.values(this._stores.locationSheets).find(
-      (l) => l.name.toLowerCase() === name.toLowerCase()
+      (l) => l.name.toLowerCase() === name.toLowerCase(),
     );
   },
 
@@ -712,7 +733,10 @@ const CouncilStores = {
         }
       } else if (typeof data === "object") {
         for (const [key, value] of Object.entries(data)) {
-          if (this.matchesQuery(value, queryLower) || key.toLowerCase().includes(queryLower)) {
+          if (
+            this.matchesQuery(value, queryLower) ||
+            key.toLowerCase().includes(queryLower)
+          ) {
             results.push({ store: storeName, key, item: value });
           }
         }
@@ -734,6 +758,9 @@ const CouncilStores = {
 };
 
 // Export for use in other modules
+if (typeof window !== "undefined") {
+  window.CouncilStores = CouncilStores;
+}
 if (typeof module !== "undefined" && module.exports) {
   module.exports = CouncilStores;
 }
