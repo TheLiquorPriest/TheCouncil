@@ -60,619 +60,24 @@ const CouncilUI = {
   // ===== STYLE INJECTION =====
 
   /**
-   * Inject CSS styles into the document
+   * Inject minimal fallback CSS styles into the document
+   * Main styles are loaded from styles/main.css
    */
   injectStyles() {
     if (this._styleInjected || document.getElementById("council-styles")) {
       return;
     }
 
+    // Minimal fallback styles - main styles come from external CSS file
     const styles = `
-      /* ===== COUNCIL PIPELINE PANEL ===== */
-      .council-pipeline-panel {
-        position: fixed;
-        top: 50px;
-        right: 10px;
-        width: 480px;
-        max-height: 85vh;
-        background: var(--SmartThemeBlurTintColor, #1a1a2e);
-        border: 1px solid var(--SmartThemeBorderColor, #444);
-        border-radius: 12px;
-        display: flex;
-        flex-direction: column;
-        z-index: 9999;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-        font-family: var(--mainFontFamily, sans-serif);
-        transition: opacity 0.2s ease, transform 0.2s ease;
-      }
-
-      .council-pipeline-panel.hidden {
-        display: none;
-      }
-
-      .council-pipeline-panel.minimized {
-        max-height: 60px;
-        overflow: hidden;
-      }
-
-      /* Header */
-      .council-pipeline-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px 16px;
-        border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
-        background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-        border-radius: 12px 12px 0 0;
-      }
-
-      .council-pipeline-header h3 {
-        margin: 0;
-        font-size: 16px;
-        font-weight: 600;
-        color: var(--SmartThemeBodyColor, #eee);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .council-header-buttons {
-        display: flex;
-        gap: 8px;
-      }
-
-      .council-header-btn {
-        background: rgba(255,255,255,0.1);
-        border: none;
-        color: var(--SmartThemeBodyColor, #ccc);
-        font-size: 16px;
-        width: 28px;
-        height: 28px;
-        border-radius: 6px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 0.15s ease;
-      }
-
-      .council-header-btn:hover {
-        background: rgba(255,255,255,0.2);
-        color: #fff;
-      }
-
-      /* Progress Section */
-      .council-pipeline-progress {
-        padding: 12px 16px;
-        border-bottom: 1px solid var(--SmartThemeBorderColor, #333);
-      }
-
-      .council-status-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-      }
-
-      .council-pipeline-status {
-        font-size: 13px;
-        color: var(--SmartThemeBodyColor, #ccc);
-        flex: 1;
-      }
-
-      .council-phase-counter {
-        font-size: 12px;
-        color: var(--SmartThemeBodyColor, #888);
-        background: rgba(255,255,255,0.05);
-        padding: 4px 8px;
-        border-radius: 4px;
-      }
-
-      .council-progress-track {
-        height: 6px;
-        background: rgba(255,255,255,0.1);
-        border-radius: 3px;
-        overflow: hidden;
-      }
-
-      .council-progress-bar {
-        height: 100%;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        border-radius: 3px;
-        width: 0%;
-        transition: width 0.4s ease;
-      }
-
-      /* Threads Container */
-      .council-threads-container {
-        flex: 1;
-        overflow-y: auto;
-        padding: 8px;
-        max-height: calc(85vh - 150px);
-      }
-
-      /* Thread Tab */
-      .council-thread-tab {
-        margin-bottom: 6px;
-        border: 1px solid var(--SmartThemeBorderColor, #333);
-        border-radius: 8px;
-        overflow: hidden;
-        background: rgba(255,255,255,0.02);
-        transition: border-color 0.15s ease;
-      }
-
-      .council-thread-tab:hover {
-        border-color: var(--SmartThemeBorderColor, #555);
-      }
-
-      .council-thread-tab.has-new {
-        border-color: #667eea;
-      }
-
-      .council-thread-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 10px 12px;
-        background: rgba(255,255,255,0.03);
-        cursor: pointer;
-        user-select: none;
-        transition: background 0.15s ease;
-      }
-
-      .council-thread-header:hover {
-        background: rgba(255,255,255,0.06);
-      }
-
-      .council-thread-title {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 13px;
-        font-weight: 500;
-        color: var(--SmartThemeBodyColor, #ddd);
-      }
-
-      .council-thread-icon {
-        font-size: 14px;
-      }
-
-      .council-thread-badge {
-        background: #667eea;
-        color: white;
-        font-size: 10px;
-        padding: 2px 6px;
-        border-radius: 10px;
-        min-width: 18px;
-        text-align: center;
-      }
-
-      .council-thread-toggle {
-        font-size: 12px;
-        color: var(--SmartThemeBodyColor, #888);
-        transition: transform 0.2s ease;
-      }
-
-      .council-thread-tab.expanded .council-thread-toggle {
-        transform: rotate(180deg);
-      }
-
-      .council-thread-body {
-        max-height: 0;
-        overflow: hidden;
-        transition: max-height 0.3s ease;
-        background: rgba(0,0,0,0.2);
-      }
-
-      .council-thread-tab.expanded .council-thread-body {
-        max-height: 400px;
-        overflow-y: auto;
-      }
-
-      .council-thread-content {
-        padding: 8px 12px;
-        min-height: 40px;
-      }
-
-      /* Thread Entries */
-      .council-thread-entry {
-        padding: 10px 12px;
-        border-bottom: 1px solid rgba(255,255,255,0.05);
-        font-size: 12px;
-        line-height: 1.5;
-        animation: council-fadeIn 0.2s ease;
-      }
-
-      .council-thread-entry:last-child {
-        border-bottom: none;
-      }
-
-      .council-thread-entry.phase-marker {
-        background: linear-gradient(90deg, rgba(102,126,234,0.15) 0%, rgba(118,75,162,0.15) 100%);
-        font-weight: 600;
-        text-align: center;
-        color: #a5b4fc;
-        padding: 8px;
-        font-size: 11px;
-        letter-spacing: 0.5px;
-      }
-
-      .council-entry-header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 6px;
-      }
-
-      .council-entry-agent {
-        color: #667eea;
-        font-weight: 600;
-        font-size: 11px;
-      }
-
-      .council-entry-time {
-        color: var(--SmartThemeBodyColor, #666);
-        font-size: 10px;
-      }
-
-      .council-entry-content {
-        color: var(--SmartThemeBodyColor, #bbb);
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-
-      .council-thread-empty {
-        color: var(--SmartThemeBodyColor, #666);
-        font-style: italic;
-        text-align: center;
-        padding: 20px;
-        font-size: 12px;
-      }
-
-      /* ===== GAVEL MODAL ===== */
-      .council-gavel-modal {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.85);
-        z-index: 10001;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        opacity: 0;
-        visibility: hidden;
-        transition: opacity 0.2s ease, visibility 0.2s ease;
-      }
-
-      .council-gavel-modal.visible {
-        opacity: 1;
-        visibility: visible;
-      }
-
-      .council-gavel-container {
-        background: var(--SmartThemeBlurTintColor, #1a1a2e);
-        border: 1px solid var(--SmartThemeBorderColor, #444);
-        border-radius: 12px;
-        width: 90%;
-        max-width: 900px;
-        max-height: 90vh;
-        display: flex;
-        flex-direction: column;
-        box-shadow: 0 16px 64px rgba(0,0,0,0.5);
-        animation: council-slideUp 0.3s ease;
-      }
-
-      @keyframes council-slideUp {
-        from { transform: translateY(20px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-      }
-
-      .council-gavel-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 16px 20px;
-        border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
-      }
-
-      .council-gavel-header h3 {
-        margin: 0;
-        font-size: 18px;
-        color: var(--SmartThemeBodyColor, #eee);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-
-      .council-gavel-phase {
-        font-size: 12px;
-        color: var(--SmartThemeBodyColor, #888);
-        background: rgba(255,255,255,0.05);
-        padding: 4px 10px;
-        border-radius: 4px;
-      }
-
-      .council-gavel-body {
-        flex: 1;
-        padding: 20px;
-        overflow-y: auto;
-      }
-
-      .council-gavel-prompt {
-        font-size: 14px;
-        color: var(--SmartThemeBodyColor, #ccc);
-        margin-bottom: 16px;
-        line-height: 1.5;
-      }
-
-      .council-gavel-textarea {
-        width: 100%;
-        min-height: 300px;
-        background: rgba(0,0,0,0.3);
-        border: 1px solid var(--SmartThemeBorderColor, #444);
-        color: var(--SmartThemeBodyColor, #eee);
-        padding: 16px;
-        border-radius: 8px;
-        font-family: var(--monoFontFamily, monospace);
-        font-size: 13px;
-        line-height: 1.6;
-        resize: vertical;
-      }
-
-      .council-gavel-textarea:focus {
-        outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
-      }
-
-      .council-gavel-footer {
-        display: flex;
-        justify-content: flex-end;
-        gap: 12px;
-        padding: 16px 20px;
-        border-top: 1px solid var(--SmartThemeBorderColor, #444);
-        background: rgba(0,0,0,0.2);
-        border-radius: 0 0 12px 12px;
-      }
-
-      .council-gavel-btn {
-        padding: 10px 20px;
-        border-radius: 6px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.15s ease;
-      }
-
-      .council-gavel-btn.skip {
-        background: rgba(255,255,255,0.1);
-        border: 1px solid var(--SmartThemeBorderColor, #555);
-        color: var(--SmartThemeBodyColor, #ccc);
-      }
-
-      .council-gavel-btn.skip:hover {
-        background: rgba(255,255,255,0.15);
-      }
-
-      .council-gavel-btn.submit {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border: none;
-        color: white;
-      }
-
-      .council-gavel-btn.submit:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-      }
-
-      /* ===== COUNCIL BUTTONS ===== */
-      #council-button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border: none;
-        border-radius: 6px;
-        color: white;
-        padding: 8px 14px;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 500;
-        margin-left: 5px;
-        transition: all 0.15s ease;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-
-      #council-button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-      }
-
-      #council-button:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
-      }
-
-      #council-button.processing {
-        animation: council-pulse 1.5s infinite;
-      }
-
-      @keyframes council-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.7; }
-      }
-
-      @keyframes council-fadeIn {
-        from { opacity: 0; transform: translateY(-5px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-
-      #council-toggle {
-        background: var(--SmartThemeBlurTintColor, #2a2a4e);
-        border: 1px solid var(--SmartThemeBorderColor, #444);
-        border-radius: 6px;
-        color: var(--SmartThemeBodyColor, #ccc);
-        padding: 8px 10px;
-        cursor: pointer;
-        font-size: 14px;
-        margin-left: 3px;
-        transition: all 0.15s ease;
-      }
-
-      #council-toggle:hover {
-        border-color: #667eea;
-        color: #667eea;
-      }
-
-      #council-toggle.active {
-        background: rgba(102, 126, 234, 0.2);
-        border-color: #667eea;
-        color: #667eea;
-      }
-
-      /* ===== SETTINGS PANEL ===== */
-      .council-settings-panel {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 90%;
-        max-width: 700px;
-        max-height: 80vh;
-        background: var(--SmartThemeBlurTintColor, #1a1a2e);
-        border: 1px solid var(--SmartThemeBorderColor, #444);
-        border-radius: 12px;
-        z-index: 10002;
-        display: none;
-        flex-direction: column;
-        box-shadow: 0 16px 64px rgba(0,0,0,0.5);
-      }
-
-      .council-settings-panel.visible {
-        display: flex;
-      }
-
-      .council-settings-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 16px 20px;
-        border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
-      }
-
-      .council-settings-header h3 {
-        margin: 0;
-        font-size: 16px;
-        color: var(--SmartThemeBodyColor, #eee);
-      }
-
-      .council-settings-body {
-        flex: 1;
-        overflow-y: auto;
-        padding: 20px;
-      }
-
-      .council-settings-section {
-        margin-bottom: 24px;
-      }
-
-      .council-settings-section h4 {
-        font-size: 14px;
-        color: var(--SmartThemeBodyColor, #ddd);
-        margin: 0 0 12px 0;
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--SmartThemeBorderColor, #333);
-      }
-
-      .council-setting-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 10px 0;
-      }
-
-      .council-setting-label {
-        font-size: 13px;
-        color: var(--SmartThemeBodyColor, #bbb);
-      }
-
-      .council-setting-input {
-        background: rgba(0,0,0,0.3);
-        border: 1px solid var(--SmartThemeBorderColor, #444);
-        color: var(--SmartThemeBodyColor, #eee);
-        padding: 8px 12px;
-        border-radius: 6px;
-        font-size: 13px;
-        width: 200px;
-      }
-
-      .council-setting-input:focus {
-        outline: none;
-        border-color: #667eea;
-      }
-
-      /* ===== SCROLLBAR ===== */
-      .council-threads-container::-webkit-scrollbar,
-      .council-thread-body::-webkit-scrollbar,
-      .council-gavel-body::-webkit-scrollbar,
-      .council-settings-body::-webkit-scrollbar {
-        width: 6px;
-      }
-
-      .council-threads-container::-webkit-scrollbar-track,
-      .council-thread-body::-webkit-scrollbar-track,
-      .council-gavel-body::-webkit-scrollbar-track,
-      .council-settings-body::-webkit-scrollbar-track {
-        background: rgba(0,0,0,0.2);
-        border-radius: 3px;
-      }
-
-      .council-threads-container::-webkit-scrollbar-thumb,
-      .council-thread-body::-webkit-scrollbar-thumb,
-      .council-gavel-body::-webkit-scrollbar-thumb,
-      .council-settings-body::-webkit-scrollbar-thumb {
-        background: rgba(255,255,255,0.2);
-        border-radius: 3px;
-      }
-
-      .council-threads-container::-webkit-scrollbar-thumb:hover,
-      .council-thread-body::-webkit-scrollbar-thumb:hover,
-      .council-gavel-body::-webkit-scrollbar-thumb:hover,
-      .council-settings-body::-webkit-scrollbar-thumb:hover {
-        background: rgba(255,255,255,0.3);
-      }
-
-      /* ===== TOAST NOTIFICATIONS ===== */
-      .council-toast {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: var(--SmartThemeBlurTintColor, #1a1a2e);
-        border: 1px solid var(--SmartThemeBorderColor, #444);
-        border-radius: 8px;
-        padding: 12px 16px;
-        color: var(--SmartThemeBodyColor, #eee);
-        font-size: 13px;
-        z-index: 10003;
-        animation: council-slideIn 0.3s ease;
-        max-width: 300px;
-      }
-
-      @keyframes council-slideIn {
-        from { transform: translateX(100%); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-      }
-
-      .council-toast.success {
-        border-color: #4ade80;
-      }
-
-      .council-toast.error {
-        border-color: #f87171;
-      }
+      /* Fallback styles for Council UI - main styles in styles/main.css */
+      .council-pipeline-panel.hidden { display: none; }
+      .council-gavel-modal { opacity: 0; visibility: hidden; }
+      .council-gavel-modal.visible { opacity: 1; visibility: visible; }
+      .council-settings-panel { display: none; }
+      .council-settings-panel.visible { display: flex; }
+      .council-thread-panel-badge.hidden,
+      .council-team-thread-badge.hidden { display: none; }
     `;
 
     const styleElement = document.createElement("style");
@@ -681,7 +86,9 @@ const CouncilUI = {
     document.head.appendChild(styleElement);
 
     this._styleInjected = true;
-    console.log("[Council UI] Styles injected");
+    console.log(
+      "[Council UI] Fallback styles injected (main styles from external CSS)",
+    );
   },
 
   // ===== PIPELINE PANEL =====
@@ -696,51 +103,110 @@ const CouncilUI = {
     }
 
     const threads = this._config?.THREADS || this.getDefaultThreads();
+    const phases = this.getDefaultPhases();
 
-    const threadTabsHtml = Object.entries(threads)
-      .sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99))
+    // Separate threads into team (top row) and main (bottom row)
+    const teamThreads = Object.entries(threads)
+      .filter(([_, t]) => t.isTeamThread)
+      .sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99));
+
+    const mainThreads = Object.entries(threads)
+      .filter(([_, t]) => t.isMainThread)
+      .sort((a, b) => (a[1].priority || 99) - (b[1].priority || 99));
+
+    // Generate phase indicator bar HTML
+    const phaseBarHtml = phases
+      .map(
+        (phase, idx) => `
+      <div class="council-phase-item pending" data-phase="${phase.id}">
+        <span class="council-phase-dot"></span>
+        <span>${phase.icon} ${phase.name}</span>
+      </div>
+      ${idx < phases.length - 1 ? '<div class="council-phase-connector"></div>' : ""}
+    `,
+      )
+      .join("");
+
+    // Generate team threads HTML (collapsed cards in top row)
+    const teamThreadsHtml = teamThreads
       .map(
         ([id, thread]) => `
-        <div class="council-thread-tab ${thread.expanded ? "expanded" : ""}" data-thread="${id}">
-          <div class="council-thread-header">
-            <div class="council-thread-title">
-              <span class="council-thread-icon">${thread.icon || "📄"}</span>
-              <span>${thread.name}</span>
-              <span class="council-thread-badge" style="display: none;">0</span>
-            </div>
-            <span class="council-thread-toggle">▼</span>
+      <div class="council-team-thread ${thread.expanded ? "expanded" : ""}" data-thread="${id}">
+        <div class="council-team-thread-header">
+          <div class="council-team-thread-title">
+            <span class="council-team-thread-icon">${thread.icon || "📄"}</span>
+            <span>${thread.name}</span>
+            <span class="council-team-thread-badge hidden">0</span>
           </div>
-          <div class="council-thread-body">
-            <div class="council-thread-content" id="council-thread-content-${id}">
-              <div class="council-thread-empty">No content yet</div>
-            </div>
+          <span class="council-team-thread-toggle">▼</span>
+        </div>
+        <div class="council-team-thread-body">
+          <div class="council-team-thread-content" id="council-thread-content-${id}">
+            <div class="council-thread-empty">No activity</div>
           </div>
         </div>
-      `,
+      </div>
+    `,
+      )
+      .join("");
+
+    // Generate main threads HTML (large panels in bottom row)
+    // Order: Instructions, Main (largest), Context (larger), Outline
+    const mainThreadsHtml = mainThreads
+      .map(
+        ([id, thread]) => `
+      <div class="council-thread-panel" data-thread="${id}">
+        <div class="council-thread-panel-header">
+          <div class="council-thread-panel-title">
+            <span class="council-thread-panel-icon">${thread.icon || "📄"}</span>
+            <span>${thread.name}</span>
+          </div>
+          <span class="council-thread-panel-badge hidden">0</span>
+        </div>
+        <div class="council-thread-panel-body" id="council-thread-content-${id}">
+          <div class="council-thread-empty">Waiting for pipeline...</div>
+        </div>
+      </div>
+    `,
       )
       .join("");
 
     const panelHtml = `
       <div id="council-pipeline-panel" class="council-pipeline-panel hidden">
         <div class="council-pipeline-header">
-          <h3>⚖️ The Council</h3>
+          <h3>⚖️ The Council Pipeline</h3>
           <div class="council-header-buttons">
             <button class="council-header-btn" id="council-settings-btn" title="Settings">⚙️</button>
             <button class="council-header-btn" id="council-minimize-btn" title="Minimize">─</button>
             <button class="council-header-btn" id="council-close-btn" title="Close">×</button>
           </div>
         </div>
+
+        <div class="council-phase-bar" id="council-phase-bar">
+          ${phaseBarHtml}
+        </div>
+
         <div class="council-pipeline-progress">
           <div class="council-status-row">
-            <div class="council-pipeline-status" id="council-status">Ready</div>
-            <div class="council-phase-counter" id="council-phase-counter">0 / 0</div>
+            <div class="council-pipeline-status" id="council-status">
+              <span class="status-icon">⏳</span>
+              <span class="status-text">Ready</span>
+            </div>
+            <div class="council-current-action" id="council-current-action"></div>
+            <div class="council-phase-counter" id="council-phase-counter">0 / ${phases.length}</div>
           </div>
           <div class="council-progress-track">
             <div class="council-progress-bar" id="council-progress-bar"></div>
           </div>
         </div>
-        <div class="council-threads-container" id="council-threads-container">
-          ${threadTabsHtml}
+
+        <div class="council-threads-wrapper">
+          <div class="council-team-threads-row" id="council-team-threads">
+            ${teamThreadsHtml}
+          </div>
+          <div class="council-main-threads-row" id="council-main-threads">
+            ${mainThreadsHtml}
+          </div>
         </div>
       </div>
     `;
@@ -754,13 +220,14 @@ const CouncilUI = {
       "council-progress-bar",
     );
     this._elements.threadsContainer = document.getElementById(
-      "council-threads-container",
+      "council-main-threads",
     );
+    this._elements.phaseBar = document.getElementById("council-phase-bar");
 
     // Bind panel events
     this.bindPanelEvents();
 
-    console.log("[Council UI] Pipeline panel created");
+    console.log("[Council UI] Pipeline panel created with redesigned layout");
   },
 
   /**
@@ -785,17 +252,144 @@ const CouncilUI = {
       settingsBtn.addEventListener("click", () => this.toggleSettings());
     }
 
-    // Thread toggles
-    const threadHeaders = document.querySelectorAll(".council-thread-header");
-    threadHeaders.forEach((header) => {
+    // Team thread toggles (collapsible cards in top row)
+    const teamThreadHeaders = document.querySelectorAll(
+      ".council-team-thread-header",
+    );
+    teamThreadHeaders.forEach((header) => {
       header.addEventListener("click", (e) => {
-        const tab = e.currentTarget.closest(".council-thread-tab");
-        const threadId = tab?.dataset?.thread;
+        const card = e.currentTarget.closest(".council-team-thread");
+        const threadId = card?.dataset?.thread;
         if (threadId) {
-          this.toggleThread(threadId);
+          this.toggleTeamThread(threadId);
         }
       });
     });
+  },
+
+  /**
+   * Toggle a team thread's expanded state
+   */
+  toggleTeamThread(threadId) {
+    const card = document.querySelector(
+      `.council-team-thread[data-thread="${threadId}"]`,
+    );
+    if (card) {
+      card.classList.toggle("expanded");
+      this._state?.toggleThread(threadId);
+    }
+  },
+
+  /**
+   * Set the active phase in the phase bar
+   */
+  setActivePhase(phaseId) {
+    const phaseItems = document.querySelectorAll(".council-phase-item");
+    const connectors = document.querySelectorAll(".council-phase-connector");
+    let foundActive = false;
+    let connectorIdx = 0;
+
+    phaseItems.forEach((item) => {
+      const itemPhaseId = item.dataset.phase;
+
+      if (itemPhaseId === phaseId) {
+        item.classList.remove("pending", "complete", "error");
+        item.classList.add("active");
+        foundActive = true;
+      } else if (!foundActive) {
+        // Phases before active are complete
+        item.classList.remove("pending", "active", "error");
+        item.classList.add("complete");
+        if (connectorIdx < connectors.length) {
+          connectors[connectorIdx].classList.add("complete");
+        }
+        connectorIdx++;
+      } else {
+        // Phases after active are pending
+        item.classList.remove("active", "complete", "error");
+        item.classList.add("pending");
+      }
+    });
+  },
+
+  /**
+   * Mark a phase as complete
+   */
+  completePhase(phaseId) {
+    const phaseItem = document.querySelector(
+      `.council-phase-item[data-phase="${phaseId}"]`,
+    );
+    if (phaseItem) {
+      phaseItem.classList.remove("pending", "active", "error");
+      phaseItem.classList.add("complete");
+    }
+  },
+
+  /**
+   * Mark a phase as having an error
+   */
+  setPhaseError(phaseId) {
+    const phaseItem = document.querySelector(
+      `.council-phase-item[data-phase="${phaseId}"]`,
+    );
+    if (phaseItem) {
+      phaseItem.classList.remove("pending", "active", "complete");
+      phaseItem.classList.add("error");
+    }
+  },
+
+  /**
+   * Reset all phases to pending
+   */
+  resetPhases() {
+    const phaseItems = document.querySelectorAll(".council-phase-item");
+    const connectors = document.querySelectorAll(".council-phase-connector");
+
+    phaseItems.forEach((item) => {
+      item.classList.remove("active", "complete", "error");
+      item.classList.add("pending");
+    });
+
+    connectors.forEach((conn) => {
+      conn.classList.remove("complete");
+    });
+  },
+
+  /**
+   * Update the current action text
+   */
+  setCurrentAction(text) {
+    const actionEl = document.getElementById("council-current-action");
+    if (actionEl) {
+      actionEl.textContent = text || "";
+    }
+  },
+
+  /**
+   * Set the active thread panel (highlight it)
+   */
+  setActiveThread(threadId) {
+    // Remove active from all panels
+    document
+      .querySelectorAll(".council-thread-panel, .council-team-thread")
+      .forEach((el) => {
+        el.classList.remove("active");
+      });
+
+    // Add active to the specified thread
+    const panel = document.querySelector(
+      `.council-thread-panel[data-thread="${threadId}"]`,
+    );
+    const teamCard = document.querySelector(
+      `.council-team-thread[data-thread="${threadId}"]`,
+    );
+
+    if (panel) {
+      panel.classList.add("active");
+    }
+    if (teamCard) {
+      teamCard.classList.add("active");
+    }
   },
 
   /**
@@ -803,39 +397,110 @@ const CouncilUI = {
    */
   getDefaultThreads() {
     return {
-      main: { name: "Main", icon: "🏛️", expanded: true, priority: 1 },
-      context: { name: "Context", icon: "📚", expanded: false, priority: 2 },
+      // Main threads (bottom row) - order: Instructions, Main, Context, Outline
       instructions: {
         name: "Instructions",
         icon: "📋",
-        expanded: false,
-        priority: 3,
+        expanded: true,
+        priority: 1,
+        isMainThread: true,
       },
-      outline: { name: "Outline", icon: "📝", expanded: true, priority: 4 },
-      drafting: { name: "Drafting", icon: "📄", expanded: true, priority: 5 },
-      final: { name: "Final", icon: "✅", expanded: true, priority: 6 },
-      prose: { name: "Prose Team", icon: "✍️", expanded: false, priority: 10 },
-      plot: { name: "Plot Team", icon: "🗺️", expanded: false, priority: 11 },
-      world: { name: "World Team", icon: "🌍", expanded: false, priority: 12 },
+      main: {
+        name: "Main",
+        icon: "🏛️",
+        expanded: true,
+        priority: 2,
+        isMainThread: true,
+      },
+      context: {
+        name: "Context",
+        icon: "📚",
+        expanded: true,
+        priority: 3,
+        isMainThread: true,
+      },
+      outline: {
+        name: "Outline",
+        icon: "📝",
+        expanded: true,
+        priority: 4,
+        isMainThread: true,
+      },
+      // Team threads (top row, collapsed by default)
+      prose: {
+        name: "Prose",
+        icon: "✍️",
+        expanded: false,
+        priority: 10,
+        isTeamThread: true,
+      },
+      plot: {
+        name: "Plot",
+        icon: "🗺️",
+        expanded: false,
+        priority: 11,
+        isTeamThread: true,
+      },
+      world: {
+        name: "World",
+        icon: "🌍",
+        expanded: false,
+        priority: 12,
+        isTeamThread: true,
+      },
       characters: {
         name: "Characters",
         icon: "👥",
         expanded: false,
         priority: 13,
+        isTeamThread: true,
       },
       environment: {
         name: "Environment",
         icon: "🏞️",
         expanded: false,
         priority: 14,
+        isTeamThread: true,
       },
       recordkeeping: {
         name: "Records",
         icon: "📁",
         expanded: false,
         priority: 15,
+        isTeamThread: true,
+      },
+      // Other threads
+      drafting: {
+        name: "Drafting",
+        icon: "📄",
+        expanded: false,
+        priority: 20,
+        isTeamThread: true,
+      },
+      final: {
+        name: "Final",
+        icon: "✅",
+        expanded: false,
+        priority: 21,
+        isTeamThread: true,
       },
     };
+  },
+
+  /**
+   * Get pipeline phases for the phase indicator bar
+   */
+  getDefaultPhases() {
+    return [
+      { id: "init", name: "Initialize", icon: "🚀" },
+      { id: "context", name: "Context", icon: "📚" },
+      { id: "instructions", name: "Instructions", icon: "📋" },
+      { id: "team-consult", name: "Team Consult", icon: "👥" },
+      { id: "outline", name: "Outline", icon: "📝" },
+      { id: "drafting", name: "Drafting", icon: "✍️" },
+      { id: "review", name: "Review", icon: "🔍" },
+      { id: "final", name: "Final", icon: "✅" },
+    ];
   },
 
   // ===== PANEL VISIBILITY =====
@@ -898,11 +563,32 @@ const CouncilUI = {
   // ===== STATUS AND PROGRESS =====
 
   /**
-   * Update the status text
+   * Update the status text and icon
    */
-  updateStatus(text) {
+  updateStatus(text, isProcessing = false) {
     if (this._elements.statusText) {
-      this._elements.statusText.textContent = text;
+      const statusIcon =
+        this._elements.statusText.querySelector(".status-icon");
+      const statusText =
+        this._elements.statusText.querySelector(".status-text");
+
+      if (statusText) {
+        statusText.textContent = text;
+      } else {
+        this._elements.statusText.textContent = text;
+      }
+
+      if (statusIcon) {
+        statusIcon.textContent = isProcessing ? "⚙️" : "⏳";
+      }
+
+      if (isProcessing) {
+        this._elements.statusText.classList.add("processing");
+        this._elements.progressBar?.classList.add("active");
+      } else {
+        this._elements.statusText.classList.remove("processing");
+        this._elements.progressBar?.classList.remove("active");
+      }
     }
   },
 
@@ -924,14 +610,25 @@ const CouncilUI = {
   // ===== THREAD MANAGEMENT =====
 
   /**
-   * Toggle a thread's expanded state
+   * Toggle a thread's expanded state (legacy support)
    */
   toggleThread(threadId) {
-    const tab = document.querySelector(
-      `.council-thread-tab[data-thread="${threadId}"]`,
+    // Check for main thread panel first
+    const panel = document.querySelector(
+      `.council-thread-panel[data-thread="${threadId}"]`,
     );
-    if (tab) {
-      tab.classList.toggle("expanded");
+    if (panel) {
+      // Main panels don't collapse, but we can still track state
+      this._state?.toggleThread(threadId);
+      return;
+    }
+
+    // Check for team thread
+    const teamCard = document.querySelector(
+      `.council-team-thread[data-thread="${threadId}"]`,
+    );
+    if (teamCard) {
+      teamCard.classList.toggle("expanded");
       this._state?.toggleThread(threadId);
     }
   },
@@ -986,19 +683,30 @@ const CouncilUI = {
     const entryHtml = this.renderThreadEntry(entry);
     contentEl.insertAdjacentHTML("beforeend", entryHtml);
 
-    // Auto-scroll
-    const body = contentEl.closest(".council-thread-body");
+    // Auto-scroll - check for both panel body types
+    const body =
+      contentEl.closest(".council-thread-panel-body") ||
+      contentEl.closest(".council-team-thread-body");
     if (body) {
       body.scrollTop = body.scrollHeight;
     }
 
-    // Flash the thread tab
-    const tab = document.querySelector(
-      `.council-thread-tab[data-thread="${threadId}"]`,
+    // Flash indicators for team threads when they have new content
+    const teamCard = document.querySelector(
+      `.council-team-thread[data-thread="${threadId}"]`,
     );
-    if (tab && !tab.classList.contains("expanded")) {
-      tab.classList.add("has-new");
-      setTimeout(() => tab.classList.remove("has-new"), 2000);
+    if (teamCard && !teamCard.classList.contains("expanded")) {
+      teamCard.classList.add("has-new");
+      setTimeout(() => teamCard.classList.remove("has-new"), 2000);
+    }
+
+    // Flash main thread panel
+    const panel = document.querySelector(
+      `.council-thread-panel[data-thread="${threadId}"]`,
+    );
+    if (panel) {
+      panel.classList.add("has-new");
+      setTimeout(() => panel.classList.remove("has-new"), 1500);
     }
 
     // Update badge
@@ -1033,13 +741,24 @@ const CouncilUI = {
    * Update thread badge count
    */
   updateThreadBadge(threadId, count) {
-    const tab = document.querySelector(
-      `.council-thread-tab[data-thread="${threadId}"]`,
+    // Check main thread panel
+    const panel = document.querySelector(
+      `.council-thread-panel[data-thread="${threadId}"]`,
     );
-    const badge = tab?.querySelector(".council-thread-badge");
-    if (badge) {
-      badge.textContent = count;
-      badge.style.display = count > 0 ? "inline" : "none";
+    const panelBadge = panel?.querySelector(".council-thread-panel-badge");
+    if (panelBadge) {
+      panelBadge.textContent = count;
+      panelBadge.classList.toggle("hidden", count === 0);
+    }
+
+    // Check team thread card
+    const teamCard = document.querySelector(
+      `.council-team-thread[data-thread="${threadId}"]`,
+    );
+    const teamBadge = teamCard?.querySelector(".council-team-thread-badge");
+    if (teamBadge) {
+      teamBadge.textContent = count;
+      teamBadge.classList.toggle("hidden", count === 0);
     }
   },
 
@@ -1047,18 +766,50 @@ const CouncilUI = {
    * Clear all thread content
    */
   clearAllThreads() {
-    const contentEls = document.querySelectorAll(
-      '[id^="council-thread-content-"]',
+    // Clear main thread panels
+    const mainContentEls = document.querySelectorAll(
+      ".council-thread-panel-body",
     );
-    contentEls.forEach((el) => {
-      el.innerHTML = '<div class="council-thread-empty">No content yet</div>';
+    mainContentEls.forEach((el) => {
+      el.innerHTML =
+        '<div class="council-thread-empty">Waiting for pipeline...</div>';
     });
 
-    const badges = document.querySelectorAll(".council-thread-badge");
-    badges.forEach((badge) => {
-      badge.textContent = "0";
-      badge.style.display = "none";
+    // Clear team thread cards
+    const teamContentEls = document.querySelectorAll(
+      ".council-team-thread-content",
+    );
+    teamContentEls.forEach((el) => {
+      el.innerHTML = '<div class="council-thread-empty">No activity</div>';
     });
+
+    // Reset all badges
+    const panelBadges = document.querySelectorAll(
+      ".council-thread-panel-badge",
+    );
+    panelBadges.forEach((badge) => {
+      badge.textContent = "0";
+      badge.classList.add("hidden");
+    });
+
+    const teamBadges = document.querySelectorAll(".council-team-thread-badge");
+    teamBadges.forEach((badge) => {
+      badge.textContent = "0";
+      badge.classList.add("hidden");
+    });
+
+    // Reset phases
+    this.resetPhases();
+
+    // Clear current action
+    this.setCurrentAction("");
+
+    // Remove active states
+    document
+      .querySelectorAll(".council-thread-panel, .council-team-thread")
+      .forEach((el) => {
+        el.classList.remove("active", "has-new");
+      });
   },
 
   // ===== GAVEL MODAL =====
@@ -1355,31 +1106,74 @@ const CouncilUI = {
     // Pipeline events
     this._state.on("pipeline:start", () => {
       this.setButtonProcessing(true);
-      this.updateStatus("Starting pipeline...");
+      this.clearAllThreads();
+      this.resetPhases();
+      this.updateStatus("Initializing pipeline...", true);
+      this.setCurrentAction("Preparing context and agents");
       this.updateProgress(0, 1);
+      this.setActivePhase("init");
     });
 
-    this._state.on("pipeline:phase", ({ phaseIndex, phase }) => {
-      const total = this._pipeline?.getPhases()?.length || 14;
-      this.updateStatus(`Phase ${phaseIndex + 1}: ${phase.name}`);
+    this._state.on("pipeline:phase", ({ phaseIndex, phase, phaseId }) => {
+      const total = this._pipeline?.getPhases()?.length || 8;
+      const phaseName = phase?.name || `Phase ${phaseIndex + 1}`;
+      const normalizedPhaseId = phaseId || this.normalizePhaseId(phaseName);
+
+      this.updateStatus(`${phaseName}`, true);
+      this.setCurrentAction(phase?.description || `Processing ${phaseName}...`);
       this.updateProgress(phaseIndex + 1, total);
+      this.setActivePhase(normalizedPhaseId);
+
+      // Highlight the relevant thread for this phase
+      if (normalizedPhaseId === "context") {
+        this.setActiveThread("context");
+      } else if (normalizedPhaseId === "instructions") {
+        this.setActiveThread("instructions");
+      } else if (normalizedPhaseId === "outline") {
+        this.setActiveThread("outline");
+      } else if (normalizedPhaseId === "team-consult") {
+        // Multiple team threads may be active
+        this.setActiveThread("prose");
+      } else {
+        this.setActiveThread("main");
+      }
+    });
+
+    this._state.on("pipeline:phase:complete", ({ phaseId }) => {
+      if (phaseId) {
+        this.completePhase(phaseId);
+      }
     });
 
     this._state.on("pipeline:complete", () => {
       this.setButtonProcessing(false);
-      this.updateStatus("✅ Pipeline complete!");
+      this.updateStatus("Pipeline complete!", false);
+      this.setCurrentAction("");
+      this.setActivePhase("final");
+      setTimeout(() => this.completePhase("final"), 500);
       this.showToast("The Council has spoken.", "success");
     });
 
-    this._state.on("pipeline:error", ({ error }) => {
+    this._state.on("pipeline:error", ({ error, phaseId }) => {
       this.setButtonProcessing(false);
-      this.updateStatus(`❌ Error: ${error}`);
+      this.updateStatus(`Error: ${error}`, false);
+      this.setCurrentAction("");
+      if (phaseId) {
+        this.setPhaseError(phaseId);
+      }
       this.showToast(`Pipeline failed: ${error}`, "error");
     });
 
     // Thread events
     this._state.on("thread:entry", ({ threadId, entry }) => {
       this.addThreadEntry(threadId, entry);
+      // Briefly highlight the thread receiving content
+      this.setActiveThread(threadId);
+    });
+
+    // Action update events (for showing current activity)
+    this._state.on("action:update", ({ action }) => {
+      this.setCurrentAction(action);
     });
 
     // Gavel events
@@ -1397,6 +1191,27 @@ const CouncilUI = {
     });
 
     console.log("[Council UI] Event listeners set up");
+  },
+
+  /**
+   * Normalize a phase name to a phase ID for the phase bar
+   */
+  normalizePhaseId(phaseName) {
+    const name = phaseName.toLowerCase();
+    if (name.includes("init") || name.includes("start")) return "init";
+    if (name.includes("context")) return "context";
+    if (name.includes("instruct")) return "instructions";
+    if (
+      name.includes("team") ||
+      name.includes("consult") ||
+      name.includes("sme")
+    )
+      return "team-consult";
+    if (name.includes("outline")) return "outline";
+    if (name.includes("draft")) return "drafting";
+    if (name.includes("review") || name.includes("refine")) return "review";
+    if (name.includes("final") || name.includes("complete")) return "final";
+    return "init";
   },
 
   // ===== TOAST NOTIFICATIONS =====
