@@ -1,7 +1,12 @@
 {
-  "name": "The Council",
-  "version": "0.1.0",
+  "display_name": "The Council",
+  "loading_order": 10,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "styles/main.css",
   "author": "Robert Kyser",
-  "description": "Intercepts prompts to run a multi-agent consensus loop (Editor, Advocate, Librarian) before generating a response.",
-  "js": "index.js"
+  "version": "0.3.0",
+  "homePage": "",
+  "auto_update": false
 }
