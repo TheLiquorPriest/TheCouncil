@@ -8,7 +8,7 @@
 
 | Priority | Component | System | Status |
 |----------|-----------|--------|--------|
-| P0 | Curation Pipeline Builder | Curation | **Missing entirely** |
+| P0 | Curation Pipeline Builder | Curation | ✅ **DONE** - `curation-pipeline-builder.js` |
 | P0 | Action Participant Config | Pipeline | ✅ **DONE** - `participant-selector.js` |
 | P0 | Action Context/IO Config | Pipeline | ✅ **DONE** - `context-config.js` |
 | P0 | Agent Prompt Builder | Agents | ✅ **DONE** - `prompt-builder.js` |
@@ -21,10 +21,11 @@
 - ✅ **NEW**: Prompt Builder component with ST macros, presets, drag-drop tokens
 - ✅ **NEW**: Participant Selector component with multiple modes, orchestration
 - ✅ **NEW**: Context Config component with sources, targets, I/O configuration
+- ✅ **NEW**: Curation Pipeline Builder with CRUD/RAG pipeline creation, testing
 - ✅ **NEW**: Legacy code cleanup complete (modules/ directory removed)
 
 ### What's Broken/Missing
-- ❌ Cannot build curation pipelines (no UI exists)
+- ✅ ~~Cannot build curation pipelines~~ → CurationPipelineBuilder component created
 - ✅ ~~Cannot configure who participates in actions~~ → ParticipantSelector component created
 - ✅ ~~Cannot configure what context actions receive~~ → ContextConfig component created
 - ✅ ~~Cannot configure where action outputs go~~ → ContextConfig component created
@@ -33,25 +34,28 @@
 
 ### Recommended Next Steps
 1. ✅ ~~**Immediate**: Fix remaining bugs in existing UI~~ → Legacy cleanup done
-2. A: Build Curation Pipeline Builder (critical path)
+2. ✅ ~~A: Build Curation Pipeline Builder~~ → DONE (`curation-pipeline-builder.js`)
 3. ✅ ~~B: Build Action Context/IO Configuration UI~~ → DONE
 4. ✅ ~~C: Build Agent Prompt Builder with ST integration~~ → DONE
 5. ✅ ~~D: Build Action Participant Configuration~~ → DONE
-6. ✅ ~~E: Integrate components into modals~~ → DONE (agents-modal, pipeline-modal)
+6. ✅ ~~E: Integrate components into modals~~ → DONE (agents-modal, pipeline-modal, curation-modal)
 7. F: Polish execution monitoring and testing
+8. G: End-to-end testing and integration verification
 
 ### Estimated Total Effort
-- **New Components**: 10 UI components remaining (3 completed)
-- **Updates**: 1 major modal remaining (Curation Pipeline Builder)
+- **New Components**: All P0 critical components completed (4/4)
+- **Updates**: Polish and testing phase ready
 
 ### Completed Components
 - ✅ `ui/components/prompt-builder.js` - Full prompt builder with 3 modes
 - ✅ `ui/components/participant-selector.js` - Multi-mode participant selection
 - ✅ `ui/components/context-config.js` - Context sources, output targets, I/O config
+- ✅ `ui/components/curation-pipeline-builder.js` - CRUD/RAG pipeline builder with templates, testing
 
 ### Completed Integrations
 - ✅ `ui/agents-modal.js` - PromptBuilder integrated into agent create/edit dialog
 - ✅ `ui/pipeline-modal.js` - ParticipantSelector and ContextConfig integrated into action editor
+- ✅ `ui/curation-modal.js` - CurationPipelineBuilder integrated into Pipelines tab
 
 
 ---
@@ -413,18 +417,18 @@ const PromptBuilder = {
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**File**: `ui/components/curation-pipeline-builder.js` (NEW)
+**File**: `ui/components/curation-pipeline-builder.js` ✅ **COMPLETED**
 
 #### Tasks:
-- [ ] Create pipeline builder component
-- [ ] Add step creation/editing
-- [ ] Add step ordering (drag-drop)
-- [ ] Add input/output mapping between steps
-- [ ] Add prompt template editor per step
-- [ ] Add agent/position selector per step
-- [ ] Add validation rule configuration
-- [ ] Add pipeline testing UI
-- [ ] Add import/export for pipelines
+- [x] Create pipeline builder component
+- [x] Add step creation/editing
+- [x] Add step ordering (drag-drop)
+- [x] Add input/output mapping between steps
+- [x] Add prompt template editor per step
+- [x] Add agent/position selector per step
+- [x] Add validation rule configuration
+- [x] Add pipeline testing UI
+- [ ] Add import/export for pipelines (scaffolded, needs polish)
 
 ---
 
@@ -487,17 +491,17 @@ const PromptBuilder = {
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**File**: `ui/components/rag-pipeline-builder.js` (NEW)
+**File**: `ui/components/curation-pipeline-builder.js` ✅ **COMPLETED** (RAG included in same component)
 
 #### Tasks:
-- [ ] Create RAG pipeline builder component
-- [ ] Add store selection with field picker
-- [ ] Add search method configuration
-- [ ] Add query template editor
-- [ ] Add result processing options
-- [ ] Add trigger configuration
-- [ ] Add testing interface with sample queries
-- [ ] Integrate with ST's vector database if available
+- [x] Create RAG pipeline builder component (integrated into CurationPipelineBuilder)
+- [x] Add store selection with field picker
+- [x] Add search method configuration
+- [x] Add query template editor
+- [x] Add result processing options
+- [x] Add trigger configuration
+- [x] Add testing interface with sample queries
+- [ ] Integrate with ST's vector database if available (future enhancement)
 
 ---
 

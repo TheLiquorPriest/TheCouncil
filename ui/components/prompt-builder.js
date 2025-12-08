@@ -242,8 +242,10 @@ const PromptBuilder = {
     this._tokenResolver = options.tokenResolver || window.TokenResolver;
     this._logger = options.logger || window.Logger;
 
-    // Load ST presets
-    this._loadSTPresets();
+    // Try to load ST presets (may fail if ST not ready yet)
+    this._loadSTPresets().catch(() => {
+      this._log("debug", "Initial preset load failed, will retry on demand");
+    });
 
     this._initialized = true;
     this._log("info", "PromptBuilder initialized");
@@ -313,75 +315,157 @@ const PromptBuilder = {
   // ===== ST PRESET LOADING =====
 
   /**
-   * Load available SillyTavern presets
+   * Load available SillyTavern presets using multiple methods
    */
-  async _loadSTPresets() {
-    try {
-      // Try to get presets from ST's context
-      const context = window.getContext?.();
-      if (!context) {
-        this._log("warn", "SillyTavern context not available");
-        return;
-      }
+  async _loadSTPresets(forceReload = false) {
+    // Skip if already loaded and not forcing reload
+    if (this._stPresets.length > 0 && !forceReload) {
+      this._log("debug", "Presets already loaded, skipping");
+      return;
+    }
 
-      // Check for preset data in various locations
-      // ST stores presets in different places depending on version
+    try {
       const presets = [];
 
-      // Try to get instruct presets
-      if (window.instruct_presets) {
-        for (const preset of window.instruct_presets) {
-          presets.push({
-            type: "instruct",
-            name: preset.name,
-            data: preset,
-          });
-        }
+      // Method 1: Try SillyTavern.getContext().getPresetManager() (preferred)
+      const context = window.SillyTavern?.getContext?.();
+      const getPresetManager = context?.getPresetManager;
+
+      if (typeof getPresetManager === "function") {
+        this._log("debug", "Using getPresetManager from context");
+        await this._loadPresetsViaManager(presets, getPresetManager);
+      } else {
+        this._log(
+          "debug",
+          "getPresetManager not available, trying direct globals",
+        );
       }
 
-      // Try to get context presets
-      if (window.context_presets) {
-        for (const preset of window.context_presets) {
-          presets.push({
-            type: "context",
-            name: preset.name,
-            data: preset,
-          });
-        }
-      }
-
-      // Try to fetch from API if not found in global scope
+      // Method 2: Try direct globals if getPresetManager didn't work or found nothing
       if (presets.length === 0) {
-        try {
-          const headers = window.getRequestHeaders?.() || {};
-          const response = await fetch("/api/settings/get", {
-            method: "POST",
-            headers,
-            body: JSON.stringify({}),
-          });
-          if (response.ok) {
-            const settings = await response.json();
-            if (settings.instruct_presets) {
-              for (const name of Object.keys(settings.instruct_presets)) {
-                presets.push({
-                  type: "instruct",
-                  name: name,
-                  data: settings.instruct_presets[name],
-                });
-              }
-            }
-          }
-        } catch (e) {
-          this._log("debug", "Could not fetch presets from API:", e);
-        }
+        await this._loadPresetsFromGlobals(presets);
       }
 
       this._stPresets = presets;
-      this._log("info", `Loaded ${presets.length} ST presets`);
+      this._log("info", `Loaded ${presets.length} ST presets total`);
+
+      // Log available preset types for debugging
+      const types = [...new Set(presets.map((p) => p.type))];
+      if (types.length > 0) {
+        this._log("debug", `Preset types found: ${types.join(", ")}`);
+      }
     } catch (e) {
       this._log("error", "Failed to load ST presets:", e);
       this._stPresets = [];
     }
+  },
+
+  /**
+   * Load presets via ST's PresetManager
+   * @param {Array} presets - Array to populate
+   * @param {Function} getPresetManager - The getPresetManager function
+   */
+  async _loadPresetsViaManager(presets, getPresetManager) {
+    // Only load Chat Completion presets (OpenAI/Claude/etc)
+    try {
+      const manager = getPresetManager("openai");
+      if (manager) {
+        const presetNames = manager.getAllPresets();
+        this._log(
+          "debug",
+          `Found ${presetNames.length} Chat Completion presets`,
+        );
+        for (const name of presetNames) {
+          presets.push({
+            type: "chat-completion",
+            name: name,
+            data: null,
+            manager: manager,
+          });
+        }
+      }
+    } catch (e) {
+      this._log("debug", "Could not load chat completion presets:", e);
+    }
+  },
+
+  /**
+   * Load presets directly from ST global variables
+   * @param {Array} presets - Array to populate
+   */
+  async _loadPresetsFromGlobals(presets) {
+    // Chat Completion / OpenAI presets only
+    if (window.oai_settings) {
+      this._log("debug", "Found oai_settings global");
+      // The openai_settings array contains preset data
+      if (window.openai_settings && Array.isArray(window.openai_settings)) {
+        const names = window.openai_setting_names || {};
+        for (const [name, index] of Object.entries(names)) {
+          presets.push({
+            type: "chat-completion",
+            name: name,
+            data: window.openai_settings[index] || null,
+            manager: null,
+          });
+        }
+        this._log(
+          "debug",
+          `Loaded ${Object.keys(names).length} Chat Completion presets from globals`,
+        );
+      }
+    }
+  },
+
+  /**
+   * Get debug info about available ST preset sources
+   * @returns {Array<{name: string, status: string}>}
+   */
+  _getSTDebugInfo() {
+    const context = window.SillyTavern?.getContext?.();
+    const getPresetManager = context?.getPresetManager;
+
+    const checks = [
+      {
+        name: "SillyTavern.getContext()",
+        check: () => (context ? "✅ Available" : "❌ Not found"),
+      },
+      {
+        name: "getPresetManager('openai')",
+        check: () => {
+          if (typeof getPresetManager !== "function") return "❌ No manager";
+          try {
+            const mgr = getPresetManager("openai");
+            if (!mgr) return "❌ Not found";
+            const presets = mgr.getAllPresets();
+            return `✅ ${presets.length} presets`;
+          } catch (e) {
+            return "❌ Error";
+          }
+        },
+      },
+      {
+        name: "oai_settings (fallback)",
+        check: () => {
+          if (window.oai_settings) {
+            const names = window.openai_setting_names;
+            if (names) return `✅ ${Object.keys(names).length} presets`;
+            return "✅ Settings exist";
+          }
+          return "❌ Not found";
+        },
+      },
+    ];
+
+    return checks.map((c) => {
+      try {
+        return {
+          name: c.name,
+          status: c.check(),
+        };
+      } catch (e) {
+        return { name: c.name, status: `❌ Error: ${e.message}` };
+      }
+    });
   },
 
   /**
@@ -402,6 +486,18 @@ const PromptBuilder = {
     if (!preset) {
       this._log("warn", `Preset not found: ${presetName}`);
       return null;
+    }
+
+    // If we have a manager reference, get the actual preset data
+    if (preset.manager) {
+      try {
+        const data = preset.manager.getPresetSettings(presetName);
+        preset.data = data;
+        return data;
+      } catch (e) {
+        this._log("error", `Failed to get preset data for ${presetName}:`, e);
+        return null;
+      }
     }
 
     return preset.data;
@@ -478,7 +574,9 @@ const PromptBuilder = {
       input.addEventListener("change", (e) => {
         if (e.target.checked) {
           instance._config.mode = e.target.value;
-          this._renderModeContent(instance);
+          this._renderModeContent(instance).catch((e) =>
+            this._log("error", "Error rendering mode content:", e),
+          );
           this._notifyChange(instance);
         }
       });
@@ -499,7 +597,9 @@ const PromptBuilder = {
     });
 
     // Render mode-specific content
-    this._renderModeContent(instance);
+    this._renderModeContent(instance).catch((e) =>
+      this._log("error", "Error rendering mode content:", e),
+    );
 
     // Inject styles
     this._injectStyles();
@@ -509,7 +609,7 @@ const PromptBuilder = {
    * Render mode-specific content
    * @param {Object} instance - Instance state
    */
-  _renderModeContent(instance) {
+  async _renderModeContent(instance) {
     const contentEl = instance._container?.querySelector(
       ".prompt-builder-content",
     );
@@ -520,7 +620,7 @@ const PromptBuilder = {
         this._renderCustomMode(instance, contentEl);
         break;
       case "preset":
-        this._renderPresetMode(instance, contentEl);
+        await this._renderPresetMode(instance, contentEl);
         break;
       case "tokens":
         this._renderTokensMode(instance, contentEl);
@@ -573,22 +673,31 @@ const PromptBuilder = {
    * @param {Object} instance - Instance state
    * @param {HTMLElement} contentEl - Content container
    */
-  _renderPresetMode(instance, contentEl) {
+  async _renderPresetMode(instance, contentEl) {
+    // Try to load presets if not loaded yet
+    if (this._stPresets.length === 0) {
+      this._log("debug", "No presets loaded, attempting to load now...");
+      await this._loadSTPresets(true);
+    }
+
     const presetOptions = this._stPresets
       .map(
         (p) => `
         <option value="${this._escapeHtml(p.name)}"
                 ${instance._config.presetName === p.name ? "selected" : ""}>
-          ${this._escapeHtml(p.name)} (${p.type})
+          ${this._escapeHtml(p.name)}
         </option>
       `,
       )
       .join("");
 
+    // Debug info about available ST globals
+    const debugInfo = this._getSTDebugInfo();
+
     contentEl.innerHTML = `
       <div class="prompt-builder-preset">
         <div class="prompt-builder-preset-selector">
-          <label class="prompt-builder-label">Select ST Preset:</label>
+          <label class="prompt-builder-label">Chat Completion Preset:</label>
           <select class="prompt-builder-select">
             <option value="">-- Choose a preset --</option>
             ${presetOptions}
@@ -599,13 +708,25 @@ const PromptBuilder = {
           this._stPresets.length === 0
             ? `
           <div class="prompt-builder-preset-empty">
-            <p>No SillyTavern presets found.</p>
+            <p>No Chat Completion presets found.</p>
             <p class="prompt-builder-hint-text">
-              Presets are loaded from SillyTavern's instruct and context preset configurations.
+              <strong>Try clicking the refresh button (🔄)</strong> - ST may not have been fully loaded yet.
             </p>
+            <details class="prompt-builder-debug-details">
+              <summary>Debug Info</summary>
+              <div class="prompt-builder-debug-content">
+                <ul>
+                  ${debugInfo.map((d) => `<li>${d.name}: ${d.status}</li>`).join("")}
+                </ul>
+              </div>
+            </details>
           </div>
         `
-            : ""
+            : `
+          <div class="prompt-builder-preset-summary">
+            <small>${this._stPresets.length} Chat Completion preset${this._stPresets.length !== 1 ? "s" : ""} available</small>
+          </div>
+        `
         }
         <div class="prompt-builder-preset-info">
           <!-- Preset details shown here when selected -->
@@ -623,8 +744,15 @@ const PromptBuilder = {
 
     const refreshBtn = contentEl.querySelector(".prompt-builder-refresh-btn");
     refreshBtn?.addEventListener("click", async () => {
-      await this._loadSTPresets();
-      this._renderModeContent(instance);
+      refreshBtn.textContent = "⏳";
+      refreshBtn.disabled = true;
+      try {
+        await this._loadSTPresets(true); // Force reload
+        await this._renderModeContent(instance);
+      } finally {
+        refreshBtn.textContent = "🔄";
+        refreshBtn.disabled = false;
+      }
     });
 
     // Show preset info if one is selected
@@ -653,22 +781,108 @@ const PromptBuilder = {
       return;
     }
 
+    // Load preset data if we have a manager
+    let presetData = preset.data;
+    if (!presetData && preset.manager) {
+      try {
+        presetData = preset.manager.getPresetSettings(preset.name);
+        preset.data = presetData; // Cache it
+      } catch (e) {
+        this._log("error", `Failed to load preset data for ${preset.name}:`, e);
+      }
+    }
+
+    // Build info display based on preset type and available data
+    let detailsHtml = "";
+
+    if (presetData) {
+      // Show system prompt if available (common in chat completion presets)
+      if (presetData.system_prompt) {
+        const truncated = presetData.system_prompt.substring(0, 500);
+        detailsHtml += `
+          <div class="prompt-builder-preset-preview">
+            <strong>System Prompt:</strong>
+            <pre>${this._escapeHtml(truncated)}${presetData.system_prompt.length > 500 ? "..." : ""}</pre>
+          </div>
+        `;
+      }
+
+      // Show instruct sequences if available
+      if (presetData.input_sequence || presetData.output_sequence) {
+        detailsHtml += `
+          <div class="prompt-builder-preset-preview">
+            <strong>Instruct Format:</strong>
+            <pre>Input: ${this._escapeHtml(presetData.input_sequence || "N/A")}
+Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
+          </div>
+        `;
+      }
+
+      // Show context/story string if available
+      if (presetData.story_string) {
+        const truncated = presetData.story_string.substring(0, 300);
+        detailsHtml += `
+          <div class="prompt-builder-preset-preview">
+            <strong>Story String:</strong>
+            <pre>${this._escapeHtml(truncated)}${presetData.story_string.length > 300 ? "..." : ""}</pre>
+          </div>
+        `;
+      }
+
+      // Show content for system prompts
+      if (presetData.content && preset.type === "sysprompt") {
+        const truncated = presetData.content.substring(0, 500);
+        detailsHtml += `
+          <div class="prompt-builder-preset-preview">
+            <strong>Content:</strong>
+            <pre>${this._escapeHtml(truncated)}${presetData.content.length > 500 ? "..." : ""}</pre>
+          </div>
+        `;
+      }
+
+      // Show some generation settings for completion presets
+      if (
+        presetData.temp !== undefined ||
+        presetData.max_tokens !== undefined
+      ) {
+        detailsHtml += `
+          <div class="prompt-builder-preset-settings">
+            <strong>Settings:</strong>
+            <ul>
+              ${presetData.temp !== undefined ? `<li>Temperature: ${presetData.temp}</li>` : ""}
+              ${presetData.top_p !== undefined ? `<li>Top P: ${presetData.top_p}</li>` : ""}
+              ${presetData.max_tokens !== undefined ? `<li>Max Tokens: ${presetData.max_tokens}</li>` : ""}
+              ${presetData.frequency_penalty !== undefined ? `<li>Freq Penalty: ${presetData.frequency_penalty}</li>` : ""}
+              ${presetData.presence_penalty !== undefined ? `<li>Pres Penalty: ${presetData.presence_penalty}</li>` : ""}
+            </ul>
+          </div>
+        `;
+      }
+    }
+
+    if (!detailsHtml) {
+      detailsHtml = `<p class="prompt-builder-hint-text">Preset loaded. Settings will be applied when this agent is used.</p>`;
+    }
+
     infoEl.innerHTML = `
       <div class="prompt-builder-preset-details">
         <h4>${this._escapeHtml(preset.name)}</h4>
-        <p><strong>Type:</strong> ${preset.type}</p>
-        ${
-          preset.data.system_prompt
-            ? `
-          <div class="prompt-builder-preset-preview">
-            <strong>System Prompt:</strong>
-            <pre>${this._escapeHtml(preset.data.system_prompt.substring(0, 500))}${preset.data.system_prompt.length > 500 ? "..." : ""}</pre>
-          </div>
-        `
-            : ""
-        }
+        <p><strong>Type:</strong> ${this._getPresetTypeLabel(preset.type)}</p>
+        ${detailsHtml}
       </div>
     `;
+  },
+
+  /**
+   * Get human-readable label for preset type
+   * @param {string} type - Preset type
+   * @returns {string} Human-readable label
+   */
+  _getPresetTypeLabel(type) {
+    const labels = {
+      "chat-completion": "Chat Completion",
+    };
+    return labels[type] || type;
   },
 
   /**
@@ -1427,7 +1641,9 @@ const PromptBuilder = {
       );
       if (modeInput) modeInput.checked = true;
 
-      this._renderModeContent(instance);
+      this._renderModeContent(instance).catch((e) =>
+        this._log("error", "Error rendering mode content:", e),
+      );
     }
   },
 
@@ -1621,6 +1837,47 @@ const PromptBuilder = {
         color: var(--SmartThemeEmColor, #888);
       }
 
+      .prompt-builder-preset-summary {
+        padding: 8px 12px;
+        background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.2));
+        border-radius: 4px;
+        margin-bottom: 10px;
+      }
+
+      .prompt-builder-preset-summary small {
+        color: var(--SmartThemeEmColor, #888);
+      }
+
+      .prompt-builder-debug-details {
+        margin-top: 15px;
+        text-align: left;
+      }
+
+      .prompt-builder-debug-details summary {
+        cursor: pointer;
+        color: var(--SmartThemeQuoteColor, #4a9eff);
+        font-size: 12px;
+      }
+
+      .prompt-builder-debug-content {
+        margin-top: 10px;
+        padding: 10px;
+        background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.3));
+        border-radius: 4px;
+        font-size: 12px;
+      }
+
+      .prompt-builder-debug-content ul {
+        margin: 5px 0;
+        padding-left: 20px;
+      }
+
+      .prompt-builder-debug-content li {
+        margin: 3px 0;
+        font-family: monospace;
+        font-size: 11px;
+      }
+
       .prompt-builder-preset-details {
         padding: 15px;
         background: var(--SmartThemeBlurTintColor, #1a1a1a);
@@ -1631,14 +1888,46 @@ const PromptBuilder = {
         margin: 0 0 10px 0;
       }
 
-      .prompt-builder-preset-preview pre {
+      .prompt-builder-preset-preview {
         margin-top: 10px;
+      }
+
+      .prompt-builder-preset-preview strong {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--SmartThemeEmColor, #aaa);
+      }
+
+      .prompt-builder-preset-preview pre {
+        margin-top: 5px;
         padding: 10px;
         background: var(--SmartThemeBorderColor, #333);
         border-radius: 4px;
         overflow: auto;
         max-height: 150px;
         font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .prompt-builder-preset-settings {
+        margin-top: 10px;
+      }
+
+      .prompt-builder-preset-settings strong {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--SmartThemeEmColor, #aaa);
+      }
+
+      .prompt-builder-preset-settings ul {
+        margin: 0;
+        padding-left: 20px;
+        font-size: 12px;
+      }
+
+      .prompt-builder-preset-settings li {
+        margin: 3px 0;
       }
 
       /* Tokens mode */

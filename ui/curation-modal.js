@@ -84,6 +84,12 @@ const CurationModal = {
    */
   _cleanupFns: [],
 
+  /**
+   * Reference to CurationPipelineBuilder instance
+   * @type {Object|null}
+   */
+  _pipelineBuilderInstance: null,
+
   // ===== INITIALIZATION =====
 
   /**
@@ -125,6 +131,17 @@ const CurationModal = {
    * Destroy the modal and clean up
    */
   destroy() {
+    // Clean up pipeline builder instance
+    if (this._pipelineBuilderInstance) {
+      const CurationPipelineBuilder = window.CurationPipelineBuilder;
+      if (CurationPipelineBuilder) {
+        CurationPipelineBuilder.destroyInstance(
+          this._pipelineBuilderInstance.id,
+        );
+      }
+      this._pipelineBuilderInstance = null;
+    }
+
     // Run cleanup functions
     for (const cleanup of this._cleanupFns) {
       try {
@@ -371,11 +388,18 @@ const CurationModal = {
   /**
    * Switch to a tab
    * @param {string} tabName - Tab name
+   * @param {Object} options - Options
+   * @param {boolean} options.preserveStore - Preserve selected store
+   * @param {boolean} options.preserveEntry - Preserve selected entry
    */
-  _switchTab(tabName) {
+  _switchTab(tabName, options = {}) {
     this._activeTab = tabName;
-    this._selectedStore = null;
-    this._selectedEntry = null;
+    if (!options.preserveStore) {
+      this._selectedStore = null;
+    }
+    if (!options.preserveEntry) {
+      this._selectedEntry = null;
+    }
 
     // Update tab buttons
     this._elements.tabs
@@ -1054,16 +1078,14 @@ const CurationModal = {
   // ===== PIPELINES TAB =====
 
   /**
-   * Render pipelines tab
+   * Render pipelines tab - now uses CurationPipelineBuilder component
    */
   _renderPipelinesTab() {
-    const ragPipelines = this._curationSystem.getAllRAGPipelines();
-    const crudPipelines = this._curationSystem.getAllCRUDPipelines();
     const positions = this._curationSystem.getCurationPositions();
 
     this._elements.content.innerHTML = `
       <div class="council-pipelines-view">
-        <div class="council-pipelines-section">
+        <div class="council-pipelines-section council-pipelines-team">
           <h3 class="council-section-title">🤖 Curation Team</h3>
           <div class="council-positions-grid">
             ${positions
@@ -1079,61 +1101,63 @@ const CurationModal = {
           </div>
         </div>
 
-        <div class="council-pipelines-section">
-          <h3 class="council-section-title">🔍 RAG Pipelines (${ragPipelines.length})</h3>
-          ${
-            ragPipelines.length > 0
-              ? `
-            <div class="council-pipelines-list">
-              ${ragPipelines
-                .map(
-                  (p) => `
-                <div class="council-pipeline-row">
-                  <div class="council-pipeline-name">${this._escapeHtml(p.name)}</div>
-                  <div class="council-pipeline-stores">${p.targetStores.join(", ") || "All"}</div>
-                  <div class="council-pipeline-actions">
-                    <button class="council-curation-btn council-curation-btn-sm"
-                            data-action="test-rag"
-                            data-pipeline="${p.id}">
-                      Test
-                    </button>
-                  </div>
-                </div>
-              `,
-                )
-                .join("")}
-            </div>
-          `
-              : '<div class="council-empty-state"><div class="council-empty-text">No RAG pipelines defined</div></div>'
-          }
-        </div>
-
-        <div class="council-pipelines-section">
-          <h3 class="council-section-title">⚙️ CRUD Pipelines (${crudPipelines.length})</h3>
-          ${
-            crudPipelines.length > 0
-              ? `
-            <div class="council-pipelines-list">
-              ${crudPipelines
-                .map(
-                  (p) => `
-                <div class="council-pipeline-row">
-                  <div class="council-pipeline-name">${this._escapeHtml(p.name)}</div>
-                  <div class="council-pipeline-operation">${p.operation}</div>
-                  <div class="council-pipeline-store">${p.storeId}</div>
-                </div>
-              `,
-                )
-                .join("")}
-            </div>
-          `
-              : '<div class="council-empty-state"><div class="council-empty-text">No CRUD pipelines defined</div></div>'
-          }
+        <div class="council-pipelines-section council-pipeline-builder-section">
+          <h3 class="council-section-title">📊 Pipeline Builder</h3>
+          <div id="council-pipeline-builder-container" class="council-pipeline-builder-container">
+            <!-- CurationPipelineBuilder will be mounted here -->
+          </div>
         </div>
       </div>
     `;
 
+    // Initialize the CurationPipelineBuilder component
+    this._initializePipelineBuilder();
+
     this._bindContentEvents();
+  },
+
+  /**
+   * Initialize the CurationPipelineBuilder component in the Pipelines tab
+   */
+  _initializePipelineBuilder() {
+    const CurationPipelineBuilder = window.CurationPipelineBuilder;
+    if (!CurationPipelineBuilder) {
+      this._log("warn", "CurationPipelineBuilder not available");
+      const container = document.getElementById(
+        "council-pipeline-builder-container",
+      );
+      if (container) {
+        container.innerHTML = `
+          <div class="council-empty-state">
+            <div class="council-empty-text">Pipeline Builder component not loaded</div>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // Create an instance of the pipeline builder
+    const instance = CurationPipelineBuilder.createInstance(
+      "council-pipeline-builder-container",
+      {
+        instanceId: "curation-modal-pipeline-builder",
+        type: "crud",
+        mode: "list",
+        onChange: (pipeline) => {
+          this._log("debug", "Pipeline changed:", pipeline);
+        },
+        onSave: (pipeline) => {
+          this._log("info", "Pipeline saved:", pipeline);
+          this._showToast("Pipeline saved successfully", "success");
+        },
+        onTest: (pipeline, results) => {
+          this._log("info", "Pipeline test results:", results);
+        },
+      },
+    );
+
+    // Store reference for cleanup
+    this._pipelineBuilderInstance = instance;
   },
 
   // ===== CONTENT EVENT BINDING =====
@@ -1144,7 +1168,17 @@ const CurationModal = {
   _bindContentEvents() {
     const content = this._elements.content;
 
+    // Exclude elements inside the pipeline builder (it handles its own events)
+    const pipelineBuilderContainer = content.querySelector(
+      "#council-pipeline-builder-container",
+    );
+
     content.querySelectorAll("[data-action]").forEach((btn) => {
+      // Skip if this button is inside the pipeline builder
+      if (pipelineBuilderContainer && pipelineBuilderContainer.contains(btn)) {
+        return;
+      }
+
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const action = e.currentTarget.dataset.action;
@@ -1186,7 +1220,7 @@ const CurationModal = {
 
       case "view-store":
         this._selectedStore = params.id;
-        this._switchTab("stores");
+        this._switchTab("stores", { preserveStore: true });
         break;
 
       case "back-to-stores":
@@ -1216,7 +1250,7 @@ const CurationModal = {
 
       case "view-result":
         this._selectedStore = params.store;
-        this._switchTab("stores");
+        this._switchTab("stores", { preserveStore: true });
         break;
 
       case "search":

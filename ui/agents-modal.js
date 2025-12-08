@@ -1404,12 +1404,13 @@ const AgentsModal = {
       setTimeout(() => overlay.remove(), 200);
     };
 
+    // Bind close to ALL dialog-close buttons (header X and footer Cancel)
     overlay
-      .querySelector('[data-action="dialog-close"]')
-      ?.addEventListener("click", closeDialog);
+      .querySelectorAll('[data-action="dialog-close"]')
+      .forEach((btn) => btn.addEventListener("click", closeDialog));
     overlay
-      .querySelector(".council-dialog-close")
-      ?.addEventListener("click", closeDialog);
+      .querySelectorAll(".council-dialog-close")
+      .forEach((btn) => btn.addEventListener("click", closeDialog));
 
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) {
@@ -2052,12 +2053,13 @@ const AgentsModal = {
       setTimeout(() => overlay.remove(), 200);
     };
 
+    // Bind close to ALL dialog-close buttons (header X and footer Cancel)
     overlay
-      .querySelector('[data-action="dialog-close"]')
-      ?.addEventListener("click", closeDialog);
+      .querySelectorAll('[data-action="dialog-close"]')
+      .forEach((btn) => btn.addEventListener("click", closeDialog));
     overlay
-      .querySelector(".council-dialog-close")
-      ?.addEventListener("click", closeDialog);
+      .querySelectorAll(".council-dialog-close")
+      .forEach((btn) => btn.addEventListener("click", closeDialog));
 
     overlay.addEventListener("click", (e) => {
       if (e.target === overlay) {

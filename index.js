@@ -149,6 +149,7 @@
       "ui/components/prompt-builder.js",
       "ui/components/participant-selector.js",
       "ui/components/context-config.js",
+      "ui/components/curation-pipeline-builder.js",
 
       // UI Modals
       "ui/agents-modal.js",
@@ -194,6 +195,7 @@
     Systems.PromptBuilder = window.PromptBuilder || null;
     Systems.ParticipantSelector = window.ParticipantSelector || null;
     Systems.ContextConfig = window.ContextConfig || null;
+    Systems.CurationPipelineBuilder = window.CurationPipelineBuilder || null;
 
     logger.debug("Module references obtained:", {
       Logger: !!Systems.Logger,
@@ -214,6 +216,7 @@
       PromptBuilder: !!Systems.PromptBuilder,
       ParticipantSelector: !!Systems.ParticipantSelector,
       ContextConfig: !!Systems.ContextConfig,
+      CurationPipelineBuilder: !!Systems.CurationPipelineBuilder,
     });
 
     return true;
@@ -342,6 +345,15 @@
       logger.log("info", "ContextConfig initialized");
     }
 
+    if (Systems.CurationPipelineBuilder) {
+      Systems.CurationPipelineBuilder.init({
+        curationSystem: Systems.CurationSystem,
+        agentsSystem: Systems.AgentsSystem,
+        logger: Systems.Logger,
+      });
+      logger.log("info", "CurationPipelineBuilder initialized");
+    }
+
     logger.log("info", "All core systems initialized");
   }
 
@@ -408,29 +420,68 @@
    * Get SillyTavern helper functions
    */
   function getSillyTavernHelpers() {
+    const context = window.SillyTavern?.getContext?.();
     return {
-      getContext: window.getContext,
-      characters: window.characters,
-      this_chid: window.this_chid,
-      name1: window.name1,
-      name2: window.name2,
-      chat: window.chat,
-      substituteParams: window.substituteParams,
-      getRequestHeaders: window.getRequestHeaders,
-      callPopup: window.callPopup,
-      eventSource: window.eventSource,
-      event_types: window.event_types,
+      getContext: () => window.SillyTavern?.getContext?.(),
+      context: context,
+      characters: context?.characters || window.characters,
+      this_chid: context?.characterId || window.this_chid,
+      name1: context?.name1 || window.name1,
+      name2: context?.name2 || window.name2,
+      chat: context?.chat || window.chat,
+      substituteParams: context?.substituteParams || window.substituteParams,
+      getRequestHeaders: context?.getRequestHeaders || window.getRequestHeaders,
+      callPopup: context?.callGenericPopup || window.callPopup,
+      eventSource: context?.eventSource || window.eventSource,
+      event_types: context?.eventTypes || window.event_types,
     };
+  }
+
+  /**
+   * Wait for SillyTavern to be fully ready
+   * @param {number} maxWaitMs - Maximum time to wait in milliseconds
+   * @param {number} checkInterval - Check interval in milliseconds
+   * @returns {Promise<boolean>} True if ST is ready, false if timed out
+   */
+  async function waitForSillyTavern(maxWaitMs = 10000, checkInterval = 200) {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      // Check if ST context is available with getPresetManager
+      const context = window.SillyTavern?.getContext?.();
+      if (
+        context &&
+        typeof context.getPresetManager === "function" &&
+        context.eventSource &&
+        context.eventTypes
+      ) {
+        logger.debug("SillyTavern is ready");
+        return true;
+      }
+
+      // Wait before next check
+      await new Promise((resolve) => setTimeout(resolve, checkInterval));
+    }
+
+    logger.warn("Timed out waiting for SillyTavern to be ready");
+    return false;
   }
 
   /**
    * Register SillyTavern event listeners
    */
-  function registerSTEventListeners() {
+  function registerSTEventListeners(retryCount = 0) {
     const stHelpers = getSillyTavernHelpers();
 
     if (!stHelpers.eventSource || !stHelpers.event_types) {
-      logger.warn("SillyTavern event system not available");
+      if (retryCount < 10) {
+        logger.debug(
+          `SillyTavern event system not available yet, retry ${retryCount + 1}/10...`,
+        );
+        setTimeout(() => registerSTEventListeners(retryCount + 1), 1000);
+      } else {
+        logger.warn("Could not register ST event listeners after 10 retries");
+      }
       return;
     }
 
@@ -464,20 +515,46 @@
 
   /**
    * Add extension button to SillyTavern UI
+   * @param {number} retryCount - Current retry count
    */
-  function addExtensionButton() {
+  function addExtensionButton(retryCount = 0) {
     // Check if button already exists
     if (document.getElementById("thecouncil-extension-btn")) {
       return;
     }
 
-    const extensionsMenu = document.getElementById("extensionsMenu");
-    const extensionButtons = document.querySelector(
+    // Try multiple selectors for different ST versions
+    const selectors = [
       "#extensionsMenu .extensions_block",
-    );
+      "#extensionsMenu",
+      ".extensions_block",
+      "#extensions_settings",
+      "#top-settings-holder .extensions_block",
+      "#form_sheld .extensions_block",
+      // Fallback: try to find any element that looks like an extension container
+      '[id*="extension"]',
+    ];
+
+    let extensionButtons = null;
+    for (const selector of selectors) {
+      extensionButtons = document.querySelector(selector);
+      if (extensionButtons) {
+        logger.debug(`Found extension container with selector: ${selector}`);
+        break;
+      }
+    }
 
     if (!extensionButtons) {
-      logger.warn("Could not find extensions menu to add button");
+      if (retryCount < 5) {
+        // Retry a few times as ST UI may still be loading
+        logger.debug(`Extensions menu not found, retry ${retryCount + 1}/5...`);
+        setTimeout(() => addExtensionButton(retryCount + 1), 1000);
+      } else {
+        // Not critical - extension still works, just no button in ST menu
+        logger.debug(
+          "Could not find extensions menu - TheCouncil accessible via keyboard shortcut or NavModal",
+        );
+      }
       return;
     }
 
@@ -485,6 +562,7 @@
     button.id = "thecouncil-extension-btn";
     button.className = "extension_button fa-solid fa-users-gear";
     button.title = "TheCouncil - Multi-LLM Pipeline";
+    button.style.cssText = "cursor: pointer; padding: 5px;";
     button.addEventListener("click", () => {
       if (Systems.NavModal) {
         Systems.NavModal.toggle();
@@ -495,6 +573,29 @@
 
     extensionButtons.appendChild(button);
     logger.debug("Extension button added to menu");
+  }
+
+  /**
+   * Register keyboard shortcut to open TheCouncil
+   * Default: Ctrl+Shift+C
+   */
+  function registerKeyboardShortcut() {
+    document.addEventListener("keydown", (e) => {
+      // Ctrl+Shift+C (or Cmd+Shift+C on Mac)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "C") {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (Systems.NavModal) {
+          Systems.NavModal.toggle();
+          logger.debug("NavModal toggled via keyboard shortcut");
+        } else {
+          logger.warn("NavModal not initialized");
+        }
+      }
+    });
+
+    logger.debug("Keyboard shortcut registered: Ctrl+Shift+C");
   }
 
   // ===== SETTINGS =====
@@ -741,6 +842,9 @@
         // Add extension button
         addExtensionButton();
 
+        // Register keyboard shortcut
+        registerKeyboardShortcut();
+
         // Show nav if configured
         if (extensionSettings?.ui?.autoShowNav !== false) {
           setTimeout(() => {
@@ -776,11 +880,31 @@
   // Also expose individual systems for convenience
   window.CouncilSystems = Systems;
 
-  // Auto-initialize when DOM is ready
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initialize);
-  } else {
-    // DOM already ready, initialize after a short delay
-    setTimeout(initialize, 100);
+  // Auto-initialize when DOM is ready, but wait for ST to be available
+  async function initWhenReady() {
+    // Wait for DOM
+    if (document.readyState === "loading") {
+      await new Promise((resolve) =>
+        document.addEventListener("DOMContentLoaded", resolve),
+      );
+    }
+
+    // Wait a moment for ST to start initializing
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Wait for ST to be fully ready
+    const stReady = await waitForSillyTavern(15000, 300);
+    if (!stReady) {
+      logger.warn(
+        "SillyTavern not fully ready, initializing anyway (some features may not work)",
+      );
+    }
+
+    // Now initialize
+    await initialize();
   }
+
+  initWhenReady().catch((e) => {
+    logger.error("Failed to initialize TheCouncil:", e);
+  });
 })();
