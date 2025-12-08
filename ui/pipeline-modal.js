@@ -127,6 +127,18 @@ const PipelineModal = {
    */
   _refreshInterval: null,
 
+  /**
+   * Active ParticipantSelector instance for action editing
+   * @type {Object|null}
+   */
+  _participantSelectorInstance: null,
+
+  /**
+   * Active ContextConfig instance for action editing
+   * @type {Object|null}
+   */
+  _contextConfigInstance: null,
+
   // ===== INITIALIZATION =====
 
   /**
@@ -2179,58 +2191,114 @@ const PipelineModal = {
       : null;
     const isEdit = !!action;
 
+    // Prepare initial participant config from action data
+    const participantsConfig = action?.participants || {};
+    const initialParticipantMode =
+      participantsConfig.teamIds?.length > 0
+        ? "team"
+        : participantsConfig.positionIds?.length > 1
+          ? "multiple"
+          : participantsConfig.positionIds?.length === 1
+            ? "single"
+            : participantsConfig.dynamic?.enabled
+              ? "dynamic"
+              : "single";
+
+    // Prepare initial context config from action data
+    const contextConfig = {
+      sources: action?.context?.sources || [],
+      targets: action?.output?.targets || [],
+      input: action?.input || {
+        useActionInput: true,
+        inputTemplate: "{{input}}",
+        prependContext: true,
+      },
+      output: action?.output || { format: "text", extractVariables: [] },
+    };
+
     const dialog = document.createElement("div");
     dialog.className = "council-pipeline-dialog-overlay";
     dialog.innerHTML = `
-      <div class="council-pipeline-dialog council-pipeline-dialog-large">
+      <div class="council-pipeline-dialog council-pipeline-dialog-xl">
         <div class="council-pipeline-dialog-header">
           <h3>${isEdit ? "Edit Action" : "Create Action"}</h3>
+          <button class="council-pipeline-dialog-close" data-dialog="cancel">✕</button>
         </div>
         <div class="council-pipeline-dialog-content council-pipeline-dialog-scrollable">
-          <div class="council-pipeline-form-group">
-            <label>Name *</label>
-            <input type="text" class="council-pipeline-input" data-field="name" value="${this._escapeHtml(action?.name || "")}" required>
-          </div>
-          <div class="council-pipeline-form-group">
-            <label>Description</label>
-            <textarea class="council-pipeline-input" data-field="description" rows="2">${this._escapeHtml(action?.description || "")}</textarea>
+          <div class="council-pipeline-dialog-tabs">
+            <button class="council-pipeline-dialog-tab active" data-tab="basic">📝 Basic</button>
+            <button class="council-pipeline-dialog-tab" data-tab="participants">👥 Participants</button>
+            <button class="council-pipeline-dialog-tab" data-tab="context">📥 Context & I/O</button>
+            <button class="council-pipeline-dialog-tab" data-tab="prompt">✏️ Prompt</button>
           </div>
 
-          <h4>Execution</h4>
-          <div class="council-pipeline-form-row">
+          <div class="council-pipeline-dialog-tab-content" data-tab-content="basic">
             <div class="council-pipeline-form-group">
-              <label>Mode</label>
-              <select class="council-pipeline-input" data-field="mode">
-                <option value="sync" ${action?.execution?.mode === "sync" ? "selected" : ""}>Synchronous</option>
-                <option value="async" ${action?.execution?.mode === "async" ? "selected" : ""}>Asynchronous</option>
-              </select>
+              <label>Name *</label>
+              <input type="text" class="council-pipeline-input" data-field="name" value="${this._escapeHtml(action?.name || "")}" required>
             </div>
             <div class="council-pipeline-form-group">
-              <label>Trigger</label>
-              <select class="council-pipeline-input" data-field="trigger">
-                <option value="sequential" ${action?.execution?.trigger?.type === "sequential" ? "selected" : ""}>Sequential</option>
-                <option value="await" ${action?.execution?.trigger?.type === "await" ? "selected" : ""}>Await</option>
-                <option value="on" ${action?.execution?.trigger?.type === "on" ? "selected" : ""}>On Event</option>
-                <option value="immediate" ${action?.execution?.trigger?.type === "immediate" ? "selected" : ""}>Immediate</option>
-              </select>
+              <label>Description</label>
+              <textarea class="council-pipeline-input" data-field="description" rows="2">${this._escapeHtml(action?.description || "")}</textarea>
+            </div>
+
+            <h4 class="council-pipeline-section-title">Execution Settings</h4>
+            <div class="council-pipeline-form-row">
+              <div class="council-pipeline-form-group">
+                <label>Mode</label>
+                <select class="council-pipeline-input" data-field="mode">
+                  <option value="sync" ${action?.execution?.mode === "sync" ? "selected" : ""}>Synchronous</option>
+                  <option value="async" ${action?.execution?.mode === "async" ? "selected" : ""}>Asynchronous</option>
+                </select>
+              </div>
+              <div class="council-pipeline-form-group">
+                <label>Trigger</label>
+                <select class="council-pipeline-input" data-field="trigger">
+                  <option value="sequential" ${action?.execution?.trigger?.type === "sequential" ? "selected" : ""}>Sequential</option>
+                  <option value="await" ${action?.execution?.trigger?.type === "await" ? "selected" : ""}>Await</option>
+                  <option value="on" ${action?.execution?.trigger?.type === "on" ? "selected" : ""}>On Event</option>
+                  <option value="immediate" ${action?.execution?.trigger?.type === "immediate" ? "selected" : ""}>Immediate</option>
+                </select>
+              </div>
+            </div>
+            <div class="council-pipeline-form-row">
+              <div class="council-pipeline-form-group">
+                <label>Timeout (ms)</label>
+                <input type="number" class="council-pipeline-input" data-field="timeout" value="${action?.execution?.timeout || 30000}" min="1000">
+              </div>
+              <div class="council-pipeline-form-group">
+                <label>Retry Count</label>
+                <input type="number" class="council-pipeline-input" data-field="retryCount" value="${action?.execution?.retryCount || 0}" min="0" max="5">
+              </div>
             </div>
           </div>
 
-          <h4>Participants</h4>
-          <div class="council-pipeline-form-group">
-            <label>Orchestration</label>
-            <select class="council-pipeline-input" data-field="orchestration">
-              <option value="sequential" ${action?.participants?.orchestration === "sequential" ? "selected" : ""}>Sequential</option>
-              <option value="parallel" ${action?.participants?.orchestration === "parallel" ? "selected" : ""}>Parallel</option>
-              <option value="round_robin" ${action?.participants?.orchestration === "round_robin" ? "selected" : ""}>Round Robin</option>
-              <option value="consensus" ${action?.participants?.orchestration === "consensus" ? "selected" : ""}>Consensus</option>
-            </select>
+          <div class="council-pipeline-dialog-tab-content" data-tab-content="participants" style="display: none;">
+            <div class="council-pipeline-participant-selector-container" data-component="participants">
+              <!-- ParticipantSelector will be rendered here -->
+            </div>
           </div>
 
-          <h4>Prompt Template</h4>
-          <div class="council-pipeline-form-group">
-            <label>Template (supports tokens)</label>
-            <textarea class="council-pipeline-input council-pipeline-code" data-field="promptTemplate" rows="6">${this._escapeHtml(action?.promptTemplate || "")}</textarea>
+          <div class="council-pipeline-dialog-tab-content" data-tab-content="context" style="display: none;">
+            <div class="council-pipeline-context-config-container" data-component="context">
+              <!-- ContextConfig will be rendered here -->
+            </div>
+          </div>
+
+          <div class="council-pipeline-dialog-tab-content" data-tab-content="prompt" style="display: none;">
+            <div class="council-pipeline-form-group">
+              <label>Prompt Template</label>
+              <p class="council-pipeline-form-hint">
+                Use tokens like <code>{{input}}</code>, <code>{{context}}</code>, <code>{{char}}</code>, <code>{{user}}</code>, etc.
+              </p>
+              <textarea class="council-pipeline-input council-pipeline-code" data-field="promptTemplate" rows="12">${this._escapeHtml(action?.promptTemplate || "You are participating in a collaborative writing session.\n\n{{context}}\n\nUser Input: {{input}}\n\nProvide your response:")}</textarea>
+            </div>
+            <div class="council-pipeline-form-group">
+              <label>
+                <input type="checkbox" data-field="ragEnabled" ${action?.rag?.enabled ? "checked" : ""}>
+                Enable RAG (Retrieval-Augmented Generation)
+              </label>
+            </div>
           </div>
         </div>
         <div class="council-pipeline-dialog-actions">
@@ -2242,11 +2310,116 @@ const PipelineModal = {
 
     document.body.appendChild(dialog);
 
-    const cleanup = () => dialog.remove();
+    // Initialize tab switching
+    const tabs = dialog.querySelectorAll(".council-pipeline-dialog-tab");
+    const tabContents = dialog.querySelectorAll(
+      ".council-pipeline-dialog-tab-content",
+    );
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const tabId = tab.dataset.tab;
+        tabs.forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        tabContents.forEach((tc) => {
+          tc.style.display = tc.dataset.tabContent === tabId ? "" : "none";
+        });
+      });
+    });
+
+    // Initialize ParticipantSelector component
+    const participantContainer = dialog.querySelector(
+      '[data-component="participants"]',
+    );
+    if (participantContainer && window.ParticipantSelector) {
+      this._participantSelectorInstance =
+        window.ParticipantSelector.createInstance({
+          initialMode: initialParticipantMode,
+          initialPosition: participantsConfig.positionIds?.[0] || null,
+          initialPositions: participantsConfig.positionIds || [],
+          initialTeams: participantsConfig.teamIds || [],
+          initialOrchestration:
+            participantsConfig.orchestration || "sequential",
+          onChange: (value) => {
+            this._log("debug", "ParticipantSelector changed:", value);
+          },
+        });
+      this._participantSelectorInstance.render(participantContainer);
+    } else {
+      participantContainer.innerHTML = `
+        <div class="council-pipeline-component-fallback">
+          <p>ParticipantSelector component not available.</p>
+          <div class="council-pipeline-form-group">
+            <label>Orchestration</label>
+            <select class="council-pipeline-input" data-field="orchestration-fallback">
+              <option value="sequential" ${participantsConfig.orchestration === "sequential" ? "selected" : ""}>Sequential</option>
+              <option value="parallel" ${participantsConfig.orchestration === "parallel" ? "selected" : ""}>Parallel</option>
+              <option value="round_robin" ${participantsConfig.orchestration === "round_robin" ? "selected" : ""}>Round Robin</option>
+              <option value="consensus" ${participantsConfig.orchestration === "consensus" ? "selected" : ""}>Consensus</option>
+            </select>
+          </div>
+        </div>
+      `;
+    }
+
+    // Initialize ContextConfig component
+    const contextContainer = dialog.querySelector('[data-component="context"]');
+    if (contextContainer && window.ContextConfig) {
+      this._contextConfigInstance = window.ContextConfig.createInstance({
+        initialSources: contextConfig.sources,
+        initialTargets: contextConfig.targets,
+        onChange: (value) => {
+          this._log("debug", "ContextConfig changed:", value);
+        },
+      });
+      this._contextConfigInstance.render(contextContainer);
+    } else {
+      contextContainer.innerHTML = `
+        <div class="council-pipeline-component-fallback">
+          <p>ContextConfig component not available.</p>
+          <div class="council-pipeline-form-group">
+            <label>Input Source</label>
+            <select class="council-pipeline-input" data-field="inputSource-fallback">
+              <option value="phaseInput">Phase Input</option>
+              <option value="previousAction">Previous Action Output</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="council-pipeline-form-group">
+            <label>Output Target</label>
+            <select class="council-pipeline-input" data-field="outputTarget-fallback">
+              <option value="phaseOutput">Phase Output</option>
+              <option value="nextAction">Next Action Input</option>
+              <option value="store">Store</option>
+            </select>
+          </div>
+        </div>
+      `;
+    }
+
+    // Cleanup function
+    const cleanup = () => {
+      if (this._participantSelectorInstance) {
+        this._participantSelectorInstance.destroy();
+        this._participantSelectorInstance = null;
+      }
+      if (this._contextConfigInstance) {
+        this._contextConfigInstance.destroy();
+        this._contextConfigInstance = null;
+      }
+      dialog.remove();
+    };
 
     dialog
       .querySelector('[data-dialog="cancel"]')
       .addEventListener("click", cleanup);
+
+    dialog
+      .querySelector(".council-pipeline-dialog-close")
+      ?.addEventListener("click", cleanup);
+
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) cleanup();
+    });
 
     dialog
       .querySelector('[data-dialog="save"]')
@@ -2255,6 +2428,48 @@ const PipelineModal = {
         if (!name) {
           this._showNotification("Name is required", "error");
           return;
+        }
+
+        // Get participant configuration
+        let participantsData;
+        if (this._participantSelectorInstance) {
+          const pValue = this._participantSelectorInstance.getValue();
+          participantsData = {
+            mode: pValue.mode,
+            positionIds:
+              pValue.mode === "single"
+                ? pValue.selectedPosition
+                  ? [pValue.selectedPosition]
+                  : []
+                : pValue.selectedPositions || [],
+            teamIds: pValue.selectedTeams || [],
+            orchestration: pValue.orchestration,
+            orchestrationConfig: pValue.orchestrationConfig,
+            teamOptions: pValue.teamOptions,
+            dynamic: pValue.mode === "dynamic" ? pValue.dynamicConfig : null,
+          };
+        } else {
+          const fallbackOrch = dialog.querySelector(
+            '[data-field="orchestration-fallback"]',
+          );
+          participantsData = {
+            orchestration: fallbackOrch?.value || "sequential",
+          };
+        }
+
+        // Get context/IO configuration
+        let contextData = {};
+        let outputData = {};
+        if (this._contextConfigInstance) {
+          const cValue = this._contextConfigInstance.getValue();
+          contextData = {
+            sources: cValue.sources,
+          };
+          outputData = {
+            targets: cValue.targets,
+            format: cValue.output?.format || "text",
+            extractVariables: cValue.output?.extractVariables || [],
+          };
         }
 
         const data = {
@@ -2267,13 +2482,30 @@ const PipelineModal = {
             trigger: {
               type: dialog.querySelector('[data-field="trigger"]').value,
             },
+            timeout:
+              parseInt(
+                dialog.querySelector('[data-field="timeout"]').value,
+                10,
+              ) || 30000,
+            retryCount:
+              parseInt(
+                dialog.querySelector('[data-field="retryCount"]').value,
+                10,
+              ) || 0,
           },
-          participants: {
-            orchestration: dialog.querySelector('[data-field="orchestration"]')
-              .value,
+          participants: participantsData,
+          context: contextData,
+          input: this._contextConfigInstance?.getValue()?.input || {
+            useActionInput: true,
           },
+          output: outputData,
           promptTemplate: dialog.querySelector('[data-field="promptTemplate"]')
             .value,
+          rag: {
+            enabled:
+              dialog.querySelector('[data-field="ragEnabled"]')?.checked ||
+              false,
+          },
         };
 
         try {
@@ -2301,6 +2533,11 @@ const PipelineModal = {
           this._showNotification(`Failed: ${error.message}`, "error");
         }
       });
+
+    // Focus first input
+    setTimeout(() => {
+      dialog.querySelector('[data-field="name"]')?.focus();
+    }, 100);
   },
 
   /**
@@ -3070,6 +3307,97 @@ const PipelineModal = {
       }
       .council-pipeline-dialog-large {
         max-width: 700px;
+      }
+
+      .council-pipeline-dialog-xl {
+        max-width: 900px;
+        max-height: 90vh;
+      }
+
+      .council-pipeline-dialog-close {
+        background: transparent;
+        border: none;
+        font-size: 1.25rem;
+        color: var(--council-text-muted, rgba(255, 255, 255, 0.6));
+        cursor: pointer;
+        padding: 4px 8px;
+      }
+
+      .council-pipeline-dialog-close:hover {
+        color: var(--council-text, #eee);
+      }
+
+      .council-pipeline-dialog-tabs {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 20px;
+        border-bottom: 1px solid var(--council-border, #444);
+        padding-bottom: 10px;
+      }
+
+      .council-pipeline-dialog-tab {
+        padding: 8px 16px;
+        border: 1px solid var(--council-border, #444);
+        border-radius: 6px 6px 0 0;
+        background: transparent;
+        color: var(--council-text-muted, rgba(255, 255, 255, 0.6));
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.15s;
+      }
+
+      .council-pipeline-dialog-tab:hover {
+        background: var(--council-bg-hover, rgba(255, 255, 255, 0.1));
+        color: var(--council-text, #eee);
+      }
+
+      .council-pipeline-dialog-tab.active {
+        background: var(--council-primary, #667eea);
+        border-color: var(--council-primary, #667eea);
+        color: white;
+      }
+
+      .council-pipeline-dialog-tab-content {
+        min-height: 350px;
+      }
+
+      .council-pipeline-section-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--council-primary, #667eea);
+        margin: 20px 0 12px 0;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .council-pipeline-participant-selector-container,
+      .council-pipeline-context-config-container {
+        min-height: 300px;
+      }
+
+      .council-pipeline-component-fallback {
+        padding: 20px;
+        background: var(--council-bg-secondary, rgba(255, 255, 255, 0.05));
+        border-radius: 8px;
+        text-align: center;
+      }
+
+      .council-pipeline-component-fallback p {
+        color: var(--council-text-muted, rgba(255, 255, 255, 0.6));
+        margin-bottom: 15px;
+      }
+
+      .council-pipeline-form-hint {
+        font-size: 12px;
+        color: var(--council-text-muted, rgba(255, 255, 255, 0.6));
+        margin-bottom: 8px;
+      }
+
+      .council-pipeline-form-hint code {
+        background: var(--council-bg-secondary, rgba(255, 255, 255, 0.1));
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 11px;
       }
       .council-pipeline-dialog-header {
         padding: 16px 20px;

@@ -54,6 +54,12 @@ const AgentsModal = {
   },
 
   /**
+   * Active PromptBuilder instance for agent editing
+   * @type {Object|null}
+   */
+  _promptBuilderInstance: null,
+
+  /**
    * Currently selected item for editing
    * @type {Object|null}
    */
@@ -1251,76 +1257,98 @@ const AgentsModal = {
     const agent = id ? this._agentsSystem.getAgent(id) : null;
     const isEdit = !!agent;
 
+    // Prepare initial prompt builder config from agent data
+    const promptConfig = agent?.systemPrompt || {};
+    const initialMode =
+      promptConfig.source === "preset"
+        ? "preset"
+        : promptConfig.source === "tokens"
+          ? "tokens"
+          : "custom";
+
     const dialogHtml = `
       <div class="council-dialog-overlay" data-dialog="agent">
-        <div class="council-dialog">
+        <div class="council-dialog council-dialog-lg">
           <div class="council-dialog-header">
             <h3>${isEdit ? "Edit Agent" : "Create Agent"}</h3>
             <button class="council-dialog-close" data-action="dialog-close">✕</button>
           </div>
-          <div class="council-dialog-body">
-            <div class="council-form-group">
-              <label class="council-form-label">ID</label>
-              <input type="text"
-                     class="council-form-input"
-                     name="id"
-                     value="${agent?.id || ""}"
-                     ${isEdit ? "disabled" : ""}
-                     placeholder="unique-agent-id">
+          <div class="council-dialog-body council-dialog-body-scroll">
+            <div class="council-dialog-section">
+              <h4 class="council-dialog-section-title">Basic Information</h4>
+              <div class="council-form-row">
+                <div class="council-form-group council-form-group-sm">
+                  <label class="council-form-label">ID</label>
+                  <input type="text"
+                         class="council-form-input"
+                         name="id"
+                         value="${agent?.id || ""}"
+                         ${isEdit ? "disabled" : ""}
+                         placeholder="unique-agent-id">
+                </div>
+                <div class="council-form-group">
+                  <label class="council-form-label">Name</label>
+                  <input type="text"
+                         class="council-form-input"
+                         name="name"
+                         value="${agent ? this._escapeHtml(agent.name) : ""}"
+                         placeholder="Agent Name">
+                </div>
+              </div>
+              <div class="council-form-group">
+                <label class="council-form-label">Description</label>
+                <textarea class="council-form-textarea"
+                          name="description"
+                          rows="2"
+                          placeholder="Agent description...">${agent ? this._escapeHtml(agent.description) : ""}</textarea>
+              </div>
             </div>
-            <div class="council-form-group">
-              <label class="council-form-label">Name</label>
-              <input type="text"
-                     class="council-form-input"
-                     name="name"
-                     value="${agent ? this._escapeHtml(agent.name) : ""}"
-                     placeholder="Agent Name">
+
+            <div class="council-dialog-section">
+              <h4 class="council-dialog-section-title">API Configuration</h4>
+              <div class="council-form-group">
+                <label class="council-form-label">
+                  <input type="checkbox"
+                         name="useCurrentConnection"
+                         ${agent?.apiConfig?.useCurrentConnection !== false ? "checked" : ""}>
+                  Use SillyTavern's Current Connection
+                </label>
+              </div>
+              <div class="council-form-row">
+                <div class="council-form-group">
+                  <label class="council-form-label">Temperature</label>
+                  <input type="number"
+                         class="council-form-input"
+                         name="temperature"
+                         value="${agent?.apiConfig?.temperature ?? 0.7}"
+                         min="0"
+                         max="2"
+                         step="0.1">
+                </div>
+                <div class="council-form-group">
+                  <label class="council-form-label">Max Tokens</label>
+                  <input type="number"
+                         class="council-form-input"
+                         name="maxTokens"
+                         value="${agent?.apiConfig?.maxTokens ?? 2048}"
+                         min="1">
+                </div>
+              </div>
+              <div class="council-form-group">
+                <label class="council-form-label">
+                  <input type="checkbox"
+                         name="reasoningEnabled"
+                         ${agent?.reasoning?.enabled ? "checked" : ""}>
+                  Enable Reasoning/Chain-of-Thought
+                </label>
+              </div>
             </div>
-            <div class="council-form-group">
-              <label class="council-form-label">Description</label>
-              <textarea class="council-form-textarea"
-                        name="description"
-                        placeholder="Agent description...">${agent ? this._escapeHtml(agent.description) : ""}</textarea>
-            </div>
-            <div class="council-form-group">
-              <label class="council-form-label">
-                <input type="checkbox"
-                       name="useCurrentConnection"
-                       ${agent?.apiConfig?.useCurrentConnection !== false ? "checked" : ""}>
-                Use SillyTavern's Current Connection
-              </label>
-            </div>
-            <div class="council-form-group">
-              <label class="council-form-label">Temperature</label>
-              <input type="number"
-                     class="council-form-input"
-                     name="temperature"
-                     value="${agent?.apiConfig?.temperature ?? 0.7}"
-                     min="0"
-                     max="2"
-                     step="0.1">
-            </div>
-            <div class="council-form-group">
-              <label class="council-form-label">Max Tokens</label>
-              <input type="number"
-                     class="council-form-input"
-                     name="maxTokens"
-                     value="${agent?.apiConfig?.maxTokens ?? 2048}"
-                     min="1">
-            </div>
-            <div class="council-form-group">
-              <label class="council-form-label">
-                <input type="checkbox"
-                       name="reasoningEnabled"
-                       ${agent?.reasoning?.enabled ? "checked" : ""}>
-                Enable Reasoning/CoT
-              </label>
-            </div>
-            <div class="council-form-group">
-              <label class="council-form-label">System Prompt</label>
-              <textarea class="council-form-textarea council-form-textarea-large"
-                        name="systemPrompt"
-                        placeholder="Custom system prompt...">${agent?.systemPrompt?.customText ? this._escapeHtml(agent.systemPrompt.customText) : ""}</textarea>
+
+            <div class="council-dialog-section">
+              <h4 class="council-dialog-section-title">System Prompt</h4>
+              <div class="council-prompt-builder-container" data-prompt-builder="agent">
+                <!-- PromptBuilder will be rendered here -->
+              </div>
             </div>
           </div>
           <div class="council-dialog-footer">
@@ -1335,54 +1363,135 @@ const AgentsModal = {
       </div>
     `;
 
-    this._showDialog(dialogHtml, (dialog) => {
-      const formData = this._getDialogFormData(dialog);
+    // Show dialog first
+    const container = document.createElement("div");
+    container.innerHTML = dialogHtml;
+    const overlay = container.firstElementChild;
+    document.body.appendChild(overlay);
 
-      try {
-        if (isEdit) {
-          this._agentsSystem.updateAgent(id, {
-            name: formData.name,
-            description: formData.description,
-            apiConfig: {
-              useCurrentConnection: formData.useCurrentConnection,
-              temperature: parseFloat(formData.temperature),
-              maxTokens: parseInt(formData.maxTokens),
-            },
-            reasoning: {
-              enabled: formData.reasoningEnabled,
-            },
-            systemPrompt: {
-              source: "custom",
-              customText: formData.systemPrompt,
-            },
-          });
-          this._showToast("Agent updated", "success");
-        } else {
-          this._agentsSystem.createAgent({
-            id: formData.id,
-            name: formData.name,
-            description: formData.description,
-            apiConfig: {
-              useCurrentConnection: formData.useCurrentConnection,
-              temperature: parseFloat(formData.temperature),
-              maxTokens: parseInt(formData.maxTokens),
-            },
-            reasoning: {
-              enabled: formData.reasoningEnabled,
-            },
-            systemPrompt: {
-              source: "custom",
-              customText: formData.systemPrompt,
-            },
-          });
-          this._showToast("Agent created", "success");
-        }
-        return true;
-      } catch (e) {
-        this._showToast(`Error: ${e.message}`, "error");
-        return false;
+    // Initialize PromptBuilder in the dialog
+    const promptBuilderContainer = overlay.querySelector(
+      '[data-prompt-builder="agent"]',
+    );
+    if (promptBuilderContainer && window.PromptBuilder) {
+      this._promptBuilderInstance = window.PromptBuilder.createInstance({
+        initialMode: initialMode,
+        initialPrompt: promptConfig.customText || "",
+        initialPreset: promptConfig.presetName || null,
+        initialTokens: promptConfig.tokens || [],
+        onChange: (value) => {
+          this._log("debug", "PromptBuilder changed:", value);
+        },
+      });
+      this._promptBuilderInstance.render(promptBuilderContainer);
+    } else {
+      // Fallback to simple textarea if PromptBuilder not available
+      promptBuilderContainer.innerHTML = `
+        <textarea class="council-form-textarea council-form-textarea-large"
+                  name="systemPrompt"
+                  placeholder="Custom system prompt...">${promptConfig.customText ? this._escapeHtml(promptConfig.customText) : ""}</textarea>
+      `;
+    }
+
+    // Bind dialog events
+    const closeDialog = () => {
+      // Clean up PromptBuilder instance
+      if (this._promptBuilderInstance) {
+        this._promptBuilderInstance.destroy();
+        this._promptBuilderInstance = null;
+      }
+      overlay.classList.add("closing");
+      setTimeout(() => overlay.remove(), 200);
+    };
+
+    overlay
+      .querySelector('[data-action="dialog-close"]')
+      ?.addEventListener("click", closeDialog);
+    overlay
+      .querySelector(".council-dialog-close")
+      ?.addEventListener("click", closeDialog);
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        closeDialog();
       }
     });
+
+    overlay
+      .querySelector('[data-action="dialog-save"]')
+      ?.addEventListener("click", () => {
+        const formData = this._getDialogFormData(overlay);
+
+        // Get prompt configuration from PromptBuilder
+        let systemPromptConfig;
+        if (this._promptBuilderInstance) {
+          const promptValue = this._promptBuilderInstance.getValue();
+          systemPromptConfig = {
+            source: promptValue.mode,
+            customText:
+              promptValue.mode === "custom"
+                ? promptValue.customPrompt
+                : promptValue.generatedPrompt,
+            presetName: promptValue.presetName,
+            tokens: promptValue.tokens,
+          };
+        } else {
+          // Fallback for simple textarea
+          systemPromptConfig = {
+            source: "custom",
+            customText: formData.systemPrompt || "",
+          };
+        }
+
+        try {
+          if (isEdit) {
+            this._agentsSystem.updateAgent(id, {
+              name: formData.name,
+              description: formData.description,
+              apiConfig: {
+                useCurrentConnection: formData.useCurrentConnection,
+                temperature: parseFloat(formData.temperature),
+                maxTokens: parseInt(formData.maxTokens),
+              },
+              reasoning: {
+                enabled: formData.reasoningEnabled,
+              },
+              systemPrompt: systemPromptConfig,
+            });
+            this._showToast("Agent updated", "success");
+          } else {
+            this._agentsSystem.createAgent({
+              id: formData.id,
+              name: formData.name,
+              description: formData.description,
+              apiConfig: {
+                useCurrentConnection: formData.useCurrentConnection,
+                temperature: parseFloat(formData.temperature),
+                maxTokens: parseInt(formData.maxTokens),
+              },
+              reasoning: {
+                enabled: formData.reasoningEnabled,
+              },
+              systemPrompt: systemPromptConfig,
+            });
+            this._showToast("Agent created", "success");
+          }
+          closeDialog();
+          this._refreshCurrentTab();
+        } catch (e) {
+          this._showToast(`Error: ${e.message}`, "error");
+        }
+      });
+
+    // Focus first input
+    setTimeout(() => {
+      const firstInput = overlay.querySelector(
+        "input:not([disabled]), textarea:not([disabled])",
+      );
+      if (firstInput) {
+        firstInput.focus();
+      }
+    }, 100);
   },
 
   /**
@@ -2008,10 +2117,16 @@ const AgentsModal = {
     );
     if (!statusText) return;
 
-    const summary = this._agentsSystem.getSummary();
+    const summary = this._agentsSystem?.getSummary?.();
+    if (!summary) {
+      statusText.textContent = "System not ready";
+      return;
+    }
+
+    const unfilled = summary.unfilledPositions || [];
     statusText.textContent = summary.allPositionsFilled
       ? "✓ All positions filled"
-      : `⚠️ ${summary.unfilled.length} unfilled position(s)`;
+      : `⚠️ ${unfilled.length} unfilled position(s)`;
   },
 
   /**
@@ -2743,6 +2858,11 @@ const AgentsModal = {
         max-width: 400px;
       }
 
+      .council-dialog-lg {
+        max-width: 800px;
+        max-height: 90vh;
+      }
+
       .council-dialog-header {
         display: flex;
         justify-content: space-between;
@@ -2777,6 +2897,31 @@ const AgentsModal = {
         padding: 20px;
       }
 
+      .council-dialog-body-scroll {
+        max-height: 60vh;
+      }
+
+      .council-dialog-section {
+        margin-bottom: 24px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--council-border, #444);
+      }
+
+      .council-dialog-section:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+      }
+
+      .council-dialog-section-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--council-primary, #667eea);
+        margin: 0 0 16px 0;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
       .council-dialog-footer {
         display: flex;
         justify-content: flex-end;
@@ -2792,6 +2937,23 @@ const AgentsModal = {
 
       .council-form-group:last-child {
         margin-bottom: 0;
+      }
+
+      .council-form-group-sm {
+        flex: 0 0 150px;
+      }
+
+      .council-form-row {
+        display: flex;
+        gap: 16px;
+      }
+
+      .council-form-row .council-form-group {
+        flex: 1;
+      }
+
+      .council-prompt-builder-container {
+        min-height: 300px;
       }
 
       .council-form-label {

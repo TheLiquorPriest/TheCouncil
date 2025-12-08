@@ -47,19 +47,6 @@
     SystemSchemas: null,
   };
 
-  // ===== LEGACY MODULE REFERENCES =====
-  const LegacyModules = {
-    Config: null,
-    State: null,
-    Stores: null,
-    Context: null,
-    Topology: null,
-    Generation: null,
-    Agents: null,
-    Pipeline: null,
-    UI: null,
-  };
-
   // ===== STATE =====
   let extensionSettings = null;
   let isInitialized = false;
@@ -98,27 +85,26 @@
     return new Promise((resolve, reject) => {
       // Check if already loaded
       if (document.querySelector(`script[src="${src}"]`)) {
-        logger.debug(`Already loaded: ${src}`);
         resolve();
         return;
       }
 
       const script = document.createElement("script");
       script.src = src;
+      script.type = "text/javascript";
       script.onload = () => {
         logger.debug(`Loaded: ${src}`);
         resolve();
       };
-      script.onerror = (e) => {
-        logger.error(`Failed to load: ${src}`, e);
-        reject(new Error(`Failed to load ${src}`));
+      script.onerror = () => {
+        reject(new Error(`Failed to load script: ${src}`));
       };
       document.head.appendChild(script);
     });
   }
 
   /**
-   * Load a CSS stylesheet
+   * Load a CSS stylesheet dynamically
    * @param {string} href - Stylesheet path
    */
   function loadStylesheet(href) {
@@ -135,22 +121,21 @@
   // ===== MODULE LOADING =====
 
   /**
-   * Load all new architecture modules
+   * Load new architecture modules
    */
   async function loadNewArchitecture() {
     logger.log("Loading new architecture modules...");
 
     const basePath = EXTENSION_PATH;
 
-    // Order matters: schemas and utils first, then core, then UI
     const moduleFiles = [
-      // Schemas
-      "schemas/systems.js",
-
-      // Utilities
+      // Utilities (load first)
       "utils/logger.js",
       "utils/token-resolver.js",
       "utils/api-client.js",
+
+      // Schemas
+      "schemas/systems.js",
 
       // Core Systems
       "core/agents-system.js",
@@ -160,6 +145,11 @@
       "core/thread-manager.js",
       "core/pipeline-system.js",
 
+      // UI Components
+      "ui/components/prompt-builder.js",
+      "ui/components/participant-selector.js",
+      "ui/components/context-config.js",
+
       // UI Modals
       "ui/agents-modal.js",
       "ui/curation-modal.js",
@@ -168,6 +158,10 @@
       "ui/nav-modal.js",
     ];
 
+    // Load stylesheet
+    loadStylesheet(`${basePath}/styles/main.css`);
+
+    // Load all module files
     for (const file of moduleFiles) {
       try {
         await loadScript(`${basePath}/${file}`);
@@ -177,81 +171,49 @@
       }
     }
 
-    // Load stylesheet
-    loadStylesheet(`${basePath}/styles/main.css`);
-
-    // Get module references from global scope
-    Systems.SystemSchemas = window.SystemSchemas || null;
+    // Get module references from window (browser global)
     Systems.Logger = window.Logger || null;
     Systems.TokenResolver = window.TokenResolver || null;
     Systems.ApiClient = window.ApiClient || null;
+    Systems.SystemSchemas = window.SystemSchemas || null;
+
     Systems.AgentsSystem = window.AgentsSystem || null;
     Systems.CurationSystem = window.CurationSystem || null;
+    Systems.PipelineSystem = window.PipelineSystem || null;
     Systems.ContextManager = window.ContextManager || null;
     Systems.OutputManager = window.OutputManager || null;
     Systems.ThreadManager = window.ThreadManager || null;
-    Systems.PipelineSystem = window.PipelineSystem || null;
+
     Systems.AgentsModal = window.AgentsModal || null;
     Systems.CurationModal = window.CurationModal || null;
     Systems.PipelineModal = window.PipelineModal || null;
     Systems.GavelModal = window.GavelModal || null;
     Systems.NavModal = window.NavModal || null;
 
-    logger.log("New architecture modules loaded");
+    // UI Components
+    Systems.PromptBuilder = window.PromptBuilder || null;
+    Systems.ParticipantSelector = window.ParticipantSelector || null;
+    Systems.ContextConfig = window.ContextConfig || null;
 
-    return true;
-  }
-
-  /**
-   * Load legacy modules for backward compatibility
-   */
-  async function loadLegacyModules() {
-    logger.log("Loading legacy modules (backward compatibility)...");
-
-    const basePath = EXTENSION_PATH;
-
-    const legacyFiles = [
-      "modules/config.js",
-      "modules/state.js",
-      "modules/stores.js",
-      "modules/context.js",
-      "modules/topology.js",
-      "modules/generation.js",
-      "modules/agents.js",
-      "modules/pipeline.js",
-      "modules/ui.js",
-    ];
-
-    for (const file of legacyFiles) {
-      try {
-        await loadScript(`${basePath}/${file}`);
-      } catch (e) {
-        // Legacy modules are optional
-        logger.debug(`Optional legacy module not loaded: ${file}`);
-      }
-    }
-
-    // Get legacy module references
-    LegacyModules.Config = window.CouncilConfig || null;
-    LegacyModules.State = window.CouncilState || null;
-    LegacyModules.Stores = window.CouncilStores || null;
-    LegacyModules.Context = window.CouncilContext || null;
-    LegacyModules.Topology = window.CouncilTopology || null;
-    LegacyModules.Generation = window.CouncilGeneration || null;
-    LegacyModules.Agents = window.CouncilAgents || null;
-    LegacyModules.Pipeline = window.CouncilPipeline || null;
-    LegacyModules.UI = window.CouncilUI || null;
-
-    logger.debug("Legacy modules loaded:", {
-      Config: !!LegacyModules.Config,
-      State: !!LegacyModules.State,
-      Stores: !!LegacyModules.Stores,
-      Context: !!LegacyModules.Context,
-      Topology: !!LegacyModules.Topology,
-      Generation: !!LegacyModules.Generation,
-      Agents: !!LegacyModules.Agents,
-      Pipeline: !!LegacyModules.Pipeline,
-      UI: !!LegacyModules.UI,
+    logger.debug("Module references obtained:", {
+      Logger: !!Systems.Logger,
+      TokenResolver: !!Systems.TokenResolver,
+      ApiClient: !!Systems.ApiClient,
+      SystemSchemas: !!Systems.SystemSchemas,
+      AgentsSystem: !!Systems.AgentsSystem,
+      CurationSystem: !!Systems.CurationSystem,
+      PipelineSystem: !!Systems.PipelineSystem,
+      ContextManager: !!Systems.ContextManager,
+      OutputManager: !!Systems.OutputManager,
+      ThreadManager: !!Systems.ThreadManager,
+      AgentsModal: !!Systems.AgentsModal,
+      CurationModal: !!Systems.CurationModal,
+      PipelineModal: !!Systems.PipelineModal,
+      GavelModal: !!Systems.GavelModal,
+      NavModal: !!Systems.NavModal,
+      PromptBuilder: !!Systems.PromptBuilder,
+      ParticipantSelector: !!Systems.ParticipantSelector,
+      ContextConfig: !!Systems.ContextConfig,
     });
 
     return true;
@@ -260,10 +222,10 @@
   // ===== SYSTEM INITIALIZATION =====
 
   /**
-   * Initialize all systems
+   * Initialize all core systems with proper dependency injection
    */
   async function initializeSystems() {
-    logger.log("Initializing systems...");
+    logger.log("Initializing core systems...");
 
     // Initialize Logger first
     if (Systems.Logger) {
@@ -280,7 +242,7 @@
       Systems.TokenResolver.init({
         logger: Systems.Logger,
       });
-      logger.log("info", "Token Resolver initialized");
+      logger.log("info", "TokenResolver initialized");
     }
 
     // Initialize API Client
@@ -288,46 +250,37 @@
       Systems.ApiClient.init({
         logger: Systems.Logger,
       });
-      logger.log("info", "API Client initialized");
+      const tokenResolver = Systems.TokenResolver;
+      const apiClient = Systems.ApiClient;
+      logger.log("info", "ApiClient initialized");
     }
 
     // Initialize Agents System
     if (Systems.AgentsSystem) {
       Systems.AgentsSystem.init({
         logger: Systems.Logger,
-        tokenResolver: Systems.TokenResolver,
+        agentsSystem: Systems.AgentsSystem,
         apiClient: Systems.ApiClient,
       });
-      logger.log("info", "Agents System initialized");
+      logger.log("info", "AgentsSystem initialized");
     }
 
     // Initialize Curation System
     if (Systems.CurationSystem) {
       Systems.CurationSystem.init({
         logger: Systems.Logger,
-        agentsSystem: Systems.AgentsSystem,
-        apiClient: Systems.ApiClient,
       });
-      logger.log("info", "Curation System initialized");
-    }
-
-    // Initialize Thread Manager
-    if (Systems.ThreadManager) {
-      Systems.ThreadManager.init({
-        logger: Systems.Logger,
-      });
-      logger.log("info", "Thread Manager initialized");
+      logger.log("info", "CurationSystem initialized");
     }
 
     // Initialize Context Manager
     if (Systems.ContextManager) {
       Systems.ContextManager.init({
-        logger: Systems.Logger,
         curationSystem: Systems.CurationSystem,
         tokenResolver: Systems.TokenResolver,
         stHelpers: getSillyTavernHelpers(),
       });
-      logger.log("info", "Context Manager initialized");
+      logger.log("info", "ContextManager initialized");
     }
 
     // Initialize Output Manager
@@ -338,13 +291,20 @@
         threadManager: Systems.ThreadManager,
         tokenResolver: Systems.TokenResolver,
       });
-      logger.log("info", "Output Manager initialized");
+      logger.log("info", "OutputManager initialized");
     }
 
-    // Initialize Pipeline System
+    // Initialize Thread Manager
+    if (Systems.ThreadManager) {
+      Systems.ThreadManager.init({
+        logger: Systems.Logger,
+      });
+      logger.log("info", "ThreadManager initialized");
+    }
+
+    // Initialize Pipeline System (depends on all others)
     if (Systems.PipelineSystem) {
       Systems.PipelineSystem.init({
-        logger: Systems.Logger,
         agentsSystem: Systems.AgentsSystem,
         curationSystem: Systems.CurationSystem,
         contextManager: Systems.ContextManager,
@@ -353,10 +313,36 @@
         apiClient: Systems.ApiClient,
         tokenResolver: Systems.TokenResolver,
       });
-      logger.log("info", "Pipeline System initialized");
+      logger.log("info", "PipelineSystem initialized");
     }
 
-    logger.log("All core systems initialized");
+    // Initialize UI Components
+    if (Systems.PromptBuilder) {
+      Systems.PromptBuilder.init({
+        tokenResolver: Systems.TokenResolver,
+        logger: Systems.Logger,
+      });
+      logger.log("info", "PromptBuilder initialized");
+    }
+
+    if (Systems.ParticipantSelector) {
+      Systems.ParticipantSelector.init({
+        agentsSystem: Systems.AgentsSystem,
+        logger: Systems.Logger,
+      });
+      logger.log("info", "ParticipantSelector initialized");
+    }
+
+    if (Systems.ContextConfig) {
+      Systems.ContextConfig.init({
+        curationSystem: Systems.CurationSystem,
+        threadManager: Systems.ThreadManager,
+        logger: Systems.Logger,
+      });
+      logger.log("info", "ContextConfig initialized");
+    }
+
+    logger.log("info", "All core systems initialized");
   }
 
   /**
@@ -371,7 +357,6 @@
         agentsSystem: Systems.AgentsSystem,
         logger: Systems.Logger,
       });
-      logger.log("info", "Agents Modal initialized");
     }
 
     // Initialize Curation Modal
@@ -380,21 +365,19 @@
         curationSystem: Systems.CurationSystem,
         logger: Systems.Logger,
       });
-      logger.log("info", "Curation Modal initialized");
-    }
-
-    // Initialize Gavel Modal
-    if (Systems.GavelModal) {
-      Systems.GavelModal.init({
-        pipelineSystem: Systems.PipelineSystem,
-        logger: Systems.Logger,
-      });
-      logger.log("info", "Gavel Modal initialized");
     }
 
     // Initialize Pipeline Modal
     if (Systems.PipelineModal) {
       Systems.PipelineModal.init({
+        pipelineSystem: Systems.PipelineSystem,
+        logger: Systems.Logger,
+      });
+    }
+
+    // Initialize Gavel Modal
+    if (Systems.GavelModal) {
+      Systems.GavelModal.init({
         pipelineSystem: Systems.PipelineSystem,
         agentsSystem: Systems.AgentsSystem,
         contextManager: Systems.ContextManager,
@@ -402,10 +385,9 @@
         threadManager: Systems.ThreadManager,
         logger: Systems.Logger,
       });
-      logger.log("info", "Pipeline Modal initialized");
     }
 
-    // Initialize Navigation Modal
+    // Initialize Nav Modal
     if (Systems.NavModal) {
       Systems.NavModal.init({
         agentsModal: Systems.AgentsModal,
@@ -415,37 +397,30 @@
         pipelineSystem: Systems.PipelineSystem,
         logger: Systems.Logger,
       });
-      logger.log("info", "Navigation Modal initialized");
     }
 
-    logger.log("info", "All UI modals initialized");
+    logger.log("info", "UI modals initialized");
   }
 
   // ===== SILLYTAVERN INTEGRATION =====
 
   /**
-   * Get SillyTavern helper references
-   * @returns {Object|null} ST helpers
+   * Get SillyTavern helper functions
    */
   function getSillyTavernHelpers() {
-    try {
-      return {
-        getContext: window.getContext || null,
-        characters: window.characters || null,
-        this_chid: window.this_chid,
-        name1: window.name1,
-        name2: window.name2,
-        chat: window.chat || null,
-        substituteParams: window.substituteParams || null,
-        getRequestHeaders: window.getRequestHeaders || null,
-        callPopup: window.callPopup || null,
-        eventSource: window.eventSource || null,
-        event_types: window.event_types || null,
-      };
-    } catch (e) {
-      logger.warn("Failed to get SillyTavern helpers:", e);
-      return null;
-    }
+    return {
+      getContext: window.getContext,
+      characters: window.characters,
+      this_chid: window.this_chid,
+      name1: window.name1,
+      name2: window.name2,
+      chat: window.chat,
+      substituteParams: window.substituteParams,
+      getRequestHeaders: window.getRequestHeaders,
+      callPopup: window.callPopup,
+      eventSource: window.eventSource,
+      event_types: window.event_types,
+    };
   }
 
   /**
@@ -453,7 +428,8 @@
    */
   function registerSTEventListeners() {
     const stHelpers = getSillyTavernHelpers();
-    if (!stHelpers?.eventSource || !stHelpers?.event_types) {
+
+    if (!stHelpers.eventSource || !stHelpers.event_types) {
       logger.warn("SillyTavern event system not available");
       return;
     }
@@ -461,38 +437,29 @@
     const eventSource = stHelpers.eventSource;
     const event_types = stHelpers.event_types;
 
-    // Listen for message generation events
-    if (event_types.GENERATION_STARTED) {
-      eventSource.on(event_types.GENERATION_STARTED, () => {
-        logger.debug("ST Generation started");
-      });
-    }
+    // Listen for chat changes
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+      logger.debug("Chat changed, updating context...");
+      Systems.ContextManager?.refreshSTContext?.();
+    });
 
-    if (event_types.GENERATION_STOPPED) {
-      eventSource.on(event_types.GENERATION_STOPPED, () => {
-        logger.debug("ST Generation stopped");
-      });
-    }
+    // Listen for character changes
+    eventSource.on(event_types.CHARACTER_SELECTED, () => {
+      logger.debug("Character selected, updating context...");
+      Systems.ContextManager?.refreshSTContext?.();
+    });
 
-    // Listen for chat events
-    if (event_types.CHAT_CHANGED) {
-      eventSource.on(event_types.CHAT_CHANGED, () => {
-        logger.debug("ST Chat changed");
-        // Reload context if needed
-        if (Systems.ContextManager) {
-          Systems.ContextManager.clear();
-        }
-      });
-    }
+    // Listen for message sent (potential trigger for pipeline)
+    eventSource.on(event_types.MESSAGE_SENT, (messageId) => {
+      logger.debug("Message sent:", messageId);
+    });
 
-    // Listen for character events
-    if (event_types.CHARACTER_EDITED) {
-      eventSource.on(event_types.CHARACTER_EDITED, () => {
-        logger.debug("ST Character edited");
-      });
-    }
+    // Listen for message received
+    eventSource.on(event_types.MESSAGE_RECEIVED, (messageId) => {
+      logger.debug("Message received:", messageId);
+    });
 
-    logger.log("info", "SillyTavern event listeners registered");
+    logger.debug("SillyTavern event listeners registered");
   }
 
   /**
@@ -500,50 +467,37 @@
    */
   function addExtensionButton() {
     // Check if button already exists
-    if (document.getElementById("council-extension-button")) {
+    if (document.getElementById("thecouncil-extension-btn")) {
       return;
     }
 
-    // Try to find the extensions menu area
     const extensionsMenu = document.getElementById("extensionsMenu");
-    const extensionButtons = document.querySelector(".extension_buttons");
+    const extensionButtons = document.querySelector(
+      "#extensionsMenu .extensions_block",
+    );
 
-    if (!extensionsMenu && !extensionButtons) {
-      logger.warn("Could not find extension menu location");
+    if (!extensionButtons) {
+      logger.warn("Could not find extensions menu to add button");
       return;
     }
 
-    // Create button
     const button = document.createElement("div");
-    button.id = "council-extension-button";
-    button.className = "list-group-item flex-container flexGap5";
-    button.innerHTML = `
-      <span class="fa-solid fa-building-columns"></span>
-      <span>The Council</span>
-    `;
-    button.style.cursor = "pointer";
-
+    button.id = "thecouncil-extension-btn";
+    button.className = "extension_button fa-solid fa-users-gear";
+    button.title = "TheCouncil - Multi-LLM Pipeline";
     button.addEventListener("click", () => {
-      // Toggle navigation modal
       if (Systems.NavModal) {
         Systems.NavModal.toggle();
-      } else if (Systems.PipelineModal) {
-        // Fallback to pipeline modal
-        Systems.PipelineModal.toggle();
+      } else {
+        logger.warn("NavModal not initialized");
       }
     });
 
-    // Add to appropriate location
-    if (extensionButtons) {
-      extensionButtons.appendChild(button);
-    } else if (extensionsMenu) {
-      extensionsMenu.appendChild(button);
-    }
-
-    logger.log("info", "Extension button added to UI");
+    extensionButtons.appendChild(button);
+    logger.debug("Extension button added to menu");
   }
 
-  // ===== SETTINGS MANAGEMENT =====
+  // ===== SETTINGS =====
 
   /**
    * Get default settings
@@ -582,11 +536,6 @@
       ui: {
         navPosition: { x: 20, y: 100 },
         theme: "auto",
-      },
-
-      // Legacy compatibility
-      legacy: {
-        enableLegacyModules: false,
       },
     };
   }
@@ -649,7 +598,7 @@
     },
 
     /**
-     * Get system reference
+     * Get a specific system
      * @param {string} name - System name
      * @returns {Object|null}
      */
@@ -663,15 +612,6 @@
      */
     getSystems() {
       return { ...Systems };
-    },
-
-    /**
-     * Get legacy module reference
-     * @param {string} name - Module name
-     * @returns {Object|null}
-     */
-    getLegacyModule(name) {
-      return LegacyModules[name] || null;
     },
 
     /**
@@ -760,12 +700,6 @@
           PipelineModal: !!Systems.PipelineModal,
           GavelModal: Systems.GavelModal?.getSummary?.() || null,
         },
-        legacy: {
-          enabled: extensionSettings?.legacy?.enableLegacyModules || false,
-          modulesLoaded: Object.keys(LegacyModules).filter(
-            (k) => LegacyModules[k] !== null,
-          ),
-        },
       };
     },
   };
@@ -794,11 +728,6 @@
 
         // Load new architecture modules
         await loadNewArchitecture();
-
-        // Optionally load legacy modules
-        if (extensionSettings?.legacy?.enableLegacyModules) {
-          await loadLegacyModules();
-        }
 
         // Initialize core systems
         await initializeSystems();
@@ -851,18 +780,7 @@
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initialize);
   } else {
-    // DOM already loaded, wait a tick for ST to be ready
+    // DOM already ready, initialize after a short delay
     setTimeout(initialize, 100);
   }
-
-  // Also initialize on SillyTavern's app ready event if available
-  if (window.eventSource?.on && window.event_types?.APP_READY) {
-    window.eventSource.on(window.event_types.APP_READY, () => {
-      if (!isInitialized) {
-        initialize();
-      }
-    });
-  }
-
-  logger.log(`TheCouncil v${VERSION} loaded, waiting for initialization...`);
 })();
