@@ -64,6 +64,24 @@ const PipelineSystem = {
     DESIGNATED: "designated",
   },
 
+  /**
+   * Action types - defines what kind of action this is
+   */
+  ActionType: {
+    /** Standard agent-based action with prompt and participants */
+    STANDARD: "standard",
+    /** Execute a CRUD pipeline from the Curation system */
+    CRUD_PIPELINE: "crud_pipeline",
+    /** Execute a RAG pipeline from the Curation system */
+    RAG_PIPELINE: "rag_pipeline",
+    /** Deliberative RAG - interactive conversation with Curation team */
+    DELIBERATIVE_RAG: "deliberative_rag",
+    /** User gavel/review point */
+    USER_GAVEL: "user_gavel",
+    /** System action (no LLM call) */
+    SYSTEM: "system",
+  },
+
   // ===== STATE =====
 
   /**
@@ -355,10 +373,14 @@ const PipelineSystem = {
    * @returns {Object} Normalized action
    */
   _normalizeAction(action, index) {
-    return {
+    // Determine action type
+    const actionType = action.actionType || this.ActionType.STANDARD;
+
+    const normalized = {
       id: action.id,
       name: action.name || action.id,
       description: action.description || "",
+      actionType: actionType,
       execution: {
         mode: action.execution?.mode || "sync",
         trigger: {
@@ -399,6 +421,70 @@ const PipelineSystem = {
       promptTemplate: action.promptTemplate || "",
       displayOrder: action.displayOrder ?? index,
     };
+
+    // Add type-specific configuration
+    if (actionType === this.ActionType.CRUD_PIPELINE) {
+      normalized.crudConfig = {
+        pipelineId: action.crudConfig?.pipelineId || "",
+        operation: action.crudConfig?.operation || "create",
+        storeId: action.crudConfig?.storeId || "",
+        inputMapping: action.crudConfig?.inputMapping || {},
+        outputMapping: action.crudConfig?.outputMapping || {},
+      };
+    }
+
+    if (actionType === this.ActionType.RAG_PIPELINE) {
+      normalized.ragConfig = {
+        pipelineId: action.ragConfig?.pipelineId || "",
+        querySource: action.ragConfig?.querySource || "input",
+        queryTemplate: action.ragConfig?.queryTemplate || "{{input}}",
+        resultTarget: action.ragConfig?.resultTarget || "context",
+        maxResults: action.ragConfig?.maxResults || 5,
+      };
+    }
+
+    if (actionType === this.ActionType.DELIBERATIVE_RAG) {
+      normalized.deliberativeConfig = {
+        // Participants who will query the curation team
+        queryParticipants: action.deliberativeConfig?.queryParticipants || [],
+        // Curation team positions that will respond
+        curationPositions: action.deliberativeConfig?.curationPositions || [
+          "archivist",
+          "story_topologist",
+          "lore_topologist",
+          "character_topologist",
+        ],
+        // Maximum rounds of Q&A
+        maxRounds: action.deliberativeConfig?.maxRounds || 3,
+        // RAG pipelines available to curation team
+        availableRAGPipelines:
+          action.deliberativeConfig?.availableRAGPipelines || [],
+        // Stores available for direct query
+        availableStores: action.deliberativeConfig?.availableStores || [],
+        // Thread for the deliberation
+        deliberationThread: action.deliberativeConfig?.deliberationThread || {
+          enabled: true,
+          name: "Deliberative RAG",
+        },
+        // How to consolidate the retrieved information
+        consolidation: action.deliberativeConfig?.consolidation || "synthesize",
+        // Prompt for the curation team
+        curationPrompt:
+          action.deliberativeConfig?.curationPrompt ||
+          "You are a member of the Record Keeping team with access to story data. Answer questions accurately based on stored information.",
+      };
+    }
+
+    if (actionType === this.ActionType.USER_GAVEL) {
+      normalized.gavelConfig = {
+        prompt: action.gavelConfig?.prompt || "Review and edit if needed:",
+        editableFields: action.gavelConfig?.editableFields || ["output"],
+        canSkip: action.gavelConfig?.canSkip !== false,
+        timeout: action.gavelConfig?.timeout || 0, // 0 = no timeout
+      };
+    }
+
+    return normalized;
   },
 
   /**
@@ -950,12 +1036,6 @@ const PipelineSystem = {
       // Resolve input
       actionState.input = await this._resolveActionInput(action, phaseState);
 
-      // Handle RAG if enabled
-      let ragResults = null;
-      if (action.rag?.enabled && this._curationSystem) {
-        ragResults = await this._executeActionRAG(action, actionState);
-      }
-
       // IN_PROGRESS lifecycle
       actionState.lifecycle = this.ActionLifecycle.IN_PROGRESS;
       this._emit("action:lifecycle", {
@@ -964,12 +1044,65 @@ const PipelineSystem = {
         lifecycle: this.ActionLifecycle.IN_PROGRESS,
       });
 
-      // Execute based on orchestration mode
-      const output = await this._executeActionParticipants(
-        action,
-        actionState,
-        ragResults,
-      );
+      // Execute based on action type
+      let output;
+      const actionType = action.actionType || this.ActionType.STANDARD;
+
+      switch (actionType) {
+        case this.ActionType.CRUD_PIPELINE:
+          output = await this._executeCRUDAction(
+            action,
+            actionState,
+            phaseState,
+          );
+          break;
+
+        case this.ActionType.RAG_PIPELINE:
+          output = await this._executeRAGAction(
+            action,
+            actionState,
+            phaseState,
+          );
+          break;
+
+        case this.ActionType.DELIBERATIVE_RAG:
+          output = await this._executeDeliberativeRAGAction(
+            action,
+            actionState,
+            phaseState,
+          );
+          break;
+
+        case this.ActionType.USER_GAVEL:
+          output = await this._executeUserGavelAction(
+            action,
+            actionState,
+            phaseState,
+          );
+          break;
+
+        case this.ActionType.SYSTEM:
+          output = await this._executeSystemAction(
+            action,
+            actionState,
+            phaseState,
+          );
+          break;
+
+        case this.ActionType.STANDARD:
+        default:
+          // Standard action with optional RAG
+          let ragResults = null;
+          if (action.rag?.enabled && this._curationSystem) {
+            ragResults = await this._executeActionRAG(action, actionState);
+          }
+          output = await this._executeActionParticipants(
+            action,
+            actionState,
+            ragResults,
+          );
+          break;
+      }
 
       // Store output
       actionState.output = output;
@@ -1108,6 +1241,484 @@ const PipelineSystem = {
 
     return input;
   },
+
+  // ===== SPECIAL ACTION TYPE EXECUTORS =====
+
+  /**
+   * Execute a CRUD pipeline action
+   * @param {Object} action - Action definition
+   * @param {Object} actionState - Action state
+   * @param {Object} phaseState - Phase state
+   * @returns {Promise<string>} Output
+   */
+  async _executeCRUDAction(action, actionState, phaseState) {
+    if (!this._curationSystem) {
+      throw new Error("CurationSystem not available for CRUD action");
+    }
+
+    const config = action.crudConfig;
+    if (!config?.pipelineId) {
+      throw new Error("CRUD action requires crudConfig.pipelineId");
+    }
+
+    this._log("debug", `Executing CRUD pipeline: ${config.pipelineId}`);
+
+    // Map input to CRUD pipeline input
+    const input = this._mapActionInput(actionState.input, config.inputMapping);
+
+    // Get the CRUD pipeline
+    const pipeline = this._curationSystem.getCRUDPipeline(config.pipelineId);
+    if (!pipeline) {
+      throw new Error(`CRUD pipeline not found: ${config.pipelineId}`);
+    }
+
+    // Execute the CRUD operation based on pipeline type
+    let result;
+    const storeId = config.storeId || pipeline.storeId;
+    const operation = config.operation || pipeline.operation;
+
+    switch (operation) {
+      case "create":
+        result = this._curationSystem.create(storeId, input);
+        break;
+      case "read":
+        result = this._curationSystem.read(storeId, input.key || input.id);
+        break;
+      case "update":
+        result = this._curationSystem.update(
+          storeId,
+          input.key || input.id,
+          input.data || input,
+        );
+        break;
+      case "delete":
+        result = this._curationSystem.delete(storeId, input.key || input.id);
+        break;
+      default:
+        throw new Error(`Unknown CRUD operation: ${operation}`);
+    }
+
+    // Map output
+    const output = this._mapActionOutput(result, config.outputMapping);
+
+    this._emit("action:crud:complete", {
+      actionId: action.id,
+      pipelineId: config.pipelineId,
+      operation,
+      result,
+    });
+
+    return typeof output === "string"
+      ? output
+      : JSON.stringify(output, null, 2);
+  },
+
+  /**
+   * Execute a RAG pipeline action
+   * @param {Object} action - Action definition
+   * @param {Object} actionState - Action state
+   * @param {Object} phaseState - Phase state
+   * @returns {Promise<string>} Output
+   */
+  async _executeRAGAction(action, actionState, phaseState) {
+    if (!this._curationSystem) {
+      throw new Error("CurationSystem not available for RAG action");
+    }
+
+    const config = action.ragConfig;
+    if (!config?.pipelineId) {
+      throw new Error("RAG action requires ragConfig.pipelineId");
+    }
+
+    this._log("debug", `Executing RAG pipeline: ${config.pipelineId}`);
+
+    // Build query from input
+    let query = actionState.input;
+    if (config.queryTemplate) {
+      query =
+        this._tokenResolver?.resolve(config.queryTemplate, {
+          input: actionState.input,
+          phase: phaseState,
+        }) || config.queryTemplate.replace("{{input}}", actionState.input);
+    }
+
+    // Execute RAG pipeline
+    const result = await this._curationSystem.executeRAG(config.pipelineId, {
+      query,
+      limit: config.maxResults || 5,
+    });
+
+    this._emit("action:rag:complete", {
+      actionId: action.id,
+      pipelineId: config.pipelineId,
+      query,
+      resultCount: result?.count || 0,
+    });
+
+    // Format results as output
+    if (result?.results && result.results.length > 0) {
+      return result.results
+        .map((r) => `[${r.storeName}] ${JSON.stringify(r.entry)}`)
+        .join("\n\n");
+    }
+
+    return "No relevant information found.";
+  },
+
+  /**
+   * Execute a Deliberative RAG action - interactive Q&A with Curation team
+   * @param {Object} action - Action definition
+   * @param {Object} actionState - Action state
+   * @param {Object} phaseState - Phase state
+   * @returns {Promise<string>} Consolidated output
+   */
+  async _executeDeliberativeRAGAction(action, actionState, phaseState) {
+    if (!this._curationSystem || !this._agentsSystem) {
+      throw new Error(
+        "CurationSystem and AgentsSystem required for Deliberative RAG",
+      );
+    }
+
+    const config = action.deliberativeConfig;
+    const maxRounds = config.maxRounds || 3;
+
+    this._log("debug", `Starting Deliberative RAG with ${maxRounds} rounds`);
+
+    // Create deliberation thread if enabled
+    let threadId = null;
+    if (config.deliberationThread?.enabled && this._threadManager) {
+      threadId = this._threadManager.createThread({
+        name: config.deliberationThread.name || "Deliberative RAG",
+        type: "deliberation",
+      });
+    }
+
+    const deliberationLog = [];
+
+    // Get query participants (agents who will ask questions)
+    const queryParticipants = this._resolveParticipantsFromIds(
+      config.queryParticipants,
+    );
+
+    // Get curation positions (agents who will answer)
+    const curationAgents = this._resolveCurationAgents(
+      config.curationPositions,
+    );
+
+    // Deliberation rounds
+    for (let round = 0; round < maxRounds; round++) {
+      this._log("debug", `Deliberative RAG round ${round + 1}/${maxRounds}`);
+
+      // Phase 1: Query participants formulate questions
+      const questions = [];
+      for (const participant of queryParticipants) {
+        const questionPrompt = `Based on the current context and input, what information do you need from the story records?
+
+Input: ${actionState.input}
+
+Previous Q&A:
+${deliberationLog.map((d) => `Q: ${d.question}\nA: ${d.answer}`).join("\n\n") || "None yet"}
+
+Formulate a specific question to retrieve relevant information. If you have enough information, respond with "SUFFICIENT".`;
+
+        const question = await this._callAgent(participant, questionPrompt);
+
+        if (
+          question.toLowerCase().includes("sufficient") ||
+          question.toLowerCase().includes("no further")
+        ) {
+          continue;
+        }
+
+        questions.push({ participant: participant.id, question });
+      }
+
+      // If no more questions, end deliberation
+      if (questions.length === 0) {
+        this._log(
+          "debug",
+          "Deliberation complete - sufficient information gathered",
+        );
+        break;
+      }
+
+      // Phase 2: Curation team answers questions
+      for (const q of questions) {
+        // Execute RAG to get relevant data
+        let ragContext = "";
+        for (const pipelineId of config.availableRAGPipelines || []) {
+          try {
+            const ragResult = await this._curationSystem.executeRAG(
+              pipelineId,
+              {
+                query: q.question,
+                limit: 3,
+              },
+            );
+            if (ragResult?.results?.length > 0) {
+              ragContext +=
+                ragResult.results
+                  .map((r) => JSON.stringify(r.entry))
+                  .join("\n") + "\n";
+            }
+          } catch (e) {
+            this._log("debug", `RAG pipeline ${pipelineId} error:`, e);
+          }
+        }
+
+        // Have curation agent synthesize answer
+        const curationAgent =
+          curationAgents[round % curationAgents.length] || curationAgents[0];
+
+        if (curationAgent) {
+          const answerPrompt = `${config.curationPrompt}
+
+Question from ${q.participant}: ${q.question}
+
+Available data from records:
+${ragContext || "No specific records found."}
+
+Provide a helpful, accurate answer based on the stored information.`;
+
+          const answer = await this._callAgent(curationAgent, answerPrompt);
+
+          deliberationLog.push({
+            round: round + 1,
+            participant: q.participant,
+            question: q.question,
+            answeredBy: curationAgent.id,
+            answer,
+          });
+
+          // Post to thread if enabled
+          if (threadId && this._threadManager) {
+            this._threadManager.addMessage(threadId, {
+              role: "user",
+              content: `[${q.participant}] ${q.question}`,
+            });
+            this._threadManager.addMessage(threadId, {
+              role: "assistant",
+              content: `[${curationAgent.id}] ${answer}`,
+            });
+          }
+        }
+      }
+    }
+
+    // Consolidate results
+    let output;
+    if (config.consolidation === "synthesize" && queryParticipants.length > 0) {
+      const synthesizePrompt = `Synthesize the following information retrieved through deliberation:
+
+${deliberationLog.map((d) => `Q: ${d.question}\nA: ${d.answer}`).join("\n\n")}
+
+Provide a consolidated summary of the relevant information.`;
+
+      output = await this._callAgent(queryParticipants[0], synthesizePrompt);
+    } else {
+      output = deliberationLog
+        .map((d) => `**Q:** ${d.question}\n**A:** ${d.answer}`)
+        .join("\n\n---\n\n");
+    }
+
+    this._emit("action:deliberative_rag:complete", {
+      actionId: action.id,
+      rounds: deliberationLog.length,
+      deliberationLog,
+    });
+
+    return output;
+  },
+
+  /**
+   * Execute a User Gavel action - pause for user review
+   * @param {Object} action - Action definition
+   * @param {Object} actionState - Action state
+   * @param {Object} phaseState - Phase state
+   * @returns {Promise<string>} User-approved output
+   */
+  async _executeUserGavelAction(action, actionState, phaseState) {
+    const config = action.gavelConfig;
+
+    this._log("debug", `User Gavel: ${config.prompt}`);
+
+    // Emit gavel event for UI to handle
+    this._emit("action:gavel:requested", {
+      actionId: action.id,
+      prompt: config.prompt,
+      input: actionState.input,
+      editableFields: config.editableFields,
+      canSkip: config.canSkip,
+    });
+
+    // Wait for user response
+    return new Promise((resolve, reject) => {
+      const timeout = config.timeout;
+      let timeoutId = null;
+
+      const handleResponse = (response) => {
+        if (timeoutId) clearTimeout(timeoutId);
+        this.off("gavel:response:" + action.id, handleResponse);
+
+        if (response.skipped) {
+          resolve(actionState.input); // Pass through input unchanged
+        } else {
+          resolve(response.output || actionState.input);
+        }
+      };
+
+      this.on("gavel:response:" + action.id, handleResponse);
+
+      if (timeout > 0) {
+        timeoutId = setTimeout(() => {
+          this.off("gavel:response:" + action.id, handleResponse);
+          if (config.canSkip) {
+            resolve(actionState.input);
+          } else {
+            reject(new Error("User gavel timed out"));
+          }
+        }, timeout);
+      }
+    });
+  },
+
+  /**
+   * Execute a System action - no LLM call, just data transformation
+   * @param {Object} action - Action definition
+   * @param {Object} actionState - Action state
+   * @param {Object} phaseState - Phase state
+   * @returns {Promise<string>} Transformed output
+   */
+  async _executeSystemAction(action, actionState, phaseState) {
+    this._log("debug", `System action: ${action.name}`);
+
+    // System actions can transform input to output without LLM
+    // Use the promptTemplate as a transformation template
+    if (action.promptTemplate && this._tokenResolver) {
+      return this._tokenResolver.resolve(action.promptTemplate, {
+        input: actionState.input,
+        phase: phaseState,
+        globals: this._activeRun?.state?.globals || {},
+      });
+    }
+
+    // Default: pass through input
+    return actionState.input;
+  },
+
+  /**
+   * Map action input using mapping configuration
+   * @param {any} input - Raw input
+   * @param {Object} mapping - Input mapping
+   * @returns {any} Mapped input
+   */
+  _mapActionInput(input, mapping) {
+    if (!mapping || Object.keys(mapping).length === 0) {
+      return input;
+    }
+
+    if (typeof input === "string") {
+      try {
+        input = JSON.parse(input);
+      } catch {
+        return input;
+      }
+    }
+
+    const mapped = {};
+    for (const [targetKey, sourceKey] of Object.entries(mapping)) {
+      mapped[targetKey] = input[sourceKey] ?? input[targetKey];
+    }
+    return mapped;
+  },
+
+  /**
+   * Map action output using mapping configuration
+   * @param {any} output - Raw output
+   * @param {Object} mapping - Output mapping
+   * @returns {any} Mapped output
+   */
+  _mapActionOutput(output, mapping) {
+    if (!mapping || Object.keys(mapping).length === 0) {
+      return output;
+    }
+
+    const mapped = {};
+    for (const [targetKey, sourceKey] of Object.entries(mapping)) {
+      mapped[targetKey] = output[sourceKey] ?? output[targetKey];
+    }
+    return mapped;
+  },
+
+  /**
+   * Resolve participants from position/team IDs
+   * @param {Array<string>} ids - Position or team IDs
+   * @returns {Array<Object>} Resolved agents
+   */
+  _resolveParticipantsFromIds(ids) {
+    if (!ids || !this._agentsSystem) return [];
+
+    const participants = [];
+    for (const id of ids) {
+      const position = this._agentsSystem.getPosition(id);
+      if (position?.assignedAgentId) {
+        const agent = this._agentsSystem.getAgent(position.assignedAgentId);
+        if (agent) participants.push(agent);
+      }
+    }
+    return participants;
+  },
+
+  /**
+   * Resolve curation team agents
+   * @param {Array<string>} positionIds - Curation position IDs
+   * @returns {Array<Object>} Resolved agents
+   */
+  _resolveCurationAgents(positionIds) {
+    const defaultPositions = [
+      "archivist",
+      "story_topologist",
+      "lore_topologist",
+      "character_topologist",
+      "scene_topologist",
+      "location_topologist",
+    ];
+
+    const idsToResolve =
+      positionIds?.length > 0 ? positionIds : defaultPositions;
+    return this._resolveParticipantsFromIds(idsToResolve);
+  },
+
+  /**
+   * Call an agent with a prompt
+   * @param {Object} agent - Agent definition
+   * @param {string} prompt - Prompt to send
+   * @returns {Promise<string>} Agent response
+   */
+  async _callAgent(agent, prompt) {
+    if (!this._apiClient) {
+      this._log("warn", "ApiClient not available, returning placeholder");
+      return `[${agent.name || agent.id}]: (API not available)`;
+    }
+
+    try {
+      const response = await this._apiClient.chat({
+        messages: [
+          { role: "system", content: agent.systemPrompt?.customText || "" },
+          { role: "user", content: prompt },
+        ],
+        // Use agent's API config or defaults
+        ...agent.apiConfig,
+      });
+
+      return response.content || response.message || "";
+    } catch (e) {
+      this._log("error", `Agent call failed: ${e.message}`);
+      return `[Error from ${agent.name || agent.id}]: ${e.message}`;
+    }
+  },
+
+  // ===== STANDARD ACTION HELPERS =====
 
   /**
    * Execute RAG for an action
