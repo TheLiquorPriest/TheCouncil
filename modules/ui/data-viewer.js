@@ -569,6 +569,10 @@ const DataViewer = {
     if (panel) {
       panel.classList.remove("hidden");
       this._visible = true;
+      this._autoRefresh = true;
+      const btn = document.getElementById("council-data-auto-refresh");
+      if (btn) btn.classList.add("active");
+      this.startAutoRefresh();
       this.refresh();
     }
   },
@@ -656,6 +660,10 @@ const DataViewer = {
   refresh() {
     this._updateInfoBar();
     this._renderCurrentTab();
+  },
+
+  refreshData() {
+    this.refresh();
   },
 
   /**
@@ -816,9 +824,11 @@ const DataViewer = {
 
       if (this._searchQuery && !matchesSearch) continue;
 
+      const titleWithDelete = `${section.title} <button class="council-data-action-btn danger inline" onclick="DataViewer.deleteStore('${section.key}')">🗑️ Delete</button>`;
+
       html += this._renderSection(
         `stores_${section.key}`,
-        section.title,
+        titleWithDelete,
         itemCount,
         this._renderDataValue(data, section.key),
         isExpanded,
@@ -1310,6 +1320,7 @@ const DataViewer = {
       html += `</div>`;
       if (!isCurrent) {
         html += `<button class="council-data-action-btn" style="margin-top: 8px;" onclick="DataViewer.loadStory('${story.storyId}')">Load</button>`;
+        html += `<button class="council-data-action-btn danger" style="margin-top: 8px;" onclick="DataViewer.deleteStory('${story.storyId}')">Delete</button>`;
       }
       html += `</div>`;
     }
@@ -1485,6 +1496,18 @@ const DataViewer = {
     }
   },
 
+  deleteStore(storeName) {
+    if (confirm(`Delete store "${storeName}"? This cannot be undone.`)) {
+      if (this._stores?.set) {
+        const defaults = this._stores.getEmptyStores?.() || {};
+        const emptyValue =
+          defaults[storeName] !== undefined ? defaults[storeName] : null;
+        this._stores.set(storeName, emptyValue, true);
+      }
+      this.refresh();
+    }
+  },
+
   /**
    * Load a different story
    */
@@ -1492,6 +1515,15 @@ const DataViewer = {
     if (confirm(`Load story "${storyId}"? Current data will be saved first.`)) {
       this._stores?.forceSave?.();
       this._stores?.init?.(storyId);
+      this.refresh();
+    }
+  },
+
+  deleteStory(storyId) {
+    if (
+      confirm(`Delete story "${storyId}" from storage? This cannot be undone.`)
+    ) {
+      this._stores?.deleteStory?.(storyId);
       this.refresh();
     }
   },

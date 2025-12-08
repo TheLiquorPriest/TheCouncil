@@ -6,6 +6,8 @@ const CouncilUI = {
   _config: null,
   _state: null,
   _pipeline: null,
+  _phaseThreadsView: null,
+  _pipelineVisualizer: null,
 
   // ===== DOM ELEMENT REFERENCES =====
   _elements: {
@@ -18,11 +20,18 @@ const CouncilUI = {
     councilButton: null,
     toggleButton: null,
     settingsPanel: null,
+    viewTabs: null,
+    legacyView: null,
+    phaseThreadsView: null,
+    phaseThreadsContainer: null,
+    flowContainer: null,
+    flowView: null,
   },
 
   // ===== STATE =====
   _initialized: false,
   _styleInjected: false,
+  _currentView: "legacy", // 'legacy' or 'phase-threads'
 
   // ===== INITIALIZATION =====
 
@@ -49,12 +58,100 @@ const CouncilUI = {
     this.createSettingsPanel();
     this.injectButtons();
 
+    // Initialize Phase Threads View
+    this._initPhaseThreadsView();
+
     // Set up event listeners
     this.setupEventListeners();
 
     this._initialized = true;
     console.log("[Council UI] Initialized");
     return this;
+  },
+
+  /**
+   * Initialize the Phase Threads View component
+   */
+  _initPhaseThreadsView() {
+    // Guard against re-initialization
+    if (this._phaseThreadsView?.isInitialized?.()) {
+      return;
+    }
+
+    const PhaseView = window.PhaseThreadsView;
+    if (typeof PhaseView === "undefined") {
+      console.warn("[Council UI] Phase Threads View not available");
+      return;
+    }
+
+    this._phaseThreadsView = PhaseView;
+
+    if (!this._phaseThreadsView.isInitialized?.()) {
+      this._phaseThreadsView.init({
+        threadManager: window.ThreadManager,
+        state: this._state,
+        config: this._config,
+      });
+    }
+
+    // Add styles for Phase Threads View
+    const styles = this._phaseThreadsView.getStyles?.();
+    if (styles && !document.getElementById("council-phase-threads-styles")) {
+      const styleEl = document.createElement("style");
+      styleEl.id = "council-phase-threads-styles";
+      styleEl.textContent = styles;
+      document.head.appendChild(styleEl);
+    }
+
+    // Initial render in case we’re already in the phase view
+    if (typeof this._phaseThreadsView.render === "function") {
+      this._phaseThreadsView.render();
+    }
+
+    console.log("[Council UI] Phase Threads View initialized");
+  },
+
+  /**
+   * Initialize the Pipeline Visualizer component
+   */
+  _initPipelineVisualizer() {
+    if (this._pipelineVisualizer?.isInitialized?.()) {
+      return;
+    }
+
+    const Visualizer = window.PipelineVisualizer;
+    if (typeof Visualizer === "undefined") {
+      console.warn("[Council UI] Pipeline Visualizer not available");
+      return;
+    }
+
+    this._pipelineVisualizer = Visualizer;
+
+    if (!this._pipelineVisualizer.isInitialized?.()) {
+      this._pipelineVisualizer.init({
+        executor: window.PipelineExecutor,
+        state: this._state,
+        threadManager: window.ThreadManager,
+        outputManager: window.OutputManager,
+      });
+    }
+
+    const styles = this._pipelineVisualizer.getStyles?.();
+    if (
+      styles &&
+      !document.getElementById("council-pipeline-visualizer-styles")
+    ) {
+      const styleEl = document.createElement("style");
+      styleEl.id = "council-pipeline-visualizer-styles";
+      styleEl.textContent = styles;
+      document.head.appendChild(styleEl);
+    }
+
+    if (typeof this._pipelineVisualizer.render === "function") {
+      this._pipelineVisualizer.render();
+    }
+
+    console.log("[Council UI] Pipeline Visualizer initialized");
   },
 
   // ===== STYLE INJECTION =====
@@ -78,6 +175,75 @@ const CouncilUI = {
       .council-settings-panel.visible { display: flex; }
       .council-thread-panel-badge.hidden,
       .council-team-thread-badge.hidden { display: none; }
+
+      /* View tabs */
+      .council-view-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 8px 12px;
+        background: var(--council-header-bg, #16213e);
+        border-bottom: 1px solid var(--council-border, #0f3460);
+      }
+
+      .council-view-tab {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border: 1px solid var(--council-border, #0f3460);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--council-text-muted, #a0a0a0);
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.2s;
+      }
+
+      .council-view-tab:hover {
+        background: var(--council-hover, #1a2744);
+        color: var(--council-text, #e8e8e8);
+      }
+
+      .council-view-tab.active {
+        background: var(--council-accent, #4a9eff);
+        border-color: var(--council-accent, #4a9eff);
+        color: white;
+      }
+
+      .council-views-container {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+      }
+
+      .council-view {
+        display: none;
+        flex: 1;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .council-view.active {
+        display: flex;
+      }
+
+      .council-legacy-view .council-threads-wrapper {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .council-phase-threads-container {
+        padding: 8px;
+      }
+
+      .council-flow-container {
+        padding: 8px;
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
     `;
 
     const styleElement = document.createElement("style");
@@ -176,8 +342,11 @@ const CouncilUI = {
         <div class="council-pipeline-header">
           <h3>⚖️ The Council Pipeline</h3>
           <div class="council-header-buttons">
+            <button class="council-header-btn" id="council-pipeline-editor-btn" title="Pipeline Editor">🔧</button>
+            <button class="council-header-btn" id="council-rag-viewer-btn" title="RAG Requests">🔍</button>
             <button class="council-header-btn" id="council-data-viewer-btn" title="Data Viewer">📊</button>
             <button class="council-header-btn" id="council-settings-btn" title="Settings">⚙️</button>
+            <button class="council-header-btn" id="council-stop-btn" title="Stop / Abort Pipeline">🛑</button>
             <button class="council-header-btn" id="council-minimize-btn" title="Minimize">─</button>
             <button class="council-header-btn" id="council-close-btn" title="Close">×</button>
           </div>
@@ -201,12 +370,34 @@ const CouncilUI = {
           </div>
         </div>
 
-        <div class="council-threads-wrapper">
-          <div class="council-team-threads-row" id="council-team-threads">
-            ${teamThreadsHtml}
+        <div class="council-view-tabs" id="council-view-tabs">
+          <button class="council-view-tab active" data-view="legacy" title="Thread Panel View">
+            <span>📜</span> Threads
+          </button>
+          <button class="council-view-tab" data-view="phase-threads" title="Phase-Centric View">
+            <span>📋</span> By Phase
+          </button>
+          <button class="council-view-tab" data-view="flow" title="Pipeline Flow Visualization">
+            <span>🗺️</span> Flow
+          </button>
+        </div>
+
+        <div class="council-views-container">
+          <div class="council-view council-legacy-view active" id="council-legacy-view">
+            <div class="council-threads-wrapper">
+              <div class="council-team-threads-row" id="council-team-threads">
+                ${teamThreadsHtml}
+              </div>
+              <div class="council-main-threads-row" id="council-main-threads">
+                ${mainThreadsHtml}
+              </div>
+            </div>
           </div>
-          <div class="council-main-threads-row" id="council-main-threads">
-            ${mainThreadsHtml}
+          <div class="council-view council-phase-threads-container" id="council-phase-threads-container">
+            <!-- Phase Threads View will be mounted here -->
+          </div>
+          <div class="council-view council-flow-container" id="council-flow-container">
+            <!-- Pipeline Visualizer will be mounted here -->
           </div>
         </div>
       </div>
@@ -224,11 +415,75 @@ const CouncilUI = {
       "council-main-threads",
     );
     this._elements.phaseBar = document.getElementById("council-phase-bar");
+    this._elements.viewTabs = document.getElementById("council-view-tabs");
+    this._elements.legacyView = document.getElementById("council-legacy-view");
+    this._elements.phaseThreadsContainer = document.getElementById(
+      "council-phase-threads-container",
+    );
+    this._elements.flowContainer = document.getElementById(
+      "council-flow-container",
+    );
 
     // Bind panel events
     this.bindPanelEvents();
 
+    // Mount Phase Threads View if available
+    this._mountPhaseThreadsView();
+
+    // Mount Pipeline Visualizer if available and view requested
+    if (this._currentView === "flow") {
+      this._mountPipelineVisualizer();
+    }
+
+    // Ensure default view selection is applied (legacy by default)
+    this.switchView(this._currentView);
+
     console.log("[Council UI] Pipeline panel created with redesigned layout");
+  },
+
+  /**
+   * Mount the Phase Threads View component
+   */
+  _mountPhaseThreadsView() {
+    if (this._phaseThreadsView && this._elements.phaseThreadsContainer) {
+      const container = this._phaseThreadsView.createContainer();
+      this._elements.phaseThreadsContainer.appendChild(container);
+      this._elements.phaseThreadsView = container;
+
+      // Initial render and visibility respecting current view
+      if (typeof this._phaseThreadsView.render === "function") {
+        this._phaseThreadsView.render();
+      }
+      if (this._currentView === "phase-threads") {
+        this._phaseThreadsView.show?.();
+      } else {
+        this._phaseThreadsView.hide?.();
+      }
+
+      console.log("[Council UI] Phase Threads View mounted");
+    }
+  },
+
+  /**
+   * Mount the Pipeline Visualizer component
+   */
+  _mountPipelineVisualizer() {
+    if (this._pipelineVisualizer && this._elements.flowContainer) {
+      const container = this._pipelineVisualizer.createContainer();
+      this._elements.flowContainer.appendChild(container);
+      this._elements.flowView = container;
+
+      if (typeof this._pipelineVisualizer.render === "function") {
+        this._pipelineVisualizer.render();
+      }
+      if (this._currentView === "flow") {
+        this._pipelineVisualizer.show?.();
+      } else {
+        this._pipelineVisualizer.hide?.();
+      }
+
+      console.log("[Council UI] Pipeline Visualizer mounted");
+    }
   },
 
   /**
@@ -245,6 +500,56 @@ const CouncilUI = {
     const minBtn = document.getElementById("council-minimize-btn");
     if (minBtn) {
       minBtn.addEventListener("click", () => this.toggleMinimize());
+    }
+
+    // Stop button
+    const stopBtn = document.getElementById("council-stop-btn");
+    if (stopBtn) {
+      stopBtn.addEventListener("click", () => {
+        this._pipeline?.abort?.();
+      });
+    }
+
+    // Pipeline Editor button
+    const pipelineEditorBtn = document.getElementById(
+      "council-pipeline-editor-btn",
+    );
+    if (pipelineEditorBtn) {
+      pipelineEditorBtn.addEventListener("click", () => {
+        if (typeof window.PipelineEditor !== "undefined") {
+          if (!window.PipelineEditor.isInitialized()) {
+            window.PipelineEditor.init({
+              config: this._config,
+              state: this._state,
+              schemas: window.PipelineSchemas,
+              executor: window.PipelineExecutor,
+            });
+          }
+          window.PipelineEditor.toggle();
+        } else {
+          console.warn("[Council UI] Pipeline Editor not available");
+        }
+      });
+    }
+
+    // RAG Viewer button
+    const ragViewerBtn = document.getElementById("council-rag-viewer-btn");
+    if (ragViewerBtn) {
+      ragViewerBtn.addEventListener("click", () => {
+        if (typeof window.RAGViewer !== "undefined") {
+          if (!window.RAGViewer.isInitialized()) {
+            window.RAGViewer.init({
+              executor: window.PipelineExecutor,
+              state: this._state,
+              config: this._config,
+              threadManager: window.ThreadManager,
+            });
+          }
+          window.RAGViewer.toggle();
+        } else {
+          console.warn("[Council UI] RAG Viewer not available");
+        }
+      });
     }
 
     // Data Viewer button
@@ -265,6 +570,17 @@ const CouncilUI = {
       settingsBtn.addEventListener("click", () => this.toggleSettings());
     }
 
+    // View tabs
+    const viewTabs = document.querySelectorAll(".council-view-tab");
+    viewTabs.forEach((tab) => {
+      tab.addEventListener("click", (e) => {
+        const view = e.currentTarget.dataset.view;
+        if (view) {
+          this.switchView(view);
+        }
+      });
+    });
+
     // Team thread toggles (collapsible cards in top row)
     const teamThreadHeaders = document.querySelectorAll(
       ".council-team-thread-header",
@@ -278,6 +594,93 @@ const CouncilUI = {
         }
       });
     });
+  },
+
+  /**
+   * Switch between views (legacy threads or phase-centric)
+   * @param {string} viewName - 'legacy' or 'phase-threads'
+   */
+  switchView(viewName) {
+    if (this._currentView === viewName) return;
+
+    // Lazy init/mount Phase Threads View when first requested
+    if (viewName === "phase-threads") {
+      if (!this._phaseThreadsView) {
+        this._initPhaseThreadsView();
+      }
+      if (this._phaseThreadsView && !this._elements.phaseThreadsView) {
+        this._mountPhaseThreadsView();
+      }
+    }
+
+    // Lazy init/mount Pipeline Visualizer when first requested
+    if (viewName === "flow") {
+      if (!this._pipelineVisualizer) {
+        this._initPipelineVisualizer();
+      }
+      if (this._pipelineVisualizer && !this._elements.flowView) {
+        this._mountPipelineVisualizer();
+      }
+    }
+
+    this._currentView = viewName;
+
+    // Update tab states
+    document.querySelectorAll(".council-view-tab").forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.view === viewName);
+    });
+
+    // Update view visibility
+    if (this._elements.legacyView) {
+      this._elements.legacyView.classList.toggle(
+        "active",
+        viewName === "legacy",
+      );
+    }
+
+    if (this._elements.phaseThreadsContainer) {
+      this._elements.phaseThreadsContainer.classList.toggle(
+        "active",
+        viewName === "phase-threads",
+      );
+    }
+
+    if (this._elements.flowContainer) {
+      this._elements.flowContainer.classList.toggle(
+        "active",
+        viewName === "flow",
+      );
+    }
+
+    // Show/hide Phase Threads View only when mounted; no-op otherwise
+    if (this._phaseThreadsView && this._elements.phaseThreadsView) {
+      if (viewName === "phase-threads") {
+        this._phaseThreadsView.render?.();
+        this._phaseThreadsView.show?.();
+      } else {
+        this._phaseThreadsView.hide?.();
+      }
+    }
+
+    // Show/hide Pipeline Visualizer only when mounted; no-op otherwise
+    if (this._pipelineVisualizer && this._elements.flowView) {
+      if (viewName === "flow") {
+        this._pipelineVisualizer.render?.();
+        this._pipelineVisualizer.show?.();
+      } else {
+        this._pipelineVisualizer.hide?.();
+      }
+    }
+
+    console.log(`[Council UI] Switched to ${viewName} view`);
+  },
+
+  /**
+   * Get current view
+   * @returns {string} Current view name
+   */
+  getCurrentView() {
+    return this._currentView;
   },
 
   /**
@@ -1121,6 +1524,10 @@ const CouncilUI = {
       this.setButtonProcessing(true);
       this.clearAllThreads();
       this.resetPhases();
+      window.DataViewer?.refreshData?.();
+      if (this._pipelineVisualizer?.reset) {
+        this._pipelineVisualizer.reset();
+      }
       this.updateStatus("Initializing pipeline...", true);
       this.setCurrentAction("Preparing context and agents");
       this.updateProgress(0, 1);
@@ -1136,6 +1543,9 @@ const CouncilUI = {
       this.setCurrentAction(phase?.description || `Processing ${phaseName}...`);
       this.updateProgress(phaseIndex + 1, total);
       this.setActivePhase(normalizedPhaseId);
+      if (this._pipelineVisualizer?.render) {
+        this._pipelineVisualizer.render();
+      }
 
       // Highlight the relevant thread for this phase
       if (normalizedPhaseId === "context") {
@@ -1164,6 +1574,7 @@ const CouncilUI = {
       this.setCurrentAction("");
       this.setActivePhase("final");
       setTimeout(() => this.completePhase("final"), 500);
+      window.DataViewer?.refreshData?.();
       this.showToast("The Council has spoken.", "success");
     });
 
@@ -1174,6 +1585,7 @@ const CouncilUI = {
       if (phaseId) {
         this.setPhaseError(phaseId);
       }
+      window.DataViewer?.refreshData?.();
       this.showToast(`Pipeline failed: ${error}`, "error");
     });
 
@@ -1187,6 +1599,21 @@ const CouncilUI = {
     // Action update events (for showing current activity)
     this._state.on("action:update", ({ action }) => {
       this.setCurrentAction(action);
+    });
+
+    // Pipeline abort
+    this._state.on("pipeline:abort", ({ reason }) => {
+      this.setButtonProcessing(false);
+      this.updateStatus(
+        reason ? `Pipeline aborted: ${reason}` : "Pipeline aborted",
+        false,
+      );
+      this.setCurrentAction("");
+      window.DataViewer?.refreshData?.();
+      this.showToast(
+        reason ? `Pipeline aborted: ${reason}` : "Pipeline aborted",
+        "error",
+      );
     });
 
     // Gavel events

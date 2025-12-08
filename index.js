@@ -31,6 +31,11 @@
     PipelineSchemas: null,
     PipelineExecutor: null,
     DataViewer: null,
+    PhaseThreadsView: null,
+    PipelineEditor: null,
+    RAGViewer: null,
+    PipelineVisualizer: null,
+    CurationPipeline: null,
   };
 
   // ===== SETTINGS =====
@@ -97,7 +102,12 @@
       "threads/manager.js",
       "core/index.js",
       "pipeline/executor.js",
+      "pipeline/curation.js",
       "ui/data-viewer.js",
+      "ui/phase-threads.js",
+      "ui/pipeline-editor.js",
+      "ui/rag-viewer.js",
+      "ui/pipeline-visualizer.js",
     ];
 
     try {
@@ -136,6 +146,11 @@
       Modules.Core = window.CouncilCore || null;
       Modules.PipelineExecutor = window.PipelineExecutor || null;
       Modules.DataViewer = window.DataViewer || null;
+      Modules.PhaseThreadsView = window.PhaseThreadsView || null;
+      Modules.PipelineEditor = window.PipelineEditor || null;
+      Modules.RAGViewer = window.RAGViewer || null;
+      Modules.PipelineVisualizer = window.PipelineVisualizer || null;
+      Modules.CurationPipeline = window.CurationPipeline || null;
 
       log("All modules loaded successfully");
       debug("New architecture modules:", {
@@ -146,6 +161,11 @@
         Core: !!Modules.Core,
         PipelineExecutor: !!Modules.PipelineExecutor,
         DataViewer: !!Modules.DataViewer,
+        PhaseThreadsView: !!Modules.PhaseThreadsView,
+        PipelineEditor: !!Modules.PipelineEditor,
+        RAGViewer: !!Modules.RAGViewer,
+        PipelineVisualizer: !!Modules.PipelineVisualizer,
+        CurationPipeline: !!Modules.CurationPipeline,
       });
 
       return true;
@@ -684,6 +704,8 @@
       isRunning: () => preferredPipeline?.isRunning() || false,
       getProgress: () => preferredPipeline?.getProgress(),
       getSummary: () => preferredPipeline?.getSummary(),
+      runCuration: (options) => Modules.CurationPipeline?.run(options),
+      abortCuration: () => Modules.CurationPipeline?.abort?.(),
 
       // Module access - Legacy
       getState: () => Modules.State,
@@ -699,6 +721,7 @@
       getPipelineExecutor: () => Modules.PipelineExecutor,
       getPipelineSchemas: () => Modules.PipelineSchemas,
       getDataViewer: () => Modules.DataViewer,
+      getCurationPipeline: () => Modules.CurationPipeline,
 
       // Data Viewer shortcuts
       showDataViewer: () => Modules.DataViewer?.show(),

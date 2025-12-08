@@ -193,11 +193,24 @@ const CouncilState = {
   },
 
   /**
+   * Abort pipeline safely
+   */
+  abortPipeline(reason = "User aborted") {
+    if (!this.pipeline.isProcessing) return;
+    this.pipeline.isProcessing = false;
+    this.pipeline.abortedAt = Date.now();
+    this.pipeline.error = reason;
+    this.emit("pipeline:abort", { reason });
+  },
+
+  /**
    * Get pipeline progress (0-100)
    */
   getPipelineProgress(totalPhases) {
     if (this.pipeline.currentPhaseIndex < 0) return 0;
-    return Math.round(((this.pipeline.currentPhaseIndex + 1) / totalPhases) * 100);
+    return Math.round(
+      ((this.pipeline.currentPhaseIndex + 1) / totalPhases) * 100,
+    );
   },
 
   // ===== THREAD STATE MANAGEMENT =====
@@ -490,7 +503,10 @@ const CouncilState = {
     } else {
       this.ui.expandedThreads.add(threadId);
     }
-    this.emit("ui:thread:toggle", { threadId, expanded: this.ui.expandedThreads.has(threadId) });
+    this.emit("ui:thread:toggle", {
+      threadId,
+      expanded: this.ui.expandedThreads.has(threadId),
+    });
   },
 
   /**
@@ -574,7 +590,7 @@ const CouncilState = {
       pipeline: { ...this.pipeline },
       story: { ...this.story },
       threadCounts: Object.fromEntries(
-        Object.entries(this.threads).map(([k, v]) => [k, v.length])
+        Object.entries(this.threads).map(([k, v]) => [k, v.length]),
       ),
       gavel: {
         isAwaiting: this.gavel.isAwaiting,

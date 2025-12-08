@@ -253,14 +253,14 @@ const PipelineExecutor = {
           this._phaseResults.set(phase.id, phaseResult);
           this._state?.setPhaseResult(phase.id, phaseResult);
 
-          // Handle user gavel if needed
-          if (this._phaseRequiresGavel(phase, originalPhase)) {
-            await this._handleGavel(phase, originalPhase);
-          }
-
           // Route outputs in new architecture
           if (useNewArchitecture) {
             this._routePhaseOutputs(phase, phaseResult);
+          }
+
+          // Handle user gavel if needed (after outputs are routed)
+          if (this._phaseRequiresGavel(phase, originalPhase)) {
+            await this._handleGavel(phase, originalPhase, phaseResult);
           }
 
           // End phase in new architecture
@@ -294,6 +294,19 @@ const PipelineExecutor = {
             throw phaseError;
           }
         }
+      }
+
+      if (this._aborted) {
+        this._state?.abortPipeline?.("Pipeline aborted");
+        if (useNewArchitecture && this._core) {
+          this._core.endPipeline({ success: false, aborted: true });
+        }
+        const result = this._buildPipelineResult(
+          false,
+          new Error("Pipeline aborted"),
+        );
+        this._emit("pipeline:abort", result);
+        return result;
       }
 
       // Save stores
@@ -1206,10 +1219,10 @@ const PipelineExecutor = {
    * @param {Object} phase - Phase definition
    * @param {Object} originalPhase - Original phase
    */
-  async _handleGavel(phase, originalPhase) {
+  async _handleGavel(phase, originalPhase, result = null) {
     const gavelPrompt =
       phase.gavel?.prompt || originalPhase?.gavelPrompt || "Review and edit:";
-    const gavelContent = this._getGavelContent(phase.id);
+    const gavelContent = this._getGavelContent(phase.id, result);
 
     const editedContent = await this._state?.awaitGavel(
       phase.id,
@@ -1225,7 +1238,13 @@ const PipelineExecutor = {
    * @param {string} phaseId - Phase identifier
    * @returns {string}
    */
-  _getGavelContent(phaseId) {
+  _getGavelContent(phaseId, result = null) {
+    // Prefer fresh result content if provided
+    if (result) {
+      const fromResult = this._extractMainOutput(result);
+      if (fromResult) return fromResult;
+    }
+
     // Check output manager first
     if (this._outputManager) {
       const phaseOutput = this._outputManager.getPhaseOutput(phaseId);
@@ -1498,6 +1517,7 @@ const PipelineExecutor = {
       finalDraft,
       outline,
       error: error?.message || null,
+      aborted: this._aborted === true,
       phaseResults: Object.fromEntries(this._phaseResults),
       duration: Date.now() - this._startTime,
       phasesCompleted: this._currentPhaseIndex + 1,
