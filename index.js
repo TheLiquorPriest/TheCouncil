@@ -37,6 +37,7 @@
     PipelineVisualizer: null,
     CurationPipeline: null,
     CurationEditor: null,
+    AgentEditor: null,
   };
 
   // ===== SETTINGS =====
@@ -110,6 +111,7 @@
       "ui/rag-viewer.js",
       "ui/pipeline-visualizer.js",
       "ui/curation-editor.js",
+      "ui/agent-editor.js",
     ];
 
     try {
@@ -154,6 +156,7 @@
       Modules.PipelineVisualizer = window.PipelineVisualizer || null;
       Modules.CurationPipeline = window.CurationPipeline || null;
       Modules.CurationEditor = window.CurationEditor || null;
+      Modules.AgentEditor = window.AgentEditor || null;
 
       log("All modules loaded successfully");
       debug("New architecture modules:", {
@@ -170,6 +173,7 @@
         PipelineVisualizer: !!Modules.PipelineVisualizer,
         CurationPipeline: !!Modules.CurationPipeline,
         CurationEditor: !!Modules.CurationEditor,
+        AgentEditor: !!Modules.AgentEditor,
       });
 
       return true;
@@ -210,7 +214,10 @@
           model: "",
           temperature: 0.7,
           maxTokens: 1000,
+          agentType: "editorial", // or "curation" for curation agents
           systemPrompt: `You are ${role.name}. ${role.role}. Be concise and focused.`,
+          systemPromptSource: "custom", // custom | st_saved
+          systemPromptName: "", // name/identifier when pulling from ST saved prompts
         };
       }
     }
@@ -727,6 +734,7 @@
       getDataViewer: () => Modules.DataViewer,
       getCurationPipeline: () => Modules.CurationPipeline,
       getCurationEditor: () => Modules.CurationEditor,
+      getAgentEditor: () => Modules.AgentEditor,
 
       // Data Viewer shortcuts
       showDataViewer: () => Modules.DataViewer?.show(),

@@ -262,8 +262,10 @@ const PipelineEditor = {
         ) {
           return;
         }
-        const index = parseInt(item.dataset.index);
+        const index = parseInt(item.dataset.index, 10);
+        // Force selection and editor render on click
         this.selectPhase(index);
+        this._renderPhaseEditor();
       });
 
       // Drag and drop for reordering
@@ -345,6 +347,7 @@ const PipelineEditor = {
       <div class="pe-editor-sections">
         ${this._renderSection("basic", "Basic Info", this._renderBasicSection(phase))}
         ${this._renderSection("agents", "Agents", this._renderAgentsSection(phase))}
+
         ${this._renderSection("context", "Context", this._renderContextSection(phase))}
         ${this._renderSection("outputs", "Outputs", this._renderOutputsSection(phase))}
         ${this._renderSection("threads", "Threads", this._renderThreadsSection(phase))}
@@ -439,7 +442,7 @@ const PipelineEditor = {
 
     return `
       <div class="pe-form-group">
-        <label>Assigned Agents</label>
+        <label>Assigned Agents <button class="pe-btn pe-btn-small" type="button" id="pe-refresh-agents">↻</button></label>
         <div class="pe-checkbox-grid">
           ${agentCheckboxes || '<div class="pe-empty">No agents available</div>'}
         </div>
@@ -452,6 +455,33 @@ const PipelineEditor = {
                placeholder="agent_1, agent_2, agent_3">
         <div class="pe-field-hint">Order in which agents are called</div>
       </div>
+
+      <div class="pe-form-group">
+        <label>Agent Prompt Overrides (optional)</label>
+        <textarea class="pe-textarea" id="pe-field-agent-prompts"
+                  placeholder="agent_id: prompt...">${this._escape(this._formatAgentPrompts(phase.agentPromptOverrides))}</textarea>
+        <div class="pe-field-hint">Format: one per line, e.g. "editor_lead: You are the editor..."</div>
+      </div>
+
+      <div class="pe-form-group">
+        <label>Saved Prompt (ST Preset)</label>
+        <div class="pe-row">
+          <div>
+            <label>Pick saved prompt</label>
+            <select class="pe-select" id="pe-field-agent-prompt-select">
+              ${this._renderSavedPromptOptions()}
+            </select>
+          </div>
+          <div>
+            <label>Apply to agent (id)</label>
+            <input type="text" class="pe-input" id="pe-field-agent-prompt-target"
+                   value="${(phase.agents || [])[0] || ""}" placeholder="agent_id">
+          </div>
+        </div>
+        <div class="pe-field-hint">Select a saved ST chat completion preset and apply it as "saved:prompt_name" to an agent override.</div>
+      </div>
+
+
     `;
   },
 
@@ -720,9 +750,12 @@ const PipelineEditor = {
     );
 
     // Agent order
+
     this._bindInput(
       "pe-field-agent-order",
+
       "agents",
+
       this._parseCommaSeparated,
     );
 
@@ -732,6 +765,47 @@ const PipelineEditor = {
         this._updateAgentsFromCheckboxes();
       });
     });
+    // Refresh agent list (re-render)
+    document
+      .getElementById("pe-refresh-agents")
+      ?.addEventListener("click", () => {
+        this._renderPhaseEditor();
+      });
+
+    // Agent prompt overrides
+    this._bindInput(
+      "pe-field-agent-prompts",
+      "agentPromptOverrides",
+      this._parseAgentPrompts,
+    );
+
+    // Saved prompt selector -> writes into overrides as saved:<promptName>
+    const promptSelect = document.getElementById(
+      "pe-field-agent-prompt-select",
+    );
+    if (promptSelect) {
+      promptSelect.addEventListener("change", (e) => {
+        const promptName = e.target.value;
+        if (!promptName || promptName === "(no saved prompts detected)") return;
+        const targetInput = document.getElementById(
+          "pe-field-agent-prompt-target",
+        );
+        const agentId = targetInput?.value?.trim();
+        if (!agentId) return;
+
+        const existing = this._parseAgentPrompts(
+          document.getElementById("pe-field-agent-prompts")?.value || "",
+        );
+        existing[agentId] = `saved:${promptName}`;
+        const textarea = document.getElementById("pe-field-agent-prompts");
+        if (textarea) {
+          textarea.value = this._formatAgentPrompts(existing);
+          this._phases[this._selectedPhaseIndex].agentPromptOverrides =
+            existing;
+          this._markChanged();
+        }
+      });
+    }
 
     // Context fields
     this._bindNestedInput(
@@ -868,6 +942,53 @@ const PipelineEditor = {
       .split(",")
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
+  },
+
+  _parseAgentPrompts(value) {
+    if (!value || typeof value !== "string") return {};
+    const lines = value.split("\n");
+    const map = {};
+    for (const line of lines) {
+      const idx = line.indexOf(":");
+      if (idx === -1) continue;
+      const key = line.slice(0, idx).trim();
+      const val = line.slice(idx + 1).trim();
+      if (key) map[key] = val;
+    }
+    return map;
+  },
+
+  _formatAgentPrompts(map) {
+    if (!map || typeof map !== "object") return "";
+    return Object.entries(map)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\n");
+  },
+
+  _renderSavedPromptOptions(selected = "") {
+    const prompts = this._getSavedPrompts();
+    const opts = prompts.length ? prompts : ["(no saved prompts detected)"];
+    return opts
+      .map(
+        (name) =>
+          `<option value="${this._escape(name)}" ${
+            name === selected ? "selected" : ""
+          }>${this._escape(name)}</option>`,
+      )
+      .join("");
+  },
+
+  _getSavedPrompts() {
+    try {
+      const ctx = window?.SillyTavern?.getContext?.();
+      if (!ctx) return [];
+      const saved =
+        ctx.chatCompletionPresets || ctx.savedPrompts || ctx.prompts || {};
+      return Object.keys(saved);
+    } catch (e) {
+      console.warn("[Pipeline Editor] Failed to read ST saved prompts:", e);
+      return [];
+    }
   },
 
   /**
@@ -1237,7 +1358,21 @@ const PipelineEditor = {
    * Show the editor modal
    */
   show() {
+    // Ensure modal exists; recreate if missing (e.g., after DOM reset)
+    if (
+      !this._modal ||
+      !document.getElementById("council-pipeline-editor-modal")
+    ) {
+      this._createModal();
+    }
+
     this._loadPhases();
+
+    // Ensure a phase is selected so the editor renders
+    if (this._phases.length > 0 && this._selectedPhaseIndex < 0) {
+      this._selectedPhaseIndex = 0;
+    }
+
     this._renderPhaseList();
     this._renderPhaseEditor();
 
@@ -1304,6 +1439,13 @@ const PipelineEditor = {
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
+  },
+
+  /**
+   * Escape for prompt (alias)
+   */
+  _escape(text) {
+    return this._escapeHtml(text);
   },
 
   /**

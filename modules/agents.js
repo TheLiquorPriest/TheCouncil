@@ -89,12 +89,20 @@ const CouncilAgents = {
       this._config?.DEFAULT_AGENT_CONFIG || {
         enabled: true,
         useMainApi: true,
+        useSTApi: true,
         apiEndpoint: "",
         apiKey: "",
         model: "",
+
         temperature: 0.7,
+
         maxTokens: 1000,
+
         systemPrompt: "",
+
+        promptOrder: [],
+
+        promptTokens: {},
       }
     );
   },
@@ -390,15 +398,26 @@ Focus only on matters within your area of expertise.`;
       includeContext = true,
       contextOverride = null,
       additionalInstructions = "",
+      agentPromptOverrides = null,
     } = options;
 
     const role = this.getAgentRole(agentId);
     if (!role) {
       console.warn(`[Council Agents] Unknown agent: ${agentId}`);
-      return basePrompt;
+      return { systemPrompt: "", prompt: basePrompt };
     }
 
+    const config = this.getAgentConfig(agentId);
+    const systemPrompt = this._buildSystemPrompt(agentId, phase, {
+      agentPromptOverrides,
+    });
+
     const parts = [];
+
+    // Add system prompt first
+    if (systemPrompt) {
+      parts.push(systemPrompt);
+    }
 
     // Add role header
     parts.push(`## Your Role: ${role.name}`);
@@ -441,7 +460,186 @@ Focus only on matters within your area of expertise.`;
     parts.push("\n---\n## Task");
     parts.push(basePrompt);
 
-    return parts.join("\n");
+    return {
+      systemPrompt: systemPrompt || config.systemPrompt,
+      prompt: parts.join("\n"),
+    };
+  },
+
+  _buildSystemPrompt(agentId, phase = null, options = {}) {
+    const config = this.getAgentConfig(agentId);
+    const override =
+      options.agentPromptOverrides?.[agentId] ||
+      phase?.agentPromptOverrides?.[agentId];
+    let basePrompt = override || config.systemPrompt || "";
+
+    if (
+      !override &&
+      config.systemPromptSource === "st_saved" &&
+      config.systemPromptName
+    ) {
+      const saved = this._resolveSavedPrompt(config.systemPromptName);
+      if (saved) {
+        basePrompt = saved;
+      } else {
+        console.warn(
+          `[Council Agents] Saved prompt not found: ${config.systemPromptName}`,
+        );
+      }
+    }
+
+    const promptTokens = config.promptTokens || {};
+    const order =
+      Array.isArray(config.promptOrder) && config.promptOrder.length
+        ? config.promptOrder
+        : ["persona", "character_card", "world_info", "chat_history"];
+
+    const tokenBlocks = order
+
+      .map((token) => {
+        const resolved = this._resolvePromptToken(token, phase);
+        if (!resolved) return null;
+
+        const wrap = promptTokens[token] || {};
+        const prefix = wrap.prefix || "";
+        const suffix = wrap.suffix || "";
+        return [prefix, resolved, suffix].filter(Boolean).join("\n");
+      })
+      .filter(Boolean);
+
+    return [basePrompt, ...tokenBlocks].filter(Boolean).join("\n\n");
+  },
+
+  _resolvePromptToken(token, phase = null) {
+    try {
+      switch (token) {
+        case "chat_history":
+          return (
+            this._context?.getProcessed?.()?.chatHistory ||
+            this._state?.getThreadSummary?.("main") ||
+            "No chat history available."
+          );
+        case "world_info":
+          return (
+            this._context?.getProcessed?.()?.formattedWorldInfo?.formatted ||
+            this._context?.getProcessed?.()?.formattedWorldInfo ||
+            "No world info available."
+          );
+        case "character_card":
+          return (
+            this._context?.getProcessed?.()?.formattedCharacter ||
+            "No character card available."
+          );
+        case "persona":
+          return (
+            window?.SillyTavern?.getContext?.()?.persona ||
+            this._context?.getProcessed?.()?.persona ||
+            "No persona available."
+          );
+
+        case "author_note": {
+          const preset = this._resolveSavedPreset("author_note");
+          if (preset) return preset;
+          return (
+            window?.SillyTavern?.getContext?.()?.authorsnote ||
+            "No author note available."
+          );
+        }
+
+        case "memory": {
+          const preset = this._resolveSavedPreset("memory");
+          if (preset) return preset;
+          return (
+            window?.SillyTavern?.getContext?.()?.memory ||
+            "No memory available."
+          );
+        }
+
+        case "lorebook": {
+          const preset = this._resolveSavedPreset("lorebook");
+          if (preset) return preset;
+          return (
+            window?.SillyTavern?.getContext?.()?.lorebook ||
+            "No lorebook entries."
+          );
+        }
+
+        case "bookmarks": {
+          const preset = this._resolveSavedPreset("bookmarks");
+          if (preset) return preset;
+          return (
+            window?.SillyTavern?.getContext?.()?.bookmarks ||
+            "No bookmarks available."
+          );
+        }
+
+        case "current_situation":
+          return (
+            this._stores?.getCurrentSituation?.() ||
+            "No current situation available."
+          );
+
+        case "story_synopsis": {
+          const preset = this._resolveSavedPreset("story_synopsis");
+          if (preset) return preset;
+          return (
+            this._stores?.get?.("storySynopsis") ||
+            "No story synopsis available."
+          );
+        }
+
+        default:
+          return `[[${token}: no data available]]`;
+      }
+    } catch (e) {
+      console.warn("[Council Agents] Failed to resolve prompt token", token, e);
+
+      return null;
+    }
+  },
+
+  _resolveSavedPreset(name) {
+    try {
+      const ctx = window?.SillyTavern?.getContext?.();
+      if (!ctx) return null;
+      const presets = ctx?.chatCompletionPresets || {};
+      return presets[name] || null;
+    } catch (e) {
+      console.warn("[Council Agents] Failed to resolve saved preset:", name, e);
+      return null;
+    }
+  },
+
+  _resolveSavedPrompt(name) {
+    try {
+      const ctx = window?.SillyTavern?.getContext?.();
+      return ctx?.savedPrompts?.[name] || ctx?.prompts?.[name] || null;
+    } catch (e) {
+      console.warn("[Council Agents] Failed to resolve saved prompt:", name, e);
+      return null;
+    }
+  },
+
+  _resolveApiSettings(config) {
+    if (!config?.useSTApi) return config;
+    try {
+      const ctx = window?.SillyTavern?.getContext?.();
+      const apiEndpoint = ctx?.apiEndpoint || ctx?.api || config.apiEndpoint;
+      const apiKey = ctx?.apiKey || config.apiKey;
+      const model = config.model || ctx?.model || config.model;
+      return {
+        ...config,
+        apiEndpoint,
+        apiKey,
+        model,
+      };
+    } catch (e) {
+      console.warn(
+        "[Council Agents] Failed to resolve ST API settings, using agent config",
+        e,
+      );
+      return config;
+    }
   },
 
   /**
@@ -632,6 +830,7 @@ Provide specific, actionable feedback. Note both strengths and areas for improve
 
     const role = this.getAgentRole(agentId);
     const config = this.getAgentConfig(agentId);
+    const apiConfig = this._resolveApiSettings(config);
 
     console.log(
       `[Council Agents] Agent ${agentId} - role found: ${!!role}, config found: ${!!config}`,
@@ -656,7 +855,11 @@ Provide specific, actionable feedback. Note both strengths and areas for improve
     console.log(
       `[Council Agents] Building prompt for ${agentId}, base prompt length: ${prompt?.length || 0}`,
     );
-    const fullPrompt = this.buildAgentPrompt(agentId, prompt, options);
+    const { systemPrompt, prompt: fullPrompt } = this.buildAgentPrompt(
+      agentId,
+      prompt,
+      options,
+    );
     console.log(
       `[Council Agents] Full prompt built for ${agentId}, length: ${fullPrompt?.length || 0}`,
     );
@@ -666,10 +869,10 @@ Provide specific, actionable feedback. Note both strengths and areas for improve
     try {
       const response = await this._generation.generateForAgent(
         agentId,
-        config,
+        apiConfig,
         fullPrompt,
         {
-          systemPrompt: config.systemPrompt,
+          systemPrompt: systemPrompt || apiConfig.systemPrompt,
           ...options,
         },
       );
@@ -694,19 +897,23 @@ Provide specific, actionable feedback. Note both strengths and areas for improve
       throw new Error("Generation module not available");
     }
 
-    const tasks = agentTasks.map((task) => ({
-      agentId: task.agentId,
-      agentConfig: this.getAgentConfig(task.agentId),
-      prompt: this.buildAgentPrompt(
+    const tasks = agentTasks.map((task) => {
+      const cfg = this._resolveApiSettings(this.getAgentConfig(task.agentId));
+      const built = this.buildAgentPrompt(
         task.agentId,
         task.prompt,
         task.options || {},
-      ),
-      options: {
-        systemPrompt: this.getAgentConfig(task.agentId).systemPrompt,
-        ...(task.options || {}),
-      },
-    }));
+      );
+      return {
+        agentId: task.agentId,
+        agentConfig: cfg,
+        prompt: built.prompt,
+        options: {
+          systemPrompt: built.systemPrompt || cfg.systemPrompt,
+          ...(task.options || {}),
+        },
+      };
+    });
 
     return this._generation.generateParallel(tasks);
   },

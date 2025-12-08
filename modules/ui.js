@@ -343,6 +343,7 @@ const CouncilUI = {
           <h3>⚖️ The Council Pipeline</h3>
           <div class="council-header-buttons">
             <button class="council-header-btn" id="council-pipeline-editor-btn" title="Pipeline Editor">🔧</button>
+            <button class="council-header-btn" id="council-agent-editor-btn" title="Agent Editor">🧑‍💻</button>
             <button class="council-header-btn" id="council-rag-viewer-btn" title="RAG Requests">🔍</button>
             <button class="council-header-btn" id="council-data-viewer-btn" title="Data Viewer">📊</button>
             <button class="council-header-btn" id="council-curation-btn" title="Curation Pipeline">🧭</button>
@@ -538,18 +539,42 @@ const CouncilUI = {
     );
     if (pipelineEditorBtn) {
       pipelineEditorBtn.addEventListener("click", () => {
-        if (typeof window.PipelineEditor !== "undefined") {
-          if (!window.PipelineEditor.isInitialized()) {
-            window.PipelineEditor.init({
+        try {
+          const pe = window.PipelineEditor;
+          if (!pe) {
+            console.warn("[Council UI] Pipeline Editor not available");
+            return;
+          }
+          if (!pe.isInitialized?.()) {
+            pe.init?.({
               config: this._config,
               state: this._state,
               schemas: window.PipelineSchemas,
               executor: window.PipelineExecutor,
             });
           }
-          window.PipelineEditor.toggle();
+          pe.show?.();
+        } catch (err) {
+          console.error("[Council UI] Failed to open Pipeline Editor:", err);
+        }
+      });
+    }
+
+    // Agent Editor button
+    const agentEditorBtn = document.getElementById("council-agent-editor-btn");
+    if (agentEditorBtn) {
+      agentEditorBtn.addEventListener("click", () => {
+        if (typeof window.AgentEditor !== "undefined") {
+          if (!window.AgentEditor.isInitialized?.()) {
+            window.AgentEditor.init?.({
+              config: this._config,
+              state: this._state,
+              agents: window.CouncilAgents,
+            });
+          }
+          window.AgentEditor.toggle?.();
         } else {
-          console.warn("[Council UI] Pipeline Editor not available");
+          console.warn("[Council UI] Agent Editor not available");
         }
       });
     }

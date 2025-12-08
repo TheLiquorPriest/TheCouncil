@@ -26,13 +26,21 @@ const CurationEditor = {
   init(modules = {}) {
     if (this._initialized) return this;
 
-    this._curation = modules.curation || (typeof window !== "undefined" ? window.CurationPipeline : null);
-    this._stores = modules.stores || (typeof window !== "undefined" ? window.CouncilStores : null);
+    this._curation =
+      modules.curation ||
+      (typeof window !== "undefined" ? window.CurationPipeline : null);
+    this._stores =
+      modules.stores ||
+      (typeof window !== "undefined" ? window.CouncilStores : null);
     this._outputManager =
-      modules.outputManager || (typeof window !== "undefined" ? window.OutputManager : null);
+      modules.outputManager ||
+      (typeof window !== "undefined" ? window.OutputManager : null);
     this._threadManager =
-      modules.threadManager || (typeof window !== "undefined" ? window.ThreadManager : null);
-    this._state = modules.state || (typeof window !== "undefined" ? window.CouncilState : null);
+      modules.threadManager ||
+      (typeof window !== "undefined" ? window.ThreadManager : null);
+    this._state =
+      modules.state ||
+      (typeof window !== "undefined" ? window.CouncilState : null);
 
     this._loadPhases();
     this._createModal();
@@ -194,15 +202,33 @@ const CurationEditor = {
   },
 
   _bindModalEvents() {
-    document.getElementById("ce-close")?.addEventListener("click", () => this.hide());
-    document.getElementById("ce-cancel")?.addEventListener("click", () => this.hide());
-    document.getElementById("ce-reset")?.addEventListener("click", () => this.reset());
-    document.getElementById("ce-save")?.addEventListener("click", () => this.save());
-    document.getElementById("ce-add")?.addEventListener("click", () => this.addPhase());
-    document.getElementById("ce-import")?.addEventListener("click", () => this.importPhases());
-    document.getElementById("ce-export")?.addEventListener("click", () => this.exportPhases());
-    document.getElementById("ce-run")?.addEventListener("click", () => this.runCuration());
-    document.getElementById("ce-abort")?.addEventListener("click", () => this.abortCuration());
+    document
+      .getElementById("ce-close")
+      ?.addEventListener("click", () => this.hide());
+    document
+      .getElementById("ce-cancel")
+      ?.addEventListener("click", () => this.hide());
+    document
+      .getElementById("ce-reset")
+      ?.addEventListener("click", () => this.reset());
+    document
+      .getElementById("ce-save")
+      ?.addEventListener("click", () => this.save());
+    document
+      .getElementById("ce-add")
+      ?.addEventListener("click", () => this.addPhase());
+    document
+      .getElementById("ce-import")
+      ?.addEventListener("click", () => this.importPhases());
+    document
+      .getElementById("ce-export")
+      ?.addEventListener("click", () => this.exportPhases());
+    document
+      .getElementById("ce-run")
+      ?.addEventListener("click", () => this.runCuration());
+    document
+      .getElementById("ce-abort")
+      ?.addEventListener("click", () => this.abortCuration());
     this._modal?.addEventListener("click", (e) => {
       if (e.target === this._modal) this.hide();
     });
@@ -280,11 +306,40 @@ const CurationEditor = {
       <div class="ce-section">
         <label>Agents (comma-separated IDs)</label>
         <input id="ce-field-agents" class="ce-input" value="${(phase.agents || []).join(", ")}" />
+        <div class="inline-hint">Order defines execution order</div>
       </div>
       <div class="ce-section">
         <label>Output Template (optional)</label>
         <textarea id="ce-field-output" class="ce-textarea">${this._escape(phase.outputTemplate || "")}</textarea>
       </div>
+
+
+      <div class="ce-section">
+
+        <label>System Prompt (ST Preset Optional)</label>
+        <div class="inline-hint">Pick an ST chat completion preset and apply it as saved:&lt;prompt&gt; to an agent override.</div>
+        <div class="ce-row">
+          <div>
+            <label>Pick saved prompt</label>
+            <select id="ce-saved-prompt" class="ce-input">${this._renderSavedPromptOptions()}</select>
+          </div>
+          <div>
+            <label>Apply to agent (id)</label>
+            <input id="ce-saved-prompt-agent" class="ce-input" value="${(phase.agents || [])[0] || ""}" placeholder="agent_id">
+          </div>
+        </div>
+      </div>
+
+      <div class="ce-section">
+        <label>Agent Prompt Overrides (optional)</label>
+
+        <textarea id="ce-agent-prompts" class="ce-textarea" placeholder="agent_id: prompt...">${this._escape(this._formatAgentPrompts(phase.agentPromptOverrides))}</textarea>
+
+        <div class="inline-hint">Use saved:&lt;prompt_name&gt; to reference ST presets, or write a custom prompt. One per line, e.g. "curation_lead: saved:my_prompt".</div>
+      </div>
+
+
+
     `;
 
     // bind inputs
@@ -302,17 +357,52 @@ const CurationEditor = {
       phase.description = e.target.value;
       this._markChanged();
     });
-    document.getElementById("ce-field-agents")?.addEventListener("input", (e) => {
-      phase.agents = e.target.value
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s.length);
-      this._markChanged();
-    });
-    document.getElementById("ce-field-output")?.addEventListener("input", (e) => {
-      phase.outputTemplate = e.target.value;
-      this._markChanged();
-    });
+    document
+      .getElementById("ce-field-agents")
+      ?.addEventListener("input", (e) => {
+        phase.agents = e.target.value
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length);
+        this._markChanged();
+      });
+    document
+      .getElementById("ce-field-output")
+      ?.addEventListener("input", (e) => {
+        phase.outputTemplate = e.target.value;
+        this._markChanged();
+      });
+
+    document
+
+      .getElementById("ce-agent-prompts")
+
+      ?.addEventListener("input", (e) => {
+        phase.agentPromptOverrides = this._parseAgentPrompts(e.target.value);
+
+        this._markChanged();
+      });
+
+    document
+
+      .getElementById("ce-saved-prompt")
+      ?.addEventListener("change", (e) => {
+        const promptName = e.target.value;
+        if (!promptName || promptName === "(no saved prompts detected)") return;
+        const agentField = document.getElementById("ce-saved-prompt-agent");
+        const agentId = agentField?.value?.trim();
+        if (!agentId) return;
+        const overrides = this._parseAgentPrompts(
+          document.getElementById("ce-agent-prompts")?.value || "",
+        );
+        overrides[agentId] = `saved:${promptName}`;
+        const textarea = document.getElementById("ce-agent-prompts");
+        if (textarea) {
+          textarea.value = this._formatAgentPrompts(overrides);
+          phase.agentPromptOverrides = overrides;
+          this._markChanged();
+        }
+      });
   },
 
   // ---------- Actions ----------
@@ -341,7 +431,8 @@ const CurationEditor = {
     if (idx < 0 || idx >= this._phases.length) return;
     if (!confirm("Delete this phase?")) return;
     this._phases.splice(idx, 1);
-    if (this._selectedIndex >= this._phases.length) this._selectedIndex = this._phases.length - 1;
+    if (this._selectedIndex >= this._phases.length)
+      this._selectedIndex = this._phases.length - 1;
     this._markChanged();
     this._renderPhaseList();
     this._renderEditor();
@@ -363,7 +454,8 @@ const CurationEditor = {
   reset() {
     if (this._hasChanges && !confirm("Discard all changes?")) return;
     this._loadPhases();
-    document.getElementById("curation-changes")?.style && (document.getElementById("curation-changes").style.display = "none");
+    document.getElementById("curation-changes")?.style &&
+      (document.getElementById("curation-changes").style.display = "none");
     this._renderPhaseList();
     this._renderEditor();
   },
@@ -414,7 +506,9 @@ const CurationEditor = {
       exportedAt: new Date().toISOString(),
       phases: this._phases,
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -431,7 +525,11 @@ const CurationEditor = {
     this._curation
       .run({ source: "ui" })
       .then((res) => {
-        alert(res?.success ? "Curation completed." : "Curation ended (aborted or error).");
+        alert(
+          res?.success
+            ? "Curation completed."
+            : "Curation ended (aborted or error).",
+        );
       })
       .catch((e) => alert("Curation failed: " + e.message));
   },
@@ -463,6 +561,66 @@ const CurationEditor = {
   },
 
   // ---------- Helpers ----------
+  _parseAgentPrompts(text) {
+    if (!text) return {};
+    const lines = text.split("\n");
+    const map = {};
+    for (const line of lines) {
+      const idx = line.indexOf(":");
+      if (idx === -1) continue;
+      const key = line.slice(0, idx).trim();
+      const value = line.slice(idx + 1).trim();
+      if (key) map[key] = value;
+    }
+    return map;
+  },
+
+  _formatAgentPrompts(map) {
+    if (!map || typeof map !== "object") return "";
+    return Object.entries(map)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\n");
+  },
+
+  _renderSavedPromptOptions(selected = "") {
+    const prompts = this._getSavedPrompts();
+    const opts = prompts.length ? prompts : ["(no saved prompts detected)"];
+    return opts
+      .map(
+        (name) =>
+          `<option value="${this._escape(name)}" ${
+            name === selected ? "selected" : ""
+          }>${this._escape(name)}</option>`,
+      )
+      .join("");
+  },
+
+  _getSavedPrompts() {
+    try {
+      const ctx = window?.SillyTavern?.getContext?.();
+      if (!ctx) return [];
+      const saved =
+        ctx.chatCompletionPresets || ctx.savedPrompts || ctx.prompts || {};
+      return Object.keys(saved);
+    } catch (e) {
+      console.warn("[Curation Editor] Failed to read ST saved prompts:", e);
+      return [];
+    }
+  },
+
+  _formatActionBlocks(blocks) {
+    if (!Array.isArray(blocks)) return "";
+    return blocks
+      .map((b) => {
+        const agents = (b.agents || []).join(", ");
+        const asyncFlag = b.async ? "true" : "false";
+        return `${b.id || ""}|${b.name || ""}|${agents}|${asyncFlag}|${
+          b.prompt || ""
+        }`;
+      })
+      .join("\n");
+  },
+
   _escape(text) {
     if (text === undefined || text === null) return "";
     const div = document.createElement("div");

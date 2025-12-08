@@ -184,6 +184,7 @@ const CurationPipeline = {
     return {
       summary: contextSummary,
       stores: allStores,
+      agentPromptOverrides: phase.agentPromptOverrides || {},
     };
   },
 
