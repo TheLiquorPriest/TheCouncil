@@ -345,6 +345,7 @@ const CouncilUI = {
             <button class="council-header-btn" id="council-pipeline-editor-btn" title="Pipeline Editor">🔧</button>
             <button class="council-header-btn" id="council-rag-viewer-btn" title="RAG Requests">🔍</button>
             <button class="council-header-btn" id="council-data-viewer-btn" title="Data Viewer">📊</button>
+            <button class="council-header-btn" id="council-curation-btn" title="Curation Pipeline">🧭</button>
             <button class="council-header-btn" id="council-settings-btn" title="Settings">⚙️</button>
             <button class="council-header-btn" id="council-stop-btn" title="Stop / Abort Pipeline">🛑</button>
             <button class="council-header-btn" id="council-minimize-btn" title="Minimize">─</button>
@@ -507,6 +508,27 @@ const CouncilUI = {
     if (stopBtn) {
       stopBtn.addEventListener("click", () => {
         this._pipeline?.abort?.();
+      });
+    }
+
+    // Curation Editor button
+    const curationBtn = document.getElementById("council-curation-btn");
+    if (curationBtn) {
+      curationBtn.addEventListener("click", () => {
+        if (typeof window.CurationEditor !== "undefined") {
+          if (!window.CurationEditor.isInitialized()) {
+            window.CurationEditor.init({
+              curation: window.CurationPipeline,
+              stores: window.CouncilStores,
+              outputManager: window.OutputManager,
+              threadManager: window.ThreadManager,
+              state: this._state,
+            });
+          }
+          window.CurationEditor.toggle();
+        } else {
+          console.warn("[Council UI] Curation Editor not available");
+        }
       });
     }
 

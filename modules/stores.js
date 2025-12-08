@@ -266,6 +266,7 @@ const CouncilStores = {
         this._isDirty = false;
         this._lastSaveTime = Date.now();
         console.log("[Council Stores] Saved successfully to:", targetId);
+        window?.DataViewer?.refreshData?.();
       }
     } catch (e) {
       console.error("[Council Stores] Save failed:", e);
@@ -549,6 +550,7 @@ const CouncilStores = {
     this.save();
 
     console.log("[Council Stores] Stores cleared for:", this._storyId);
+    window?.DataViewer?.refreshData?.();
   },
 
   /**
@@ -579,6 +581,7 @@ const CouncilStores = {
     }
 
     console.log("[Council Stores] Deleted all data for story:", storyId);
+    window?.DataViewer?.refreshData?.();
   },
 
   /**

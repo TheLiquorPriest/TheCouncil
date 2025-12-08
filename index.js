@@ -36,6 +36,7 @@
     RAGViewer: null,
     PipelineVisualizer: null,
     CurationPipeline: null,
+    CurationEditor: null,
   };
 
   // ===== SETTINGS =====
@@ -108,6 +109,7 @@
       "ui/pipeline-editor.js",
       "ui/rag-viewer.js",
       "ui/pipeline-visualizer.js",
+      "ui/curation-editor.js",
     ];
 
     try {
@@ -151,6 +153,7 @@
       Modules.RAGViewer = window.RAGViewer || null;
       Modules.PipelineVisualizer = window.PipelineVisualizer || null;
       Modules.CurationPipeline = window.CurationPipeline || null;
+      Modules.CurationEditor = window.CurationEditor || null;
 
       log("All modules loaded successfully");
       debug("New architecture modules:", {
@@ -166,6 +169,7 @@
         RAGViewer: !!Modules.RAGViewer,
         PipelineVisualizer: !!Modules.PipelineVisualizer,
         CurationPipeline: !!Modules.CurationPipeline,
+        CurationEditor: !!Modules.CurationEditor,
       });
 
       return true;
@@ -722,6 +726,7 @@
       getPipelineSchemas: () => Modules.PipelineSchemas,
       getDataViewer: () => Modules.DataViewer,
       getCurationPipeline: () => Modules.CurationPipeline,
+      getCurationEditor: () => Modules.CurationEditor,
 
       // Data Viewer shortcuts
       showDataViewer: () => Modules.DataViewer?.show(),

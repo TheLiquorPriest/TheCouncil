@@ -242,12 +242,37 @@ const PipelineExecutor = {
             await this._executePhaseRAG(phase, { onRAGRequest, onRAGResponse });
           }
 
-          // Execute phase
-          const phaseResult = await this._executePhase(
-            phase,
-            originalPhase,
-            useNewArchitecture,
-          );
+          // Execute phase (delegate curate_stores to isolated curation pipeline)
+          let phaseResult;
+          if (
+            phase.id === "curate_stores" &&
+            typeof window.CurationPipeline !== "undefined"
+          ) {
+            const curation = window.CurationPipeline;
+            if (!curation.isInitialized?.()) {
+              curation.init?.({
+                stores: this._stores,
+                contextManager: this._contextManager,
+                outputManager: this._outputManager,
+                threadManager: this._threadManager,
+                pipelineSchemas: this._pipelineSchemas,
+                state: this._state,
+                agents: this._agents,
+                generation: this._generation,
+                config: this._config,
+              });
+            }
+            phaseResult = await curation.run?.({
+              delegated: true,
+              trigger: "editorial_pipeline",
+            });
+          } else {
+            phaseResult = await this._executePhase(
+              phase,
+              originalPhase,
+              useNewArchitecture,
+            );
+          }
 
           // Store result
           this._phaseResults.set(phase.id, phaseResult);
