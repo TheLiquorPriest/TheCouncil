@@ -315,27 +315,47 @@ const CurationEditor = {
 
 
       <div class="ce-section">
-
-        <label>System Prompt (ST Preset Optional)</label>
-        <div class="inline-hint">Pick an ST chat completion preset and apply it as saved:&lt;prompt&gt; to an agent override.</div>
-        <div class="ce-row">
-          <div>
-            <label>Pick saved prompt</label>
-            <select id="ce-saved-prompt" class="ce-input">${this._renderSavedPromptOptions()}</select>
-          </div>
-          <div>
-            <label>Apply to agent (id)</label>
-            <input id="ce-saved-prompt-agent" class="ce-input" value="${(phase.agents || [])[0] || ""}" placeholder="agent_id">
-          </div>
+        <label>Agent Prompts (per agent)</label>
+        <div class="inline-hint">Select a saved ST preset or enter a custom prompt per agent. Tokens: token|prefix|suffix per line.</div>
+        <div class="ce-agent-override-list">
+          ${(phase.agents || [])
+            .map((agentId) => {
+              const ov = phase.agentPromptOverrides?.[agentId] || {};
+              const preset = ov.source === "preset" ? ov.presetName || "" : "";
+              const custom =
+                ov.source === "custom"
+                  ? ov.customText || ""
+                  : ov.customText || "";
+              const tokens = this._formatTokens(ov.tokens);
+              return `
+              <div class="ce-agent-override-row" data-agent="${agentId}">
+                <div class="ce-row">
+                  <div>
+                    <label>Agent</label>
+                    <div class="inline-hint">${agentId}</div>
+                  </div>
+                  <div>
+                    <label>Preset <button class="ce-btn ce-btn-small" type="button" id="ce-refresh-prompts">↻</button></label>
+                    <select class="ce-input" data-role="preset">
+                      ${this._renderSavedPromptOptions(preset)}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Custom Prompt</label>
+                    <textarea class="ce-textarea" data-role="custom" placeholder="Custom prompt...">${this._escape(custom)}</textarea>
+                  </div>
+                </div>
+                <div class="ce-row">
+                  <div style="flex:1;">
+                    <label>Tokens (token|prefix|suffix per line)</label>
+                    <textarea class="ce-textarea" data-role="tokens" placeholder="persona||\ncharacter_card||">${tokens}</textarea>
+                  </div>
+                </div>
+              </div>
+            `;
+            })
+            .join("")}
         </div>
-      </div>
-
-      <div class="ce-section">
-        <label>Agent Prompt Overrides (optional)</label>
-
-        <textarea id="ce-agent-prompts" class="ce-textarea" placeholder="agent_id: prompt...">${this._escape(this._formatAgentPrompts(phase.agentPromptOverrides))}</textarea>
-
-        <div class="inline-hint">Use saved:&lt;prompt_name&gt; to reference ST presets, or write a custom prompt. One per line, e.g. "curation_lead: saved:my_prompt".</div>
       </div>
 
 
@@ -373,36 +393,48 @@ const CurationEditor = {
         this._markChanged();
       });
 
-    document
-
-      .getElementById("ce-agent-prompts")
-
-      ?.addEventListener("input", (e) => {
-        phase.agentPromptOverrides = this._parseAgentPrompts(e.target.value);
-
-        this._markChanged();
-      });
-
-    document
-
-      .getElementById("ce-saved-prompt")
-      ?.addEventListener("change", (e) => {
-        const promptName = e.target.value;
-        if (!promptName || promptName === "(no saved prompts detected)") return;
-        const agentField = document.getElementById("ce-saved-prompt-agent");
-        const agentId = agentField?.value?.trim();
-        if (!agentId) return;
-        const overrides = this._parseAgentPrompts(
-          document.getElementById("ce-agent-prompts")?.value || "",
-        );
-        overrides[agentId] = `saved:${promptName}`;
-        const textarea = document.getElementById("ce-agent-prompts");
-        if (textarea) {
-          textarea.value = this._formatAgentPrompts(overrides);
-          phase.agentPromptOverrides = overrides;
-          this._markChanged();
+    const syncAgentOverrides = () => {
+      if (this._selectedIndex < 0 || !this._phases[this._selectedIndex]) return;
+      const overrides = {};
+      const rows = document.querySelectorAll(".ce-agent-override-row");
+      rows.forEach((row) => {
+        const agentId = row.dataset.agent;
+        const preset = row.querySelector('[data-role="preset"]')?.value || "";
+        const custom = row.querySelector('[data-role="custom"]')?.value || "";
+        const tokensText =
+          row.querySelector('[data-role="tokens"]')?.value || "";
+        const tokens = this._parseTokens(tokensText);
+        if (preset && preset !== "(no saved prompts detected)") {
+          overrides[agentId] = {
+            source: "preset",
+            presetName: preset,
+            tokens,
+          };
+        } else if (custom.trim()) {
+          overrides[agentId] = {
+            source: "custom",
+            customText: custom.trim(),
+            tokens,
+          };
         }
       });
+      this._phases[this._selectedIndex].agentPromptOverrides = overrides;
+      this._markChanged();
+    };
+    document
+      .querySelectorAll(
+        ".ce-agent-override-row select, .ce-agent-override-row textarea",
+      )
+      .forEach((el) => {
+        el.addEventListener("change", syncAgentOverrides);
+        el.addEventListener("input", syncAgentOverrides);
+      });
+    const refreshPromptsBtn = document.getElementById("ce-refresh-prompts");
+    if (refreshPromptsBtn) {
+      refreshPromptsBtn.addEventListener("click", () => {
+        this._renderEditor();
+      });
+    }
   },
 
   // ---------- Actions ----------
@@ -582,6 +614,30 @@ const CurationEditor = {
       .join("\n");
   },
 
+  _formatTokens(tokens) {
+    if (!Array.isArray(tokens)) return "";
+    return tokens
+      .map((t) => `${t.token || ""}|${t.prefix || ""}|${t.suffix || ""}`)
+      .join("\n");
+  },
+
+  _parseTokens(text) {
+    if (!text || typeof text !== "string") return [];
+    return text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length)
+      .map((l) => {
+        const [token, prefix, suffix] = l.split("|");
+        return {
+          token: token?.trim() || "",
+          prefix: prefix || "",
+          suffix: suffix || "",
+        };
+      })
+      .filter((t) => t.token);
+  },
+
   _renderSavedPromptOptions(selected = "") {
     const prompts = this._getSavedPrompts();
     const opts = prompts.length ? prompts : ["(no saved prompts detected)"];
@@ -599,26 +655,29 @@ const CurationEditor = {
     try {
       const ctx = window?.SillyTavern?.getContext?.();
       if (!ctx) return [];
-      const saved =
-        ctx.chatCompletionPresets || ctx.savedPrompts || ctx.prompts || {};
-      return Object.keys(saved);
+
+      const presetManager = ctx.getPresetManager?.();
+      if (presetManager?.getAllPresets) {
+        const names = presetManager.getAllPresets();
+        if (!names.length) {
+          console.warn(
+            "[Curation Editor] No presets found via ST preset manager.",
+          );
+        }
+        return names;
+      }
+
+      console.warn(
+        "[Curation Editor] ST preset manager not available in context.",
+      );
+      return [];
     } catch (e) {
-      console.warn("[Curation Editor] Failed to read ST saved prompts:", e);
+      console.warn(
+        "[Curation Editor] Failed to read ST saved prompts via preset manager:",
+        e,
+      );
       return [];
     }
-  },
-
-  _formatActionBlocks(blocks) {
-    if (!Array.isArray(blocks)) return "";
-    return blocks
-      .map((b) => {
-        const agents = (b.agents || []).join(", ");
-        const asyncFlag = b.async ? "true" : "false";
-        return `${b.id || ""}|${b.name || ""}|${agents}|${asyncFlag}|${
-          b.prompt || ""
-        }`;
-      })
-      .join("\n");
   },
 
   _escape(text) {

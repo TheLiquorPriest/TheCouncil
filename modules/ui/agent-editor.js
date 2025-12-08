@@ -749,29 +749,29 @@ const AgentEditor = {
   _getSavedPrompts() {
     try {
       const ctx = window?.SillyTavern?.getContext?.();
+
       if (!ctx) return [];
-      // Prefer chat completion presets, then fall back to saved/prompts
-      const saved =
-        ctx.chatCompletionPresets || ctx.savedPrompts || ctx.prompts || {};
-      return Object.keys(saved);
-    } catch (e) {
-      console.warn("[Agent Editor] Failed to read ST saved prompts:", e);
+
+      const presetManager = ctx.getPresetManager?.();
+      if (presetManager?.getAllPresets) {
+        const names = presetManager.getAllPresets();
+        if (!names.length) {
+          console.warn(
+            "[Agent Editor] No presets found via ST preset manager.",
+          );
+        }
+        return names;
+      }
+      console.warn(
+        "[Agent Editor] ST preset manager not available in context.",
+      );
       return [];
-    }
-  },
-
-  _getDefaultTokenOrder() {
-    return ["persona", "character_card", "world_info", "chat_history"];
-  },
-
-  _getSavedPrompts() {
-    try {
-      const ctx = window?.SillyTavern?.getContext?.();
-      if (!ctx) return [];
-      const saved = ctx.savedPrompts || ctx.prompts || {};
-      return Object.keys(saved);
     } catch (e) {
-      console.warn("[Agent Editor] Failed to read ST saved prompts:", e);
+      console.warn(
+        "[Agent Editor] Failed to read ST saved prompts via preset manager:",
+        e,
+      );
+
       return [];
     }
   },

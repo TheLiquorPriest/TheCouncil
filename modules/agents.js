@@ -468,41 +468,74 @@ Focus only on matters within your area of expertise.`;
 
   _buildSystemPrompt(agentId, phase = null, options = {}) {
     const config = this.getAgentConfig(agentId);
-    const override =
+    const overrideRaw =
       options.agentPromptOverrides?.[agentId] ||
       phase?.agentPromptOverrides?.[agentId];
-    let basePrompt = override || config.systemPrompt || "";
 
-    if (
-      !override &&
-      config.systemPromptSource === "st_saved" &&
-      config.systemPromptName
-    ) {
-      const saved = this._resolveSavedPrompt(config.systemPromptName);
-      if (saved) {
-        basePrompt = saved;
+    let basePrompt = "";
+    let tokenSpec = [];
+
+    // Structured overrides: { source: "preset"|"custom", presetName, customText, tokens: [{token,prefix,suffix}] }
+    if (overrideRaw && typeof overrideRaw === "object") {
+      const source = overrideRaw.source || "custom";
+      if (source === "preset" && overrideRaw.presetName) {
+        const saved = this._resolveSavedPrompt(overrideRaw.presetName);
+        if (saved) basePrompt = saved;
+      } else if (source === "custom") {
+        basePrompt = overrideRaw.customText || "";
+      }
+      if (Array.isArray(overrideRaw.tokens)) {
+        tokenSpec = overrideRaw.tokens.map((t) => ({
+          token: t.token,
+          prefix: t.prefix || "",
+          suffix: t.suffix || "",
+        }));
+      }
+    } else if (typeof overrideRaw === "string") {
+      if (overrideRaw.startsWith("saved:")) {
+        const name = overrideRaw.replace("saved:", "").trim();
+        const saved = this._resolveSavedPrompt(name);
+        if (saved) basePrompt = saved;
       } else {
-        console.warn(
-          `[Council Agents] Saved prompt not found: ${config.systemPromptName}`,
-        );
+        basePrompt = overrideRaw;
       }
     }
 
-    const promptTokens = config.promptTokens || {};
-    const order =
-      Array.isArray(config.promptOrder) && config.promptOrder.length
-        ? config.promptOrder
-        : ["persona", "character_card", "world_info", "chat_history"];
+    // Fallback to agent config
+    if (!basePrompt) {
+      if (config.systemPromptSource === "st_saved" && config.systemPromptName) {
+        const saved = this._resolveSavedPrompt(config.systemPromptName);
+        if (saved) {
+          basePrompt = saved;
+        } else {
+          basePrompt = config.systemPrompt || "";
+          console.warn(
+            `[Council Agents] Saved prompt not found: ${config.systemPromptName}`,
+          );
+        }
+      } else {
+        basePrompt = config.systemPrompt || "";
+      }
+    }
 
-    const tokenBlocks = order
+    // Build token list (override tokens > config tokens/order)
+    if (!tokenSpec.length) {
+      const promptTokens = config.promptTokens || {};
+      const order =
+        Array.isArray(config.promptOrder) && config.promptOrder.length
+          ? config.promptOrder
+          : ["persona", "character_card", "world_info", "chat_history"];
+      tokenSpec = order.map((token) => ({
+        token,
+        prefix: (promptTokens[token] || {}).prefix || "",
+        suffix: (promptTokens[token] || {}).suffix || "",
+      }));
+    }
 
-      .map((token) => {
+    const tokenBlocks = tokenSpec
+      .map(({ token, prefix, suffix }) => {
         const resolved = this._resolvePromptToken(token, phase);
         if (!resolved) return null;
-
-        const wrap = promptTokens[token] || {};
-        const prefix = wrap.prefix || "";
-        const suffix = wrap.suffix || "";
         return [prefix, resolved, suffix].filter(Boolean).join("\n");
       })
       .filter(Boolean);
@@ -602,7 +635,22 @@ Focus only on matters within your area of expertise.`;
     try {
       const ctx = window?.SillyTavern?.getContext?.();
       if (!ctx) return null;
-      const presets = ctx?.chatCompletionPresets || {};
+
+      // Prefer ST preset manager
+      const pm = ctx.getPresetManager?.();
+      if (pm?.getCompletionPresetByName) {
+        const preset = pm.getCompletionPresetByName(name);
+        if (preset) return preset;
+      }
+
+      // Fallback to raw preset maps
+      const presets =
+        ctx?.chatCompletionPresets ||
+        ctx?.api_presets ||
+        ctx?.chatPresets ||
+        ctx?.savedPrompts ||
+        ctx?.prompts ||
+        {};
       return presets[name] || null;
     } catch (e) {
       console.warn("[Council Agents] Failed to resolve saved preset:", name, e);
@@ -613,7 +661,34 @@ Focus only on matters within your area of expertise.`;
   _resolveSavedPrompt(name) {
     try {
       const ctx = window?.SillyTavern?.getContext?.();
-      return ctx?.savedPrompts?.[name] || ctx?.prompts?.[name] || null;
+      if (!ctx) return null;
+
+      // Prefer ST preset manager
+      const pm = ctx.getPresetManager?.();
+      if (pm?.getCompletionPresetByName) {
+        const preset = pm.getCompletionPresetByName(name);
+        // Many ST system prompts live under .content or .system
+        if (preset?.content) return preset.content;
+        if (preset?.system) return preset.system;
+        if (typeof preset === "string") return preset;
+      }
+
+      // Fallback to raw maps if present
+      const presets =
+        ctx.chatCompletionPresets ||
+        ctx.api_presets ||
+        ctx.chatPresets ||
+        ctx.savedPrompts ||
+        ctx.prompts ||
+        {};
+      const candidate = presets[name];
+      if (!candidate) return null;
+
+      if (candidate.content) return candidate.content;
+      if (candidate.system) return candidate.system;
+      if (typeof candidate === "string") return candidate;
+
+      return null;
     } catch (e) {
       console.warn("[Council Agents] Failed to resolve saved prompt:", name, e);
       return null;

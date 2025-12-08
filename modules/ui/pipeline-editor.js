@@ -336,6 +336,11 @@ const PipelineEditor = {
 
     const phase = this._phases[this._selectedPhaseIndex];
 
+    // Defensive: ensure agents array exists
+    if (!Array.isArray(phase.agents)) {
+      phase.agents = [];
+    }
+
     const html = `
       <div class="pe-editor-header">
         <input type="text" class="pe-phase-name-input" id="pe-phase-name"
@@ -457,31 +462,48 @@ const PipelineEditor = {
       </div>
 
       <div class="pe-form-group">
-        <label>Agent Prompt Overrides (optional)</label>
-        <textarea class="pe-textarea" id="pe-field-agent-prompts"
-                  placeholder="agent_id: prompt...">${this._escape(this._formatAgentPrompts(phase.agentPromptOverrides))}</textarea>
-        <div class="pe-field-hint">Format: one per line, e.g. "editor_lead: You are the editor..."</div>
-      </div>
-
-      <div class="pe-form-group">
-        <label>Saved Prompt (ST Preset)</label>
-        <div class="pe-row">
-          <div>
-            <label>Pick saved prompt</label>
-            <select class="pe-select" id="pe-field-agent-prompt-select">
-              ${this._renderSavedPromptOptions()}
-            </select>
-          </div>
-          <div>
-            <label>Apply to agent (id)</label>
-            <input type="text" class="pe-input" id="pe-field-agent-prompt-target"
-                   value="${(phase.agents || [])[0] || ""}" placeholder="agent_id">
-          </div>
+        <label>Agent Prompts (per agent) <button class="pe-btn pe-btn-small" type="button" id="pe-refresh-prompts">↻</button></label>
+        <div class="pe-field-hint">Select a saved ST preset or enter a custom prompt per agent. Tokens: one per line as token|prefix|suffix.</div>
+        <div class="pe-agent-override-list">
+          ${(phase.agents || [])
+            .map((agentId) => {
+              const ov = phase.agentPromptOverrides?.[agentId] || {};
+              const preset = ov.source === "preset" ? ov.presetName || "" : "";
+              const custom =
+                ov.source === "custom"
+                  ? ov.customText || ""
+                  : ov.customText || "";
+              const tokens = this._formatTokens(ov.tokens);
+              return `
+              <div class="pe-agent-override-row" data-agent="${agentId}">
+                <div class="pe-row">
+                  <div>
+                    <label>Agent</label>
+                    <div class="pe-field-hint">${agentId}</div>
+                  </div>
+                  <div>
+                    <label>Preset</label>
+                    <select class="pe-select" data-role="preset">
+                      ${this._renderSavedPromptOptions(preset)}
+                    </select>
+                  </div>
+                  <div>
+                    <label>Custom Prompt</label>
+                    <textarea class="pe-textarea" data-role="custom" placeholder="Custom prompt...">${this._escape(custom)}</textarea>
+                  </div>
+                </div>
+                <div class="pe-row">
+                  <div style="flex:1;">
+                    <label>Tokens (token|prefix|suffix per line)</label>
+                    <textarea class="pe-textarea" data-role="tokens" placeholder="persona||\ncharacter_card||">${tokens}</textarea>
+                  </div>
+                </div>
+              </div>
+            `;
+            })
+            .join("")}
         </div>
-        <div class="pe-field-hint">Select a saved ST chat completion preset and apply it as "saved:prompt_name" to an agent override.</div>
       </div>
-
-
     `;
   },
 
@@ -772,38 +794,52 @@ const PipelineEditor = {
         this._renderPhaseEditor();
       });
 
-    // Agent prompt overrides
-    this._bindInput(
-      "pe-field-agent-prompts",
-      "agentPromptOverrides",
-      this._parseAgentPrompts,
-    );
-
-    // Saved prompt selector -> writes into overrides as saved:<promptName>
-    const promptSelect = document.getElementById(
-      "pe-field-agent-prompt-select",
-    );
-    if (promptSelect) {
-      promptSelect.addEventListener("change", (e) => {
-        const promptName = e.target.value;
-        if (!promptName || promptName === "(no saved prompts detected)") return;
-        const targetInput = document.getElementById(
-          "pe-field-agent-prompt-target",
-        );
-        const agentId = targetInput?.value?.trim();
-        if (!agentId) return;
-
-        const existing = this._parseAgentPrompts(
-          document.getElementById("pe-field-agent-prompts")?.value || "",
-        );
-        existing[agentId] = `saved:${promptName}`;
-        const textarea = document.getElementById("pe-field-agent-prompts");
-        if (textarea) {
-          textarea.value = this._formatAgentPrompts(existing);
-          this._phases[this._selectedPhaseIndex].agentPromptOverrides =
-            existing;
-          this._markChanged();
+    // Agent prompt overrides (per-agent UI)
+    const syncAgentOverrides = () => {
+      if (
+        this._selectedPhaseIndex < 0 ||
+        !this._phases[this._selectedPhaseIndex]
+      )
+        return;
+      const overrides = {};
+      const rows = document.querySelectorAll(".pe-agent-override-row");
+      rows.forEach((row) => {
+        const agentId = row.dataset.agent;
+        const preset = row.querySelector('[data-role="preset"]')?.value || "";
+        const custom = row.querySelector('[data-role="custom"]')?.value || "";
+        const tokensText =
+          row.querySelector('[data-role="tokens"]')?.value || "";
+        const tokens = this._parseTokens(tokensText);
+        if (preset && preset !== "(no saved prompts detected)") {
+          overrides[agentId] = {
+            source: "preset",
+            presetName: preset,
+            tokens,
+          };
+        } else if (custom.trim()) {
+          overrides[agentId] = {
+            source: "custom",
+            customText: custom.trim(),
+            tokens,
+          };
         }
+      });
+      this._phases[this._selectedPhaseIndex].agentPromptOverrides = overrides;
+      this._markChanged();
+    };
+
+    document
+      .querySelectorAll(
+        ".pe-agent-override-row select, .pe-agent-override-row textarea",
+      )
+      .forEach((el) => {
+        el.addEventListener("change", syncAgentOverrides);
+        el.addEventListener("input", syncAgentOverrides);
+      });
+    const refreshPromptsBtn = document.getElementById("pe-refresh-prompts");
+    if (refreshPromptsBtn) {
+      refreshPromptsBtn.addEventListener("click", () => {
+        this._renderPhaseEditor();
       });
     }
 
@@ -982,11 +1018,25 @@ const PipelineEditor = {
     try {
       const ctx = window?.SillyTavern?.getContext?.();
       if (!ctx) return [];
-      const saved =
-        ctx.chatCompletionPresets || ctx.savedPrompts || ctx.prompts || {};
-      return Object.keys(saved);
+      const presetManager = ctx.getPresetManager?.();
+      if (presetManager?.getAllPresets) {
+        const names = presetManager.getAllPresets();
+        if (!names.length) {
+          console.warn(
+            "[Pipeline Editor] No presets found via ST preset manager.",
+          );
+        }
+        return names;
+      }
+      console.warn(
+        "[Pipeline Editor] ST preset manager not available in context.",
+      );
+      return [];
     } catch (e) {
-      console.warn("[Pipeline Editor] Failed to read ST saved prompts:", e);
+      console.warn(
+        "[Pipeline Editor] Failed to read ST saved prompts via preset manager:",
+        e,
+      );
       return [];
     }
   },
@@ -1441,11 +1491,41 @@ const PipelineEditor = {
     return div.innerHTML;
   },
 
+  _parseTokens(text) {
+    if (!text || typeof text !== "string") return [];
+    return text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length)
+      .map((l) => {
+        const [token, prefix, suffix] = l.split("|");
+        return {
+          token: token?.trim() || "",
+          prefix: prefix || "",
+          suffix: suffix || "",
+        };
+      })
+      .filter((t) => t.token);
+  },
+
   /**
+
    * Escape for prompt (alias)
+
    */
+
   _escape(text) {
     return this._escapeHtml(text);
+  },
+
+  /**
+   * Format tokens array into textarea text
+   */
+  _formatTokens(tokens) {
+    if (!Array.isArray(tokens)) return "";
+    return tokens
+      .map((t) => `${t.token || ""}|${t.prefix || ""}|${t.suffix || ""}`)
+      .join("\n");
   },
 
   /**
