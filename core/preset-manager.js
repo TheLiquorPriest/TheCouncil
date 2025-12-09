@@ -90,6 +90,12 @@ const PresetManager = {
    */
   _isLoading: false,
 
+  /**
+   * Last imported agents (for team creation)
+   * @type {Array}
+   */
+  _lastImportedAgents: [],
+
   // ===== INITIALIZATION =====
 
   /**
@@ -420,6 +426,7 @@ const PresetManager = {
       presetId,
       presetName: preset.name,
       agents: { success: false, count: 0 },
+      positions: { success: false, count: 0 },
       teams: { success: false, count: 0 },
       pipeline: { success: false, phaseCount: 0 },
       threads: { success: false, count: 0 },
@@ -427,23 +434,49 @@ const PresetManager = {
     };
 
     try {
-      // Apply agents
+      // Clear existing state first
+      if (options.clearExisting !== false && this._agentsSystem) {
+        this._agentsSystem.clear?.();
+        this._log("debug", "Cleared existing agents system state");
+      }
+
+      // STEP 1: Create agents first (no dependencies)
       if (preset.agents && this._agentsSystem) {
         try {
-          results.agents = await this._applyAgents(preset, options);
+          results.agents = await this._applyAgentsOnly(preset, options);
         } catch (error) {
           results.errors.push(`Agents: ${error.message}`);
           this._log("error", `Failed to apply agents: ${error.message}`);
         }
       }
 
-      // Apply teams
+      // STEP 2: Create teams (empty structure, no members yet)
       if (preset.teams && this._agentsSystem) {
         try {
-          results.teams = await this._applyTeams(preset, options);
+          results.teams = await this._applyTeamsStructure(preset, options);
         } catch (error) {
           results.errors.push(`Teams: ${error.message}`);
           this._log("error", `Failed to apply teams: ${error.message}`);
+        }
+      }
+
+      // STEP 3: Create positions (can now reference teams and agents)
+      if (preset.agents && this._agentsSystem) {
+        try {
+          results.positions = await this._applyPositions(preset, options);
+        } catch (error) {
+          results.errors.push(`Positions: ${error.message}`);
+          this._log("error", `Failed to apply positions: ${error.message}`);
+        }
+      }
+
+      // STEP 4: Update teams with member position IDs
+      if (preset.teams && this._agentsSystem) {
+        try {
+          await this._updateTeamMembers(preset, options);
+        } catch (error) {
+          results.errors.push(`Team members: ${error.message}`);
+          this._log("error", `Failed to update team members: ${error.message}`);
         }
       }
 
@@ -481,65 +514,103 @@ const PresetManager = {
   },
 
   /**
-   * Apply agents from preset
+   * STEP 1: Apply agents only (no positions)
    * @param {Object} preset - Preset object
    * @param {Object} options - Options
    * @returns {Object} Result
    */
-  async _applyAgents(preset, options = {}) {
-    const { clearExisting = true } = options;
-    let count = 0;
+  async _applyAgentsOnly(preset, options = {}) {
+    let agentCount = 0;
 
-    if (clearExisting) {
-      // Clear existing agents
-      this._agentsSystem.clear?.();
-    }
+    // Map category names to team IDs
+    const categoryToTeamId = {
+      executive: null,
+      proseTeam: "prose_team",
+      plotTeam: "plot_team",
+      worldTeam: "world_team",
+      characterTeam: "character_team",
+      environmentTeam: "environment_team",
+      curationTeam: "curation_team",
+    };
 
-    // Flatten agents from all categories
+    // Collect all agents with their metadata
     const allAgents = [];
-    for (const [category, agents] of Object.entries(preset.agents)) {
+
+    for (const [category, agents] of Object.entries(preset.agents || {})) {
       if (Array.isArray(agents)) {
+        const teamId = categoryToTeamId[category] || null;
+
         for (const agent of agents) {
+          const positionType = agent.position || "member";
+          const tier =
+            agent.tier || (positionType.includes("lead") ? "leader" : "member");
+          const actualTier = positionType === "executive" ? "executive" : tier;
+
           allAgents.push({
-            ...agent,
+            id: agent.id,
+            name: agent.name,
+            systemPrompt: agent.systemPrompt || "",
+            description: agent.description || "",
             category,
+            teamId: actualTier === "executive" ? null : teamId,
+            positionType,
+            tier: actualTier,
           });
         }
       }
     }
 
-    // Register each agent
+    // Create all agents
     for (const agent of allAgents) {
       try {
-        this._agentsSystem.addAgent?.(agent);
-        count++;
+        if (typeof this._agentsSystem.createAgent === "function") {
+          this._agentsSystem.createAgent({
+            id: agent.id,
+            name: agent.name,
+            systemPrompt: agent.systemPrompt,
+            description: agent.description,
+          });
+          agentCount++;
+          this._log("debug", `Created agent: ${agent.name} (${agent.id})`);
+        }
       } catch (error) {
-        this._log("warn", `Failed to add agent ${agent.id}: ${error.message}`);
+        this._log(
+          "warn",
+          `Failed to create agent ${agent.id}: ${error.message}`,
+        );
       }
     }
 
-    return { success: true, count };
+    // Store for later steps
+    this._lastImportedAgents = allAgents;
+
+    return { success: true, count: agentCount };
   },
 
   /**
-   * Apply teams from preset
+   * STEP 2: Create team structures (empty, no members yet)
    * @param {Object} preset - Preset object
    * @param {Object} options - Options
    * @returns {Object} Result
    */
-  async _applyTeams(preset, options = {}) {
-    const { clearExisting = true } = options;
+  async _applyTeamsStructure(preset, options = {}) {
     let count = 0;
-
-    if (clearExisting && typeof this._agentsSystem.clearTeams === "function") {
-      this._agentsSystem.clearTeams();
-    }
 
     for (const team of preset.teams || []) {
       try {
         if (typeof this._agentsSystem.createTeam === "function") {
-          this._agentsSystem.createTeam(team);
+          // Create team with empty members - we'll add them after positions exist
+          this._agentsSystem.createTeam({
+            id: team.id,
+            name: team.name,
+            leaderId: team.leaderId,
+            memberIds: [], // Empty for now
+          });
           count++;
+          this._log(
+            "debug",
+            `Created team structure: ${team.name} (${team.id})`,
+          );
         }
       } catch (error) {
         this._log("warn", `Failed to create team ${team.id}: ${error.message}`);
@@ -547,6 +618,128 @@ const PresetManager = {
     }
 
     return { success: true, count };
+  },
+
+  /**
+   * STEP 3: Create positions for each agent
+   * @param {Object} preset - Preset object
+   * @param {Object} options - Options
+   * @returns {Object} Result
+   */
+  async _applyPositions(preset, options = {}) {
+    let positionCount = 0;
+    const allAgents = this._lastImportedAgents || [];
+
+    for (const agent of allAgents) {
+      try {
+        if (typeof this._agentsSystem.createPosition === "function") {
+          const positionData = {
+            id: agent.id,
+            name: agent.name,
+            teamId: agent.teamId,
+            tier: agent.tier,
+            assignedAgentId: agent.id,
+            promptModifiers: {
+              prefix: "",
+              suffix: "",
+              roleDescription: agent.description || "",
+            },
+          };
+
+          this._agentsSystem.createPosition(positionData);
+          positionCount++;
+          this._log(
+            "debug",
+            `Created position: ${agent.name} (${agent.id}) - tier: ${agent.tier}, team: ${agent.teamId || "executive"}`,
+          );
+        }
+      } catch (error) {
+        // Position might already exist (e.g., publisher is mandatory)
+        if (
+          error.message.includes("already exists") &&
+          typeof this._agentsSystem.updatePosition === "function"
+        ) {
+          try {
+            this._agentsSystem.updatePosition(agent.id, {
+              name: agent.name,
+              assignedAgentId: agent.id,
+              teamId: agent.teamId,
+              tier: agent.tier,
+            });
+            positionCount++;
+            this._log("debug", `Updated existing position: ${agent.id}`);
+          } catch (e) {
+            this._log(
+              "debug",
+              `Could not update position ${agent.id}: ${e.message}`,
+            );
+          }
+        } else {
+          this._log("debug", `Position ${agent.id}: ${error.message}`);
+        }
+      }
+    }
+
+    return { success: true, count: positionCount };
+  },
+
+  /**
+   * STEP 4: Update teams with member position IDs
+   * @param {Object} preset - Preset object
+   * @param {Object} options - Options
+   */
+  async _updateTeamMembers(preset, options = {}) {
+    const importedAgents = this._lastImportedAgents || [];
+
+    for (const team of preset.teams || []) {
+      try {
+        // Find member position IDs by position type
+        const memberIds = [];
+        const memberPositionTypes = team.memberPositions || [];
+
+        for (const positionType of memberPositionTypes) {
+          const matchingAgents = importedAgents.filter(
+            (a) => a.positionType === positionType && a.teamId === team.id,
+          );
+          for (const agent of matchingAgents) {
+            if (!memberIds.includes(agent.id)) {
+              memberIds.push(agent.id);
+            }
+          }
+        }
+
+        // Update team with member IDs
+        if (
+          memberIds.length > 0 &&
+          typeof this._agentsSystem.updateTeam === "function"
+        ) {
+          this._agentsSystem.updateTeam(team.id, {
+            memberIds: memberIds,
+          });
+          this._log(
+            "debug",
+            `Updated team ${team.id} with members: ${memberIds.join(", ")}`,
+          );
+        }
+      } catch (error) {
+        this._log(
+          "warn",
+          `Failed to update team members for ${team.id}: ${error.message}`,
+        );
+      }
+    }
+  },
+
+  /**
+   * Format position ID into readable name
+   * @param {string} positionId - Position ID
+   * @returns {string} Formatted name
+   */
+  _formatPositionName(positionId) {
+    return positionId
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   },
 
   /**

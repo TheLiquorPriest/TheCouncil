@@ -1351,6 +1351,16 @@ const PipelineModal = {
     const input = action.input || {};
     const output = action.output || {};
 
+    const actionType = action.actionType || "standard";
+    const actionTypeLabels = {
+      standard: "Standard (Agent-based)",
+      crud_pipeline: "CRUD Pipeline",
+      rag_pipeline: "RAG Pipeline",
+      deliberative_rag: "Deliberative RAG",
+      user_gavel: "User Gavel",
+      system: "System",
+    };
+
     return `
       <div class="council-pipeline-detail-content">
         <div class="council-pipeline-detail-header">
@@ -1368,6 +1378,13 @@ const PipelineModal = {
         <div class="council-pipeline-detail-section">
           <label>Description</label>
           <div class="council-pipeline-detail-value">${this._escapeHtml(action.description || "No description")}</div>
+        </div>
+
+        <div class="council-pipeline-detail-section">
+          <label>Action Type</label>
+          <div class="council-pipeline-detail-value">
+            <span class="council-pipeline-tag council-pipeline-tag-${actionType}">${actionTypeLabels[actionType] || actionType}</span>
+          </div>
         </div>
 
         <div class="council-pipeline-detail-section">
@@ -1419,13 +1436,82 @@ const PipelineModal = {
         </div>
 
         ${
-          action.rag?.enabled
+          action.crudConfig &&
+          (actionType === "crud_pipeline" || action.crudConfig.pipelineId)
+            ? `
+          <div class="council-pipeline-detail-section">
+            <label>CRUD Configuration</label>
+            <div class="council-pipeline-curation-detail">
+              <div><strong>Pipeline:</strong> ${action.crudConfig.pipelineId || "None"}</div>
+              <div><strong>Operation:</strong> ${action.crudConfig.operation || "read"}</div>
+              <div><strong>Target Store:</strong> ${action.crudConfig.storeId || "None"}</div>
+            </div>
+          </div>
+        `
+            : ""
+        }
+
+        ${
+          action.ragConfig &&
+          (actionType === "rag_pipeline" ||
+            action.rag?.enabled ||
+            action.ragConfig.pipelineId)
             ? `
           <div class="council-pipeline-detail-section">
             <label>RAG Configuration</label>
-            <div class="council-pipeline-rag-config">
-              <div><strong>Pipeline:</strong> ${action.rag.ragPipelineId || "Default"}</div>
-              <div><strong>Result Target:</strong> ${action.rag.resultTarget || "context"}</div>
+            <div class="council-pipeline-curation-detail">
+              <div><strong>Pipeline:</strong> ${action.ragConfig.pipelineId || "Default Search"}</div>
+              <div><strong>Query Source:</strong> ${action.ragConfig.querySource || "input"}</div>
+              ${action.ragConfig.queryTemplate ? `<div><strong>Query Template:</strong> <code>${this._escapeHtml(action.ragConfig.queryTemplate)}</code></div>` : ""}
+              <div><strong>Result Target:</strong> ${action.ragConfig.resultTarget || "context"}</div>
+              <div><strong>Max Results:</strong> ${action.ragConfig.maxResults || 5}</div>
+            </div>
+          </div>
+        `
+            : ""
+        }
+
+        ${
+          action.deliberativeConfig && actionType === "deliberative_rag"
+            ? `
+          <div class="council-pipeline-detail-section">
+            <label>Deliberative RAG Configuration</label>
+            <div class="council-pipeline-curation-detail">
+              <div><strong>Query Participants:</strong> ${(action.deliberativeConfig.queryParticipants || []).join(", ") || "None"}</div>
+              <div><strong>Curation Positions:</strong> ${(action.deliberativeConfig.curationPositions || []).join(", ") || "None"}</div>
+              <div><strong>Max Rounds:</strong> ${action.deliberativeConfig.maxRounds || 3}</div>
+              <div><strong>Consolidation:</strong> ${action.deliberativeConfig.consolidation || "synthesize"}</div>
+              ${(action.deliberativeConfig.availableRAGPipelines || []).length > 0 ? `<div><strong>Available RAG Pipelines:</strong> ${action.deliberativeConfig.availableRAGPipelines.join(", ")}</div>` : ""}
+              ${action.deliberativeConfig.curationPrompt ? `<div><strong>Curation Prompt:</strong> <em>${this._escapeHtml(action.deliberativeConfig.curationPrompt.substring(0, 100))}${action.deliberativeConfig.curationPrompt.length > 100 ? "..." : ""}</em></div>` : ""}
+            </div>
+          </div>
+        `
+            : ""
+        }
+
+        ${
+          action.gavelConfig && actionType === "user_gavel"
+            ? `
+          <div class="council-pipeline-detail-section">
+            <label>User Gavel Configuration</label>
+            <div class="council-pipeline-curation-detail">
+              ${action.gavelConfig.prompt ? `<div><strong>Prompt:</strong> <em>${this._escapeHtml(action.gavelConfig.prompt.substring(0, 100))}${action.gavelConfig.prompt.length > 100 ? "..." : ""}</em></div>` : ""}
+              <div><strong>Editable Fields:</strong> ${(action.gavelConfig.editableFields || []).join(", ") || "All"}</div>
+              <div><strong>Allow Skip:</strong> ${action.gavelConfig.canSkip !== false ? "Yes" : "No"}</div>
+              ${action.gavelConfig.timeout ? `<div><strong>Timeout:</strong> ${action.gavelConfig.timeout}ms</div>` : ""}
+            </div>
+          </div>
+        `
+            : ""
+        }
+
+        ${
+          action.rag?.enabled && !action.ragConfig
+            ? `
+          <div class="council-pipeline-detail-section">
+            <label>RAG Enabled</label>
+            <div class="council-pipeline-curation-detail">
+              <div><strong>Status:</strong> Enabled (using default configuration)</div>
             </div>
           </div>
         `
@@ -2068,6 +2154,7 @@ const PipelineModal = {
         <div class="council-pipeline-dialog">
           <div class="council-pipeline-dialog-header">
             <h3>Pipeline Input</h3>
+            <button class="council-pipeline-dialog-close" data-dialog="cancel">✕</button>
           </div>
           <div class="council-pipeline-dialog-content">
             <label>Enter your message or prompt:</label>
@@ -2089,12 +2176,27 @@ const PipelineModal = {
         dialog.remove();
       };
 
-      dialog
-        .querySelector('[data-dialog="cancel"]')
-        .addEventListener("click", () => {
+      // Bind close to ALL cancel buttons and close buttons
+      dialog.querySelectorAll('[data-dialog="cancel"]').forEach((btn) =>
+        btn.addEventListener("click", () => {
           cleanup();
           resolve(null);
-        });
+        }),
+      );
+      dialog.querySelectorAll(".council-pipeline-dialog-close").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          cleanup();
+          resolve(null);
+        }),
+      );
+
+      // Click outside to close
+      dialog.addEventListener("click", (e) => {
+        if (e.target === dialog) {
+          cleanup();
+          resolve(null);
+        }
+      });
 
       dialog
         .querySelector('[data-dialog="confirm"]')
@@ -2179,6 +2281,7 @@ const PipelineModal = {
       <div class="council-pipeline-dialog council-pipeline-dialog-large">
         <div class="council-pipeline-dialog-header">
           <h3>${isEdit ? "Edit Pipeline" : "Create Pipeline"}</h3>
+          <button class="council-pipeline-dialog-close" data-dialog="cancel">✕</button>
         </div>
         <div class="council-pipeline-dialog-content">
           <div class="council-pipeline-form-group">
@@ -2214,9 +2317,18 @@ const PipelineModal = {
 
     const cleanup = () => dialog.remove();
 
+    // Bind close to ALL cancel buttons and close buttons
     dialog
-      .querySelector('[data-dialog="cancel"]')
-      .addEventListener("click", cleanup);
+      .querySelectorAll('[data-dialog="cancel"]')
+      .forEach((btn) => btn.addEventListener("click", cleanup));
+    dialog
+      .querySelectorAll(".council-pipeline-dialog-close")
+      .forEach((btn) => btn.addEventListener("click", cleanup));
+
+    // Click outside to close
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) cleanup();
+    });
 
     dialog
       .querySelector('[data-dialog="save"]')
@@ -2494,6 +2606,7 @@ const PipelineModal = {
       <div class="council-pipeline-dialog council-pipeline-dialog-large">
         <div class="council-pipeline-dialog-header">
           <h3>${isEdit ? "Edit Phase" : "Create Phase"}</h3>
+          <button class="council-pipeline-dialog-close" data-dialog="cancel">✕</button>
         </div>
         <div class="council-pipeline-dialog-content">
           <div class="council-pipeline-form-group">
@@ -2537,9 +2650,18 @@ const PipelineModal = {
 
     const cleanup = () => dialog.remove();
 
+    // Bind close to ALL cancel buttons and close buttons
     dialog
-      .querySelector('[data-dialog="cancel"]')
-      .addEventListener("click", cleanup);
+      .querySelectorAll('[data-dialog="cancel"]')
+      .forEach((btn) => btn.addEventListener("click", cleanup));
+    dialog
+      .querySelectorAll(".council-pipeline-dialog-close")
+      .forEach((btn) => btn.addEventListener("click", cleanup));
+
+    // Click outside to close
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) cleanup();
+    });
 
     dialog
       .querySelector('[data-dialog="save"]')
@@ -2662,6 +2784,7 @@ const PipelineModal = {
         <div class="council-pipeline-dialog-content council-pipeline-dialog-scrollable">
           <div class="council-pipeline-dialog-tabs">
             <button class="council-pipeline-dialog-tab active" data-tab="basic">📝 Basic</button>
+            <button class="council-pipeline-dialog-tab" data-tab="curation">🗃️ Curation</button>
             <button class="council-pipeline-dialog-tab" data-tab="participants">👥 Participants</button>
             <button class="council-pipeline-dialog-tab" data-tab="context">📥 Context & I/O</button>
             <button class="council-pipeline-dialog-tab" data-tab="prompt">✏️ Prompt</button>
@@ -2675,6 +2798,18 @@ const PipelineModal = {
             <div class="council-pipeline-form-group">
               <label>Description</label>
               <textarea class="council-pipeline-input" data-field="description" rows="2">${this._escapeHtml(action?.description || "")}</textarea>
+            </div>
+            <div class="council-pipeline-form-group">
+              <label>Action Type</label>
+              <select class="council-pipeline-input" data-field="actionType">
+                <option value="standard" ${(action?.actionType || "standard") === "standard" ? "selected" : ""}>Standard (Agent-based)</option>
+                <option value="crud_pipeline" ${action?.actionType === "crud_pipeline" ? "selected" : ""}>CRUD Pipeline</option>
+                <option value="rag_pipeline" ${action?.actionType === "rag_pipeline" ? "selected" : ""}>RAG Pipeline</option>
+                <option value="deliberative_rag" ${action?.actionType === "deliberative_rag" ? "selected" : ""}>Deliberative RAG</option>
+                <option value="user_gavel" ${action?.actionType === "user_gavel" ? "selected" : ""}>User Gavel (Review Point)</option>
+                <option value="system" ${action?.actionType === "system" ? "selected" : ""}>System (No LLM)</option>
+              </select>
+              <p class="council-pipeline-form-hint">Select action type to configure Curation integrations in the Curation tab.</p>
             </div>
 
             <h4 class="council-pipeline-section-title">Execution Settings</h4>
@@ -2708,6 +2843,157 @@ const PipelineModal = {
             </div>
           </div>
 
+          <div class="council-pipeline-dialog-tab-content" data-tab-content="curation" style="display: none;">
+            <div class="council-pipeline-curation-config">
+              <p class="council-pipeline-form-hint council-pipeline-curation-hint">
+                Configure Curation system integrations for this action. Settings here are used when Action Type is set to a Curation type.
+              </p>
+
+              <!-- CRUD Pipeline Configuration -->
+              <div class="council-pipeline-curation-section" data-curation-type="crud">
+                <h4 class="council-pipeline-section-title">🗄️ CRUD Pipeline Configuration</h4>
+                <p class="council-pipeline-form-hint">Execute data operations on Curation stores.</p>
+                <div class="council-pipeline-form-row">
+                  <div class="council-pipeline-form-group">
+                    <label>CRUD Pipeline</label>
+                    <select class="council-pipeline-input" data-field="crudPipelineId">
+                      <option value="">-- Select Pipeline --</option>
+                      ${this._getCRUDPipelineOptions(action?.crudConfig?.pipelineId)}
+                    </select>
+                  </div>
+                  <div class="council-pipeline-form-group">
+                    <label>Operation</label>
+                    <select class="council-pipeline-input" data-field="crudOperation">
+                      <option value="create" ${action?.crudConfig?.operation === "create" ? "selected" : ""}>Create</option>
+                      <option value="read" ${action?.crudConfig?.operation === "read" ? "selected" : ""}>Read</option>
+                      <option value="update" ${action?.crudConfig?.operation === "update" ? "selected" : ""}>Update</option>
+                      <option value="delete" ${action?.crudConfig?.operation === "delete" ? "selected" : ""}>Delete</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="council-pipeline-form-group">
+                  <label>Target Store</label>
+                  <select class="council-pipeline-input" data-field="crudStoreId">
+                    <option value="">-- Select Store --</option>
+                    ${this._getStoreOptions(action?.crudConfig?.storeId)}
+                  </select>
+                </div>
+              </div>
+
+              <!-- RAG Pipeline Configuration -->
+              <div class="council-pipeline-curation-section" data-curation-type="rag">
+                <h4 class="council-pipeline-section-title">🔍 RAG Pipeline Configuration</h4>
+                <p class="council-pipeline-form-hint">Retrieve relevant context from Curation stores.</p>
+                <div class="council-pipeline-form-group">
+                  <label>RAG Pipeline</label>
+                  <select class="council-pipeline-input" data-field="ragPipelineId">
+                    <option value="">-- Default Search --</option>
+                    ${this._getRAGPipelineOptions(action?.ragConfig?.pipelineId)}
+                  </select>
+                </div>
+                <div class="council-pipeline-form-group">
+                  <label>Query Source</label>
+                  <select class="council-pipeline-input" data-field="ragQuerySource">
+                    <option value="input" ${(action?.ragConfig?.querySource || "input") === "input" ? "selected" : ""}>Action Input</option>
+                    <option value="template" ${action?.ragConfig?.querySource === "template" ? "selected" : ""}>Query Template</option>
+                    <option value="previousOutput" ${action?.ragConfig?.querySource === "previousOutput" ? "selected" : ""}>Previous Action Output</option>
+                  </select>
+                </div>
+                <div class="council-pipeline-form-group">
+                  <label>Query Template</label>
+                  <textarea class="council-pipeline-input" data-field="ragQueryTemplate" rows="2" placeholder="{{input}}">${this._escapeHtml(action?.ragConfig?.queryTemplate || "{{input}}")}</textarea>
+                </div>
+                <div class="council-pipeline-form-row">
+                  <div class="council-pipeline-form-group">
+                    <label>Result Target</label>
+                    <select class="council-pipeline-input" data-field="ragResultTarget">
+                      <option value="context" ${(action?.ragConfig?.resultTarget || "context") === "context" ? "selected" : ""}>Context Variable</option>
+                      <option value="output" ${action?.ragConfig?.resultTarget === "output" ? "selected" : ""}>Action Output</option>
+                      <option value="prompt" ${action?.ragConfig?.resultTarget === "prompt" ? "selected" : ""}>Inject into Prompt</option>
+                    </select>
+                  </div>
+                  <div class="council-pipeline-form-group">
+                    <label>Max Results</label>
+                    <input type="number" class="council-pipeline-input" data-field="ragMaxResults" value="${action?.ragConfig?.maxResults || 5}" min="1" max="20">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Deliberative RAG Configuration -->
+              <div class="council-pipeline-curation-section" data-curation-type="deliberative">
+                <h4 class="council-pipeline-section-title">🤔 Deliberative RAG Configuration</h4>
+                <p class="council-pipeline-form-hint">Interactive multi-round Q&A with the Curation team for complex context gathering.</p>
+                <div class="council-pipeline-form-group">
+                  <label>Query Participants</label>
+                  <input type="text" class="council-pipeline-input" data-field="deliberativeQueryParticipants"
+                         value="${this._escapeHtml((action?.deliberativeConfig?.queryParticipants || []).join(", "))}"
+                         placeholder="publisher, editor (comma-separated position IDs)">
+                  <p class="council-pipeline-form-hint">Positions that can ask questions to the Curation team.</p>
+                </div>
+                <div class="council-pipeline-form-group">
+                  <label>Curation Positions</label>
+                  <input type="text" class="council-pipeline-input" data-field="deliberativeCurationPositions"
+                         value="${this._escapeHtml((action?.deliberativeConfig?.curationPositions || []).join(", "))}"
+                         placeholder="archivist, story_topologist (comma-separated position IDs)">
+                  <p class="council-pipeline-form-hint">Curation team positions that respond to queries.</p>
+                </div>
+                <div class="council-pipeline-form-row">
+                  <div class="council-pipeline-form-group">
+                    <label>Max Rounds</label>
+                    <input type="number" class="council-pipeline-input" data-field="deliberativeMaxRounds" value="${action?.deliberativeConfig?.maxRounds || 3}" min="1" max="10">
+                  </div>
+                  <div class="council-pipeline-form-group">
+                    <label>Consolidation</label>
+                    <select class="council-pipeline-input" data-field="deliberativeConsolidation">
+                      <option value="synthesize" ${(action?.deliberativeConfig?.consolidation || "synthesize") === "synthesize" ? "selected" : ""}>Synthesize</option>
+                      <option value="last" ${action?.deliberativeConfig?.consolidation === "last" ? "selected" : ""}>Last Response</option>
+                      <option value="merge" ${action?.deliberativeConfig?.consolidation === "merge" ? "selected" : ""}>Merge All</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="council-pipeline-form-group">
+                  <label>Available RAG Pipelines</label>
+                  <input type="text" class="council-pipeline-input" data-field="deliberativeRAGPipelines"
+                         value="${this._escapeHtml((action?.deliberativeConfig?.availableRAGPipelines || []).join(", "))}"
+                         placeholder="characters, locations, plot (comma-separated pipeline IDs)">
+                  <p class="council-pipeline-form-hint">RAG pipelines available to Curation team during deliberation.</p>
+                </div>
+                <div class="council-pipeline-form-group">
+                  <label>Curation Prompt</label>
+                  <textarea class="council-pipeline-input" data-field="deliberativeCurationPrompt" rows="3" placeholder="Instructions for the Curation team...">${this._escapeHtml(action?.deliberativeConfig?.curationPrompt || "")}</textarea>
+                </div>
+              </div>
+
+              <!-- User Gavel Configuration -->
+              <div class="council-pipeline-curation-section" data-curation-type="gavel">
+                <h4 class="council-pipeline-section-title">⚖️ User Gavel Configuration</h4>
+                <p class="council-pipeline-form-hint">Pause for user review and approval.</p>
+                <div class="council-pipeline-form-group">
+                  <label>Gavel Prompt</label>
+                  <textarea class="council-pipeline-input" data-field="gavelPrompt" rows="3" placeholder="Please review the output and make any necessary edits...">${this._escapeHtml(action?.gavelConfig?.prompt || "")}</textarea>
+                </div>
+                <div class="council-pipeline-form-group">
+                  <label>Editable Fields</label>
+                  <input type="text" class="council-pipeline-input" data-field="gavelEditableFields"
+                         value="${this._escapeHtml((action?.gavelConfig?.editableFields || []).join(", "))}"
+                         placeholder="output, summary (comma-separated field names)">
+                </div>
+                <div class="council-pipeline-form-row">
+                  <div class="council-pipeline-form-group">
+                    <label>
+                      <input type="checkbox" data-field="gavelCanSkip" ${action?.gavelConfig?.canSkip !== false ? "checked" : ""}>
+                      Allow Skip
+                    </label>
+                  </div>
+                  <div class="council-pipeline-form-group">
+                    <label>Timeout (ms)</label>
+                    <input type="number" class="council-pipeline-input" data-field="gavelTimeout" value="${action?.gavelConfig?.timeout || 0}" min="0" placeholder="0 = no timeout">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="council-pipeline-dialog-tab-content" data-tab-content="participants" style="display: none;">
             <div class="council-pipeline-participant-selector-container" data-component="participants">
               <!-- ParticipantSelector will be rendered here -->
@@ -2733,6 +3019,7 @@ const PipelineModal = {
                 <input type="checkbox" data-field="ragEnabled" ${action?.rag?.enabled ? "checked" : ""}>
                 Enable RAG (Retrieval-Augmented Generation)
               </label>
+              <p class="council-pipeline-form-hint">When enabled, uses the RAG configuration from the Curation tab.</p>
             </div>
           </div>
         </div>
@@ -2831,6 +3118,30 @@ const PipelineModal = {
       `;
     }
 
+    // Setup action type change handler to show/hide curation sections
+    const actionTypeSelect = dialog.querySelector('[data-field="actionType"]');
+    if (actionTypeSelect) {
+      const updateCurationSections = () => {
+        const type = actionTypeSelect.value;
+        const sections = dialog.querySelectorAll(
+          ".council-pipeline-curation-section",
+        );
+        sections.forEach((section) => {
+          const sectionType = section.dataset.curationType;
+          const shouldShow =
+            (type === "crud_pipeline" && sectionType === "crud") ||
+            (type === "rag_pipeline" && sectionType === "rag") ||
+            (type === "deliberative_rag" && sectionType === "deliberative") ||
+            (type === "user_gavel" && sectionType === "gavel") ||
+            type === "standard"; // Show all for standard to allow RAG integration
+          section.style.display = shouldShow ? "" : "none";
+        });
+      };
+      actionTypeSelect.addEventListener("change", updateCurationSections);
+      // Initial update
+      updateCurationSections();
+    }
+
     // Cleanup function
     const cleanup = () => {
       if (this._participantSelectorInstance) {
@@ -2844,13 +3155,13 @@ const PipelineModal = {
       dialog.remove();
     };
 
+    // Bind close to ALL cancel buttons and close buttons
     dialog
-      .querySelector('[data-dialog="cancel"]')
-      .addEventListener("click", cleanup);
-
+      .querySelectorAll('[data-dialog="cancel"]')
+      .forEach((btn) => btn.addEventListener("click", cleanup));
     dialog
-      .querySelector(".council-pipeline-dialog-close")
-      ?.addEventListener("click", cleanup);
+      .querySelectorAll(".council-pipeline-dialog-close")
+      .forEach((btn) => btn.addEventListener("click", cleanup));
 
     dialog.addEventListener("click", (e) => {
       if (e.target === dialog) cleanup();
@@ -2907,8 +3218,101 @@ const PipelineModal = {
           };
         }
 
+        // Get action type
+        const actionType =
+          dialog.querySelector('[data-field="actionType"]')?.value ||
+          "standard";
+
+        // Get CRUD config
+        const crudConfig = {
+          pipelineId:
+            dialog.querySelector('[data-field="crudPipelineId"]')?.value ||
+            null,
+          operation:
+            dialog.querySelector('[data-field="crudOperation"]')?.value ||
+            "read",
+          storeId:
+            dialog.querySelector('[data-field="crudStoreId"]')?.value || null,
+        };
+
+        // Get RAG config
+        const ragConfig = {
+          pipelineId:
+            dialog.querySelector('[data-field="ragPipelineId"]')?.value || null,
+          querySource:
+            dialog.querySelector('[data-field="ragQuerySource"]')?.value ||
+            "input",
+          queryTemplate:
+            dialog.querySelector('[data-field="ragQueryTemplate"]')?.value ||
+            "{{input}}",
+          resultTarget:
+            dialog.querySelector('[data-field="ragResultTarget"]')?.value ||
+            "context",
+          maxResults:
+            parseInt(
+              dialog.querySelector('[data-field="ragMaxResults"]')?.value,
+            ) || 5,
+        };
+
+        // Get Deliberative RAG config
+        const deliberativeConfig = {
+          queryParticipants: (
+            dialog.querySelector('[data-field="deliberativeQueryParticipants"]')
+              ?.value || ""
+          )
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          curationPositions: (
+            dialog.querySelector('[data-field="deliberativeCurationPositions"]')
+              ?.value || ""
+          )
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          maxRounds:
+            parseInt(
+              dialog.querySelector('[data-field="deliberativeMaxRounds"]')
+                ?.value,
+            ) || 3,
+          consolidation:
+            dialog.querySelector('[data-field="deliberativeConsolidation"]')
+              ?.value || "synthesize",
+          availableRAGPipelines: (
+            dialog.querySelector('[data-field="deliberativeRAGPipelines"]')
+              ?.value || ""
+          )
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          curationPrompt:
+            dialog.querySelector('[data-field="deliberativeCurationPrompt"]')
+              ?.value || "",
+        };
+
+        // Get Gavel config
+        const gavelConfig = {
+          prompt:
+            dialog.querySelector('[data-field="gavelPrompt"]')?.value || "",
+          editableFields: (
+            dialog.querySelector('[data-field="gavelEditableFields"]')?.value ||
+            ""
+          )
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          canSkip:
+            dialog.querySelector('[data-field="gavelCanSkip"]')?.checked !==
+            false,
+          timeout:
+            parseInt(
+              dialog.querySelector('[data-field="gavelTimeout"]')?.value,
+            ) || 0,
+        };
+
         const data = {
           name,
+          actionType,
           description: dialog
             .querySelector('[data-field="description"]')
             .value.trim(),
@@ -2941,6 +3345,20 @@ const PipelineModal = {
               dialog.querySelector('[data-field="ragEnabled"]')?.checked ||
               false,
           },
+          // Curation configs - included based on action type
+          crudConfig:
+            actionType === "crud_pipeline" || actionType === "standard"
+              ? crudConfig
+              : null,
+          ragConfig:
+            actionType === "rag_pipeline" ||
+            actionType === "standard" ||
+            actionType === "deliberative_rag"
+              ? ragConfig
+              : null,
+          deliberativeConfig:
+            actionType === "deliberative_rag" ? deliberativeConfig : null,
+          gavelConfig: actionType === "user_gavel" ? gavelConfig : null,
         };
 
         try {
@@ -3960,6 +4378,40 @@ const PipelineModal = {
         font-style: italic;
       }
 
+      /* Curation Configuration */
+      .council-pipeline-curation-config {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .council-pipeline-curation-hint {
+        background: rgba(74, 144, 217, 0.1);
+        border: 1px solid rgba(74, 144, 217, 0.3);
+        border-radius: 6px;
+        padding: 10px 12px;
+        margin-bottom: 8px;
+      }
+
+      .council-pipeline-curation-section {
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid var(--SmartThemeBorderColor, #333);
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      .council-pipeline-curation-section h4 {
+        margin-top: 0;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--SmartThemeBorderColor, #333);
+      }
+
+      .council-pipeline-curation-section .council-pipeline-form-hint {
+        margin-top: -8px;
+        margin-bottom: 12px;
+      }
+
       /* Prompt Preview */
       .council-pipeline-prompt-preview {
         background: rgba(0, 0, 0, 0.3);
@@ -4084,6 +4536,49 @@ const PipelineModal = {
         font-size: 0.9em;
       }
 
+      /* Curation detail display */
+      .council-pipeline-curation-detail {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 6px;
+        padding: 10px 12px;
+      }
+      .council-pipeline-curation-detail > div {
+        margin-bottom: 4px;
+      }
+      .council-pipeline-curation-detail > div:last-child {
+        margin-bottom: 0;
+      }
+      .council-pipeline-curation-detail code {
+        background: rgba(0, 0, 0, 0.3);
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: var(--monoFontFamily, monospace);
+        font-size: 0.9em;
+      }
+      .council-pipeline-curation-detail em {
+        color: var(--SmartThemeBodyColor, #aaa);
+      }
+
+      /* Action type tags */
+      .council-pipeline-tag-standard {
+        background: rgba(74, 144, 217, 0.3);
+      }
+      .council-pipeline-tag-crud_pipeline {
+        background: rgba(76, 175, 80, 0.3);
+      }
+      .council-pipeline-tag-rag_pipeline {
+        background: rgba(156, 39, 176, 0.3);
+      }
+      .council-pipeline-tag-deliberative_rag {
+        background: rgba(255, 152, 0, 0.3);
+      }
+      .council-pipeline-tag-user_gavel {
+        background: rgba(233, 30, 99, 0.3);
+      }
+      .council-pipeline-tag-system {
+        background: rgba(96, 125, 139, 0.3);
+      }
+
       .council-pipeline-detail-meta {
         display: flex;
         flex-direction: column;
@@ -4093,6 +4588,60 @@ const PipelineModal = {
       }
     `;
     document.head.appendChild(style);
+  },
+
+  /**
+   * Get CRUD pipeline options HTML
+   * @param {string} selectedId - Currently selected pipeline ID
+   * @returns {string} Options HTML
+   */
+  _getCRUDPipelineOptions(selectedId) {
+    const curationSystem = window.CurationSystem;
+    if (!curationSystem) return "";
+
+    const pipelines = curationSystem.getAllCRUDPipelines?.() || [];
+    return pipelines
+      .map(
+        (p) =>
+          `<option value="${p.id}" ${p.id === selectedId ? "selected" : ""}>${this._escapeHtml(p.name || p.id)}</option>`,
+      )
+      .join("");
+  },
+
+  /**
+   * Get RAG pipeline options HTML
+   * @param {string} selectedId - Currently selected pipeline ID
+   * @returns {string} Options HTML
+   */
+  _getRAGPipelineOptions(selectedId) {
+    const curationSystem = window.CurationSystem;
+    if (!curationSystem) return "";
+
+    const pipelines = curationSystem.getAllRAGPipelines?.() || [];
+    return pipelines
+      .map(
+        (p) =>
+          `<option value="${p.id}" ${p.id === selectedId ? "selected" : ""}>${this._escapeHtml(p.name || p.id)}</option>`,
+      )
+      .join("");
+  },
+
+  /**
+   * Get store options HTML
+   * @param {string} selectedId - Currently selected store ID
+   * @returns {string} Options HTML
+   */
+  _getStoreOptions(selectedId) {
+    const curationSystem = window.CurationSystem;
+    if (!curationSystem) return "";
+
+    const stores = curationSystem.getAllStoreSchemas?.() || [];
+    return stores
+      .map(
+        (s) =>
+          `<option value="${s.id}" ${s.id === selectedId ? "selected" : ""}>${this._escapeHtml(s.name || s.id)}</option>`,
+      )
+      .join("");
   },
 
   // ===== UTILITIES =====
