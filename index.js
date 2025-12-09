@@ -25,6 +25,7 @@
     AgentsSystem: null,
     CurationSystem: null,
     PipelineSystem: null,
+    PresetManager: null,
 
     // Support Modules
     ContextManager: null,
@@ -144,6 +145,7 @@
       "core/output-manager.js",
       "core/thread-manager.js",
       "core/pipeline-system.js",
+      "core/preset-manager.js",
 
       // UI Components
       "ui/components/prompt-builder.js",
@@ -184,6 +186,7 @@
     Systems.ContextManager = window.ContextManager || null;
     Systems.OutputManager = window.OutputManager || null;
     Systems.ThreadManager = window.ThreadManager || null;
+    Systems.PresetManager = window.TheCouncilPresetManager || null;
 
     Systems.AgentsModal = window.AgentsModal || null;
     Systems.CurationModal = window.CurationModal || null;
@@ -205,6 +208,7 @@
       AgentsSystem: !!Systems.AgentsSystem,
       CurationSystem: !!Systems.CurationSystem,
       PipelineSystem: !!Systems.PipelineSystem,
+      PresetManager: !!Systems.PresetManager,
       ContextManager: !!Systems.ContextManager,
       OutputManager: !!Systems.OutputManager,
       ThreadManager: !!Systems.ThreadManager,
@@ -319,6 +323,28 @@
       logger.log("info", "PipelineSystem initialized");
     }
 
+    // Initialize Preset Manager (depends on all core systems)
+    if (Systems.PresetManager) {
+      Systems.PresetManager.init({
+        agentsSystem: Systems.AgentsSystem,
+        pipelineSystem: Systems.PipelineSystem,
+        curationSystem: Systems.CurationSystem,
+        threadManager: Systems.ThreadManager,
+        logger: Systems.Logger,
+        extensionPath: EXTENSION_PATH,
+      });
+      logger.log("info", "PresetManager initialized");
+
+      // Discover available presets (non-blocking)
+      Systems.PresetManager.discoverPresets()
+        .then((presets) => {
+          logger.log("info", `Discovered ${presets.length} preset(s)`);
+        })
+        .catch((err) => {
+          logger.log("warn", `Preset discovery failed: ${err.message}`);
+        });
+    }
+
     // Initialize UI Components
     if (Systems.PromptBuilder) {
       Systems.PromptBuilder.init({
@@ -383,6 +409,11 @@
     if (Systems.PipelineModal) {
       Systems.PipelineModal.init({
         pipelineSystem: Systems.PipelineSystem,
+        presetManager: Systems.PresetManager,
+        agentsSystem: Systems.AgentsSystem,
+        contextManager: Systems.ContextManager,
+        outputManager: Systems.OutputManager,
+        threadManager: Systems.ThreadManager,
         logger: Systems.Logger,
       });
     }

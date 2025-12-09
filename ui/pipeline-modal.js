@@ -28,7 +28,7 @@ const PipelineModal = {
    * Current active tab
    * @type {string}
    */
-  _activeTab: "pipelines",
+  _activeTab: "presets",
 
   /**
    * Currently selected pipeline
@@ -65,6 +65,12 @@ const PipelineModal = {
    * @type {Object|null}
    */
   _pipelineSystem: null,
+
+  /**
+   * Reference to PresetManager
+   * @type {Object|null}
+   */
+  _presetManager: null,
 
   /**
    * Reference to AgentsSystem
@@ -159,6 +165,8 @@ const PipelineModal = {
     }
 
     this._pipelineSystem = options.pipelineSystem;
+    this._presetManager =
+      options.presetManager || window.TheCouncilPresetManager;
     this._agentsSystem = options.agentsSystem;
     this._contextManager = options.contextManager;
     this._outputManager = options.outputManager;
@@ -292,7 +300,10 @@ const PipelineModal = {
         </div>
 
         <div class="council-pipeline-tabs">
-          <button class="council-pipeline-tab active" data-tab="pipelines">
+          <button class="council-pipeline-tab active" data-tab="presets">
+            📦 Presets
+          </button>
+          <button class="council-pipeline-tab" data-tab="pipelines">
             📋 Pipelines
           </button>
           <button class="council-pipeline-tab" data-tab="phases">
@@ -601,9 +612,10 @@ const PipelineModal = {
    * Refresh current tab content
    */
   _refreshCurrentTab() {
-    if (!this._isVisible) return;
-
     switch (this._activeTab) {
+      case "presets":
+        this._renderPresetsTab();
+        break;
       case "pipelines":
         this._renderPipelinesTab();
         break;
@@ -622,8 +634,6 @@ const PipelineModal = {
       case "outputs":
         this._renderOutputsTab();
         break;
-      default:
-        this._renderPipelinesTab();
     }
   },
 
@@ -632,6 +642,241 @@ const PipelineModal = {
   /**
    * Render Pipelines tab
    */
+  /**
+   * Render Presets tab
+   */
+  _renderPresetsTab() {
+    const presetManager = this._presetManager || window.TheCouncilPresetManager;
+    const presets = presetManager?.getAllPresets() || [];
+    const activePresetId = presetManager?.getActivePresetId();
+
+    let html = `
+      <div class="council-pipeline-presets-tab">
+        <div class="council-pipeline-toolbar">
+          <button class="council-pipeline-btn council-pipeline-btn-primary" data-action="discover-presets">
+            🔄 Refresh Presets
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-action="import-preset">
+            📥 Import Preset
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-action="create-preset-from-state">
+            ➕ Create from Current
+          </button>
+        </div>
+
+        <div class="council-pipeline-presets-info">
+          <p>Unified presets contain complete configurations including agents, teams, pipeline phases, and threads.</p>
+        </div>
+
+        <div class="council-pipeline-list-container">
+          <div class="council-pipeline-list council-pipeline-presets-list">
+            ${
+              presets.length === 0
+                ? '<div class="council-pipeline-empty">No presets found. Click "Refresh Presets" to discover available presets.</div>'
+                : presets
+                    .map((p) => this._renderPresetListItem(p, activePresetId))
+                    .join("")
+            }
+          </div>
+
+          <div class="council-pipeline-detail council-pipeline-preset-detail">
+            ${this._renderPresetDetailPlaceholder()}
+          </div>
+        </div>
+      </div>
+    `;
+
+    this._elements.content.innerHTML = html;
+  },
+
+  /**
+   * Render a preset list item
+   * @param {Object} preset - Preset object
+   * @param {string|null} activePresetId - Currently active preset ID
+   * @returns {string} HTML string
+   */
+  _renderPresetListItem(preset, activePresetId) {
+    const isActive = preset.id === activePresetId;
+    const agentCount = this._countPresetAgents(preset);
+    const teamCount = preset.teams?.length || 0;
+    const phaseCount = preset.phases?.length || 0;
+
+    return `
+      <div class="council-pipeline-list-item council-pipeline-preset-item ${isActive ? "active" : ""}"
+           data-preset-id="${preset.id}"
+           data-action="select-preset">
+        <div class="council-pipeline-list-item-header">
+          <span class="council-pipeline-list-item-name">${this._escapeHtml(preset.name)}</span>
+          ${isActive ? '<span class="council-pipeline-preset-active-badge">✓ Active</span>' : ""}
+        </div>
+        <div class="council-pipeline-list-item-meta">
+          <span title="Agents">👤 ${agentCount}</span>
+          <span title="Teams">👥 ${teamCount}</span>
+          <span title="Phases">🎭 ${phaseCount}</span>
+          <span title="Version">v${preset.version || "1.0"}</span>
+        </div>
+        ${
+          preset.description
+            ? `<div class="council-pipeline-list-item-desc">${this._escapeHtml(preset.description.substring(0, 100))}${preset.description.length > 100 ? "..." : ""}</div>`
+            : ""
+        }
+        <div class="council-pipeline-preset-actions">
+          <button class="council-pipeline-btn council-pipeline-btn-sm council-pipeline-btn-primary"
+                  data-action="apply-preset" data-preset-id="${preset.id}"
+                  ${isActive ? "disabled" : ""}>
+            ${isActive ? "Applied" : "Apply"}
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-sm council-pipeline-btn-icon"
+                  data-action="export-preset" data-preset-id="${preset.id}" title="Export">
+            📤
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-sm council-pipeline-btn-icon"
+                  data-action="view-preset-detail" data-preset-id="${preset.id}" title="View Details">
+            👁️
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  /**
+   * Count agents in a preset
+   * @param {Object} preset - Preset object
+   * @returns {number}
+   */
+  _countPresetAgents(preset) {
+    if (!preset.agents) return 0;
+    let count = 0;
+    for (const category of Object.values(preset.agents)) {
+      if (Array.isArray(category)) {
+        count += category.length;
+      }
+    }
+    return count;
+  },
+
+  /**
+   * Render preset detail placeholder
+   * @returns {string} HTML string
+   */
+  _renderPresetDetailPlaceholder() {
+    return '<div class="council-pipeline-empty">Select a preset to view details, or click "Apply" to load it.</div>';
+  },
+
+  /**
+   * Render preset detail view
+   * @param {Object} preset - Preset object
+   * @returns {string} HTML string
+   */
+  _renderPresetDetail(preset) {
+    if (!preset)
+      return '<div class="council-pipeline-empty">Preset not found</div>';
+
+    const agentCount = this._countPresetAgents(preset);
+
+    // Build agent categories list
+    let agentCategoriesHtml = "";
+    if (preset.agents) {
+      for (const [category, agents] of Object.entries(preset.agents)) {
+        if (Array.isArray(agents) && agents.length > 0) {
+          agentCategoriesHtml += `
+            <div class="council-pipeline-preset-category">
+              <span class="council-pipeline-preset-category-name">${this._escapeHtml(category)}</span>
+              <span class="council-pipeline-preset-category-count">${agents.length} agent(s)</span>
+            </div>
+          `;
+        }
+      }
+    }
+
+    // Build teams list
+    let teamsHtml = "";
+    if (preset.teams && preset.teams.length > 0) {
+      teamsHtml = preset.teams
+        .map(
+          (team) => `
+          <div class="council-pipeline-preset-team">
+            <span class="council-pipeline-preset-team-name">${this._escapeHtml(team.name)}</span>
+            <span class="council-pipeline-preset-team-lead">Lead: ${this._escapeHtml(team.leaderId || "None")}</span>
+          </div>
+        `,
+        )
+        .join("");
+    }
+
+    // Build phases list
+    let phasesHtml = "";
+    if (preset.phases && preset.phases.length > 0) {
+      phasesHtml = preset.phases
+        .map(
+          (phase, idx) => `
+          <div class="council-pipeline-phase-item">
+            <span class="council-pipeline-phase-icon">${phase.icon || "🎭"}</span>
+            <span class="council-pipeline-phase-order">${idx + 1}.</span>
+            <span class="council-pipeline-phase-name">${this._escapeHtml(phase.name)}</span>
+            <span class="council-pipeline-phase-actions">${phase.actions?.length || 0} actions</span>
+          </div>
+        `,
+        )
+        .join("");
+    }
+
+    return `
+      <div class="council-pipeline-detail-content">
+        <div class="council-pipeline-detail-header">
+          <h3>${this._escapeHtml(preset.name)}</h3>
+          <span class="council-pipeline-preset-version">v${preset.version || "1.0.0"}</span>
+        </div>
+
+        <div class="council-pipeline-detail-section">
+          <label>Description</label>
+          <div class="council-pipeline-detail-value">${this._escapeHtml(preset.description || "No description")}</div>
+        </div>
+
+        <div class="council-pipeline-detail-section">
+          <label>Static Context</label>
+          <div class="council-pipeline-detail-tags">
+            ${preset.staticContext?.includeCharacterCard ? '<span class="council-pipeline-tag">Character Card</span>' : ""}
+            ${preset.staticContext?.includeWorldInfo ? '<span class="council-pipeline-tag">World Info</span>' : ""}
+            ${preset.staticContext?.includePersona ? '<span class="council-pipeline-tag">Persona</span>' : ""}
+            ${preset.staticContext?.includeScenario ? '<span class="council-pipeline-tag">Scenario</span>' : ""}
+          </div>
+        </div>
+
+        <div class="council-pipeline-detail-section">
+          <label>Agents (${agentCount} total)</label>
+          <div class="council-pipeline-preset-categories">
+            ${agentCategoriesHtml || '<span class="council-pipeline-empty-inline">No agents defined</span>'}
+          </div>
+        </div>
+
+        <div class="council-pipeline-detail-section">
+          <label>Teams (${preset.teams?.length || 0})</label>
+          <div class="council-pipeline-preset-teams">
+            ${teamsHtml || '<span class="council-pipeline-empty-inline">No teams defined</span>'}
+          </div>
+        </div>
+
+        <div class="council-pipeline-detail-section">
+          <label>Pipeline Phases (${preset.phases?.length || 0})</label>
+          <div class="council-pipeline-phase-list">
+            ${phasesHtml || '<span class="council-pipeline-empty-inline">No phases defined</span>'}
+          </div>
+        </div>
+
+        <div class="council-pipeline-detail-section">
+          <label>Metadata</label>
+          <div class="council-pipeline-detail-meta">
+            <div>Created: ${preset.metadata?.createdAt ? new Date(preset.metadata.createdAt).toLocaleString() : "N/A"}</div>
+            <div>Updated: ${preset.metadata?.updatedAt ? new Date(preset.metadata.updatedAt).toLocaleString() : "N/A"}</div>
+            <div>Author: ${this._escapeHtml(preset.metadata?.author || "Unknown")}</div>
+            ${preset.metadata?.tags?.length ? `<div>Tags: ${preset.metadata.tags.map((t) => this._escapeHtml(t)).join(", ")}</div>` : ""}
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
   _renderPipelinesTab() {
     const pipelines = this._pipelineSystem?.getAllPipelines() || {};
     const pipelineList = Object.values(pipelines);
@@ -1617,6 +1862,40 @@ const PipelineModal = {
 
     const action = target.dataset.action;
 
+    // Handle preset-related actions
+    if (action === "select-preset" || action === "view-preset-detail") {
+      const presetId = target.dataset.presetId;
+      this._showPresetDetail(presetId);
+      return;
+    }
+
+    if (action === "apply-preset") {
+      const presetId = target.dataset.presetId;
+      this._applyPreset(presetId);
+      return;
+    }
+
+    if (action === "export-preset") {
+      const presetId = target.dataset.presetId;
+      this._exportPresetById(presetId);
+      return;
+    }
+
+    if (action === "discover-presets") {
+      this._discoverPresets();
+      return;
+    }
+
+    if (action === "import-preset") {
+      this._showImportPresetDialog();
+      return;
+    }
+
+    if (action === "create-preset-from-state") {
+      this._createPresetFromState();
+      return;
+    }
+
     switch (action) {
       case "select-pipeline":
         this._selectedPipeline = target.dataset.pipelineId;
@@ -2024,6 +2303,162 @@ const PipelineModal = {
   /**
    * Delete selected pipeline
    */
+  /**
+   * Show preset detail in the detail pane
+   * @param {string} presetId - Preset ID
+   */
+  _showPresetDetail(presetId) {
+    const presetManager = this._presetManager || window.TheCouncilPresetManager;
+    const preset = presetManager?.getPreset(presetId);
+
+    const detailPane = this._elements.content.querySelector(
+      ".council-pipeline-preset-detail",
+    );
+    if (detailPane) {
+      detailPane.innerHTML = this._renderPresetDetail(preset);
+    }
+
+    // Update selection visual
+    this._elements.content
+      .querySelectorAll(".council-pipeline-preset-item")
+      .forEach((item) => {
+        item.classList.toggle("selected", item.dataset.presetId === presetId);
+      });
+  },
+
+  /**
+   * Apply a preset
+   * @param {string} presetId - Preset ID to apply
+   */
+  async _applyPreset(presetId) {
+    const presetManager = this._presetManager || window.TheCouncilPresetManager;
+    if (!presetManager) {
+      this._showNotification("Preset manager not available", "error");
+      return;
+    }
+
+    try {
+      this._showNotification(`Applying preset...`, "info");
+      const result = await presetManager.applyPreset(presetId);
+
+      const successMsg = `Preset applied: ${result.agents.count} agents, ${result.teams.count} teams, ${result.pipeline.phaseCount} phases`;
+      this._showNotification(successMsg, "success");
+
+      // Refresh the presets tab to show active state
+      this._renderPresetsTab();
+
+      // Also update status
+      this._updateStatus();
+    } catch (error) {
+      this._log("error", `Failed to apply preset: ${error.message}`);
+      this._showNotification(
+        `Failed to apply preset: ${error.message}`,
+        "error",
+      );
+    }
+  },
+
+  /**
+   * Export a preset by ID
+   * @param {string} presetId - Preset ID
+   */
+  _exportPresetById(presetId) {
+    const presetManager = this._presetManager || window.TheCouncilPresetManager;
+    if (!presetManager) {
+      this._showNotification("Preset manager not available", "error");
+      return;
+    }
+
+    try {
+      presetManager.downloadPreset(presetId);
+      this._showNotification("Preset exported", "success");
+    } catch (error) {
+      this._log("error", `Failed to export preset: ${error.message}`);
+      this._showNotification(`Failed to export: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Discover presets from the presets directory
+   */
+  async _discoverPresets() {
+    const presetManager = this._presetManager || window.TheCouncilPresetManager;
+    if (!presetManager) {
+      this._showNotification("Preset manager not available", "error");
+      return;
+    }
+
+    try {
+      this._showNotification("Discovering presets...", "info");
+      const presets = await presetManager.discoverPresets();
+      this._showNotification(`Found ${presets.length} preset(s)`, "success");
+      this._renderPresetsTab();
+    } catch (error) {
+      this._log("error", `Failed to discover presets: ${error.message}`);
+      this._showNotification(`Discovery failed: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Show import preset dialog
+   */
+  _showImportPresetDialog() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+
+    input.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const presetManager =
+          this._presetManager || window.TheCouncilPresetManager;
+        if (!presetManager) {
+          this._showNotification("Preset manager not available", "error");
+          return;
+        }
+
+        const preset = presetManager.importPreset(text);
+        this._showNotification(`Preset imported: ${preset.name}`, "success");
+        this._renderPresetsTab();
+      } catch (error) {
+        this._log("error", `Failed to import preset: ${error.message}`);
+        this._showNotification(`Import failed: ${error.message}`, "error");
+      }
+    });
+
+    input.click();
+  },
+
+  /**
+   * Create a preset from current system state
+   */
+  async _createPresetFromState() {
+    const presetManager = this._presetManager || window.TheCouncilPresetManager;
+    if (!presetManager) {
+      this._showNotification("Preset manager not available", "error");
+      return;
+    }
+
+    // Show a simple name prompt
+    const name = prompt("Enter preset name:", "My Custom Preset");
+    if (!name) return;
+
+    try {
+      const preset = presetManager.createPresetFromCurrentState({
+        name,
+        description: "Created from current configuration",
+      });
+      this._showNotification(`Preset created: ${preset.name}`, "success");
+      this._renderPresetsTab();
+    } catch (error) {
+      this._log("error", `Failed to create preset: ${error.message}`);
+      this._showNotification(`Create failed: ${error.message}`, "error");
+    }
+  },
+
   _deletePipeline() {
     if (!this._selectedPipeline) return;
     if (!confirm("Are you sure you want to delete this pipeline?")) return;
@@ -3539,6 +3974,122 @@ const PipelineModal = {
         word-break: break-word;
         font-family: monospace;
         font-size: 0.9em;
+      }
+
+      /* ===== PRESETS TAB STYLES ===== */
+      .council-pipeline-presets-tab {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .council-pipeline-presets-info {
+        padding: 12px 16px;
+        background: rgba(74, 144, 217, 0.1);
+        border: 1px solid rgba(74, 144, 217, 0.3);
+        border-radius: 8px;
+        margin-bottom: 16px;
+      }
+      .council-pipeline-presets-info p {
+        margin: 0;
+        font-size: 0.9em;
+        color: var(--SmartThemeBodyColor, #ccc);
+      }
+
+      .council-pipeline-presets-list {
+        flex: 1;
+      }
+
+      .council-pipeline-preset-item {
+        position: relative;
+      }
+      .council-pipeline-preset-item.active {
+        background: rgba(76, 175, 80, 0.15);
+        border-left: 3px solid #4caf50;
+      }
+      .council-pipeline-preset-item.selected {
+        background: rgba(74, 144, 217, 0.2);
+        border-left: 3px solid var(--SmartThemeQuoteColor, #4a90d9);
+      }
+
+      .council-pipeline-preset-active-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        background: rgba(76, 175, 80, 0.3);
+        color: #4caf50;
+        border-radius: 4px;
+        font-size: 0.75em;
+        font-weight: 600;
+      }
+
+      .council-pipeline-preset-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .council-pipeline-btn-sm {
+        padding: 4px 10px;
+        font-size: 0.8em;
+      }
+
+      .council-pipeline-preset-detail {
+        min-height: 300px;
+      }
+
+      .council-pipeline-preset-version {
+        font-size: 0.85em;
+        color: var(--SmartThemeBodyColor, #888);
+        background: rgba(255, 255, 255, 0.1);
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+
+      .council-pipeline-preset-categories,
+      .council-pipeline-preset-teams {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .council-pipeline-preset-category,
+      .council-pipeline-preset-team {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 6px;
+      }
+
+      .council-pipeline-preset-category-name,
+      .council-pipeline-preset-team-name {
+        font-weight: 500;
+        flex: 1;
+        text-transform: capitalize;
+      }
+
+      .council-pipeline-preset-category-count,
+      .council-pipeline-preset-team-lead {
+        font-size: 0.85em;
+        color: var(--SmartThemeBodyColor, #888);
+      }
+
+      .council-pipeline-empty-inline {
+        font-style: italic;
+        color: var(--SmartThemeBodyColor, #888);
+        font-size: 0.9em;
+      }
+
+      .council-pipeline-detail-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.9em;
+        color: var(--SmartThemeBodyColor, #888);
       }
     `;
     document.head.appendChild(style);
