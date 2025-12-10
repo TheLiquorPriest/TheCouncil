@@ -24,6 +24,7 @@
     // Core Systems
     AgentsSystem: null,
     CurationSystem: null,
+    CharacterSystem: null,
     PipelineSystem: null,
     PresetManager: null,
 
@@ -40,6 +41,7 @@
     // UI Modals
     AgentsModal: null,
     CurationModal: null,
+    CharacterModal: null,
     PipelineModal: null,
     GavelModal: null,
     NavModal: null,
@@ -141,6 +143,7 @@
       // Core Systems
       "core/agents-system.js",
       "core/curation-system.js",
+      "core/character-system.js",
       "core/context-manager.js",
       "core/output-manager.js",
       "core/thread-manager.js",
@@ -152,10 +155,13 @@
       "ui/components/participant-selector.js",
       "ui/components/context-config.js",
       "ui/components/curation-pipeline-builder.js",
+      "ui/components/token-picker.js",
+      "ui/components/execution-monitor.js",
 
       // UI Modals
       "ui/agents-modal.js",
       "ui/curation-modal.js",
+      "ui/character-modal.js",
       "ui/pipeline-modal.js",
       "ui/gavel-modal.js",
       "ui/nav-modal.js",
@@ -182,6 +188,7 @@
 
     Systems.AgentsSystem = window.AgentsSystem || null;
     Systems.CurationSystem = window.CurationSystem || null;
+    Systems.CharacterSystem = window.CharacterSystem || null;
     Systems.PipelineSystem = window.PipelineSystem || null;
     Systems.ContextManager = window.ContextManager || null;
     Systems.OutputManager = window.OutputManager || null;
@@ -190,6 +197,7 @@
 
     Systems.AgentsModal = window.AgentsModal || null;
     Systems.CurationModal = window.CurationModal || null;
+    Systems.CharacterModal = window.CharacterModal || null;
     Systems.PipelineModal = window.PipelineModal || null;
     Systems.GavelModal = window.GavelModal || null;
     Systems.NavModal = window.NavModal || null;
@@ -199,6 +207,8 @@
     Systems.ParticipantSelector = window.ParticipantSelector || null;
     Systems.ContextConfig = window.ContextConfig || null;
     Systems.CurationPipelineBuilder = window.CurationPipelineBuilder || null;
+    Systems.TokenPicker = window.TokenPicker || null;
+    Systems.ExecutionMonitor = window.ExecutionMonitor || null;
 
     logger.debug("Module references obtained:", {
       Logger: !!Systems.Logger,
@@ -207,6 +217,7 @@
       SystemSchemas: !!Systems.SystemSchemas,
       AgentsSystem: !!Systems.AgentsSystem,
       CurationSystem: !!Systems.CurationSystem,
+      CharacterSystem: !!Systems.CharacterSystem,
       PipelineSystem: !!Systems.PipelineSystem,
       PresetManager: !!Systems.PresetManager,
       ContextManager: !!Systems.ContextManager,
@@ -214,6 +225,7 @@
       ThreadManager: !!Systems.ThreadManager,
       AgentsModal: !!Systems.AgentsModal,
       CurationModal: !!Systems.CurationModal,
+      CharacterModal: !!Systems.CharacterModal,
       PipelineModal: !!Systems.PipelineModal,
       GavelModal: !!Systems.GavelModal,
       NavModal: !!Systems.NavModal,
@@ -221,6 +233,8 @@
       ParticipantSelector: !!Systems.ParticipantSelector,
       ContextConfig: !!Systems.ContextConfig,
       CurationPipelineBuilder: !!Systems.CurationPipelineBuilder,
+      TokenPicker: !!Systems.TokenPicker,
+      ExecutionMonitor: !!Systems.ExecutionMonitor,
     });
 
     return true;
@@ -280,6 +294,15 @@
       logger.log("info", "CurationSystem initialized");
     }
 
+    // Initialize Character System
+    if (Systems.CharacterSystem) {
+      Systems.CharacterSystem.init({
+        curationSystem: Systems.CurationSystem,
+        logger: Systems.Logger,
+      });
+      logger.log("info", "CharacterSystem initialized");
+    }
+
     // Initialize Context Manager
     if (Systems.ContextManager) {
       Systems.ContextManager.init({
@@ -314,6 +337,7 @@
       Systems.PipelineSystem.init({
         agentsSystem: Systems.AgentsSystem,
         curationSystem: Systems.CurationSystem,
+        characterSystem: Systems.CharacterSystem,
         contextManager: Systems.ContextManager,
         outputManager: Systems.OutputManager,
         threadManager: Systems.ThreadManager,
@@ -405,6 +429,15 @@
       });
     }
 
+    // Initialize Character Modal
+    if (Systems.CharacterModal) {
+      Systems.CharacterModal.init({
+        characterSystem: Systems.CharacterSystem,
+        curationSystem: Systems.CurationSystem,
+        logger: Systems.Logger,
+      });
+    }
+
     // Initialize Pipeline Modal
     if (Systems.PipelineModal) {
       Systems.PipelineModal.init({
@@ -435,6 +468,7 @@
       Systems.NavModal.init({
         agentsModal: Systems.AgentsModal,
         curationModal: Systems.CurationModal,
+        characterModal: Systems.CharacterModal,
         pipelineModal: Systems.PipelineModal,
         gavelModal: Systems.GavelModal,
         pipelineSystem: Systems.PipelineSystem,

@@ -790,6 +790,8 @@ const AgentsSystem = {
     return {
       id: String(data.id),
       name: String(data.name),
+      displayName: data.displayName || data.name || null,
+      type: data.type || null, // Position type (e.g., 'prose_lead', 'prose_member')
       teamId: data.teamId || null,
       tier,
       assignedAgentId: data.assignedAgentId || null,
@@ -1063,6 +1065,9 @@ const AgentsSystem = {
       description: data.description || "",
       icon: data.icon || "👥",
       leaderId: String(data.leaderId),
+      leaderPositionId: data.leaderPositionId
+        ? String(data.leaderPositionId)
+        : String(data.leaderId), // Default to leaderId if not specified
       memberIds: (data.memberIds || []).map(String),
       settings: {
         outputObjectName: data.settings?.outputObjectName || "",
@@ -1322,6 +1327,12 @@ const AgentsSystem = {
         executivePositions: this._executivePositions.size,
         teams: this._teams.size,
       },
+      // Include actual data arrays for convenience
+      agents: Array.from(this._agents.values()),
+      agentPools: Array.from(this._agentPools.values()),
+      positions: Array.from(this._positions.values()),
+      executivePositions: Array.from(this._executivePositions.values()),
+      teams: Array.from(this._teams.values()),
       allPositionsFilled: validation.valid,
       unfilledPositions: validation.unfilled,
     };

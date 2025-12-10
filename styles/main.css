@@ -1032,7 +1032,7 @@
     animation: council-spin 0.8s linear infinite;
 }
 
-/* ===== RESPONSIVE ===== */
+/* ===== RESPONSIVE - TABLET ===== */
 @media (max-width: 1200px) {
     .council-pipeline-panel {
         width: 98vw;
@@ -1052,20 +1052,679 @@
 
     .council-phase-bar {
         flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
     }
 }
 
-@media (max-width: 600px) {
-    .council-pipeline-panel {
-        height: 95vh;
-        border-radius: 0;
+/* ===== RESPONSIVE - MOBILE ===== */
+@media (max-width: 768px) {
+    /* CSS Variables - Mobile adjustments */
+    :root {
+        --council-radius-sm: 3px;
+        --council-radius-md: 5px;
+        --council-radius-lg: 6px;
+        --council-radius-xl: 10px;
     }
 
+    /* Pipeline Panel - Full screen on mobile */
+    .council-pipeline-panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 100% !important;
+        max-height: 100% !important;
+        border-radius: 0;
+        margin: 0;
+        transform: none;
+    }
+
+    /* Navigation Modal - Mobile */
+    .council-nav-modal {
+        position: fixed !important;
+        top: auto !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        border-radius: var(--council-radius-lg) var(--council-radius-lg) 0 0;
+        max-height: 70vh;
+    }
+
+    .council-nav-buttons {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px;
+    }
+
+    .council-nav-btn {
+        flex: 1 1 calc(33% - 8px);
+        min-width: 80px;
+        padding: 12px 8px;
+        font-size: 0.8rem;
+    }
+
+    /* Header - Mobile */
+    .council-pipeline-header,
+    .council-header {
+        padding: 10px 12px;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .council-pipeline-title,
+    .council-title {
+        font-size: 1rem;
+        flex: 1 1 100%;
+        text-align: center;
+    }
+
+    .council-header-actions {
+        flex: 1 1 100%;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    /* Tabs - Mobile (horizontal scroll) */
+    .council-pipeline-tabs,
+    .council-tabs {
+        padding: 8px 10px;
+        gap: 4px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .council-pipeline-tabs::-webkit-scrollbar,
+    .council-tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .council-pipeline-tab,
+    .council-tab {
+        padding: 8px 12px;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    /* Content - Mobile */
+    .council-pipeline-content,
+    .council-content {
+        padding: 12px;
+    }
+
+    /* Buttons - Mobile (larger touch targets) */
+    .council-btn,
+    .council-pipeline-btn,
+    button[class*="council-"] {
+        min-height: 44px;
+        min-width: 44px;
+        padding: 10px 16px;
+        font-size: 0.875rem;
+    }
+
+    .council-btn-sm {
+        min-height: 36px;
+        padding: 8px 12px;
+        font-size: 0.8rem;
+    }
+
+    /* Forms - Mobile */
+    .council-form-group {
+        margin-bottom: 14px;
+    }
+
+    .council-form-input,
+    .council-form-select,
+    .council-form-textarea,
+    .council-pipeline-input,
+    input[class*="council-"],
+    select[class*="council-"],
+    textarea[class*="council-"] {
+        min-height: 44px;
+        padding: 12px;
+        font-size: 16px; /* Prevents iOS zoom */
+    }
+
+    .council-form-textarea,
+    textarea[class*="council-"] {
+        min-height: 100px;
+    }
+
+    .council-form-row {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .council-form-row .council-form-group {
+        flex: 1 1 100%;
+    }
+
+    /* Cards - Mobile */
+    .council-card,
+    .council-pipeline-card {
+        padding: 12px;
+    }
+
+    /* Grids - Mobile (single column) */
+    .council-grid,
+    .council-agents-grid,
+    .council-pools-grid,
+    .council-teams-grid {
+        grid-template-columns: 1fr !important;
+        gap: 10px;
+    }
+
+    /* Lists - Mobile */
+    .council-list-item {
+        padding: 12px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .council-list-item-actions {
+        width: 100%;
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--council-border);
+    }
+
+    /* Dialogs - Mobile (full screen) */
+    .council-dialog-overlay,
+    .council-pipeline-dialog-overlay {
+        padding: 0;
+        align-items: flex-end;
+    }
+
+    .council-dialog,
+    .council-pipeline-dialog {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 90vh;
+        margin: 0;
+        border-radius: var(--council-radius-lg) var(--council-radius-lg) 0 0;
+    }
+
+    .council-dialog-body,
+    .council-pipeline-dialog-body {
+        max-height: calc(90vh - 120px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .council-dialog-footer,
+    .council-pipeline-dialog-footer,
+    .council-dialog-actions,
+    .council-pipeline-dialog-actions {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 12px;
+    }
+
+    .council-dialog-footer .council-btn,
+    .council-pipeline-dialog-footer .council-btn,
+    .council-pipeline-dialog-actions .council-pipeline-btn {
+        flex: 1 1 calc(50% - 4px);
+    }
+
+    /* Phase Bar - Mobile */
+    .council-phase-bar {
+        padding: 8px;
+        gap: 4px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .council-phase-item {
+        min-width: 60px;
+        padding: 8px 10px;
+        font-size: 0.75rem;
+    }
+
+    .council-phase-icon {
+        font-size: 1rem;
+    }
+
+    /* Thread Rows - Mobile */
     .council-main-threads-row {
         grid-template-columns: 1fr;
+        gap: 8px;
     }
 
     .council-team-threads-row {
         display: none;
+    }
+
+    .council-thread-toggle-mobile {
+        display: block;
+        width: 100%;
+        padding: 10px;
+        background: var(--council-bg-secondary);
+        border: 1px solid var(--council-border);
+        border-radius: var(--council-radius-md);
+        color: var(--council-text);
+        cursor: pointer;
+        text-align: center;
+    }
+
+    /* Hierarchy View - Mobile */
+    .council-hierarchy-header {
+        flex-direction: column;
+        gap: 12px;
+        text-align: center;
+    }
+
+    .council-hierarchy-stats {
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .council-org-executive {
+        padding: 12px;
+    }
+
+    .council-org-teams-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Position Rows - Mobile */
+    .council-position-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 12px;
+    }
+
+    .council-position-row-main {
+        width: 100%;
+    }
+
+    .council-position-row-assignment {
+        width: 100%;
+    }
+
+    .council-position-row-actions {
+        width: 100%;
+        justify-content: flex-end;
+        padding-top: 8px;
+        border-top: 1px solid var(--council-border);
+    }
+
+    /* Team Rows - Mobile */
+    .council-team-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .council-team-row-main {
+        width: 100%;
+    }
+
+    .council-team-row-info {
+        width: 100%;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .council-team-row-actions {
+        width: 100%;
+        justify-content: flex-end;
+        padding-top: 8px;
+        border-top: 1px solid var(--council-border);
+    }
+
+    /* Preset Cards - Mobile */
+    .council-preset-card {
+        padding: 12px;
+    }
+
+    .council-preset-header {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .council-preset-actions {
+        width: 100%;
+        display: flex;
+        justify-content: stretch;
+        gap: 8px;
+    }
+
+    .council-preset-actions .council-btn {
+        flex: 1;
+    }
+
+    /* Action Editor - Mobile */
+    .council-pipeline-dialog-tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 8px;
+    }
+
+    .council-pipeline-dialog-tab {
+        padding: 8px 12px;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+
+    /* Curation Section - Mobile */
+    .council-curation-section {
+        margin-top: 16px;
+        padding-top: 16px;
+    }
+
+    .council-section-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    /* Execution Monitor - Mobile */
+    .exec-monitor {
+        font-size: 0.8rem;
+    }
+
+    .exec-monitor-header {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .exec-monitor-title {
+        flex: 1 1 100%;
+        justify-content: center;
+    }
+
+    .exec-monitor-controls {
+        flex: 1 1 100%;
+        justify-content: center;
+    }
+
+    .exec-monitor-timing {
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+    }
+
+    .exec-monitor-phases {
+        max-height: 200px;
+    }
+
+    .exec-monitor-logs-content {
+        max-height: 100px;
+    }
+
+    /* Token Picker - Mobile */
+    .token-picker-popup {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 80vh;
+        max-height: 80vh;
+        border-radius: var(--council-radius-lg) var(--council-radius-lg) 0 0;
+    }
+
+    .token-picker-popup-body {
+        max-height: calc(80vh - 60px);
+    }
+
+    .token-picker-tokens-horizontal {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 8px;
+    }
+
+    .token-picker-token-item {
+        flex-wrap: wrap;
+    }
+
+    .token-picker-token-code {
+        flex: 1 1 100%;
+        margin-bottom: 6px;
+    }
+
+    .token-picker-token-info {
+        flex: 1 1 70%;
+    }
+
+    .token-picker-token-insert {
+        opacity: 1;
+        flex: 0 0 auto;
+    }
+
+    /* Gavel Modal - Mobile */
+    .council-gavel-modal {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 90vh;
+        max-height: 90vh;
+        border-radius: var(--council-radius-lg) var(--council-radius-lg) 0 0;
+    }
+
+    /* Prompt Builder - Mobile */
+    .prompt-builder-container {
+        min-height: 250px;
+    }
+
+    .prompt-builder-tokens {
+        max-height: 150px;
+        overflow-y: auto;
+    }
+
+    /* Participant Selector - Mobile */
+    .participant-selector-content {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .participant-selector-checkbox,
+    .participant-selector-radio {
+        padding: 10px 8px;
+    }
+
+    /* Context Config - Mobile */
+    .context-config-section {
+        padding: 10px;
+    }
+
+    /* Scrollbar - Hide on mobile for cleaner look */
+    .council-pipeline-content::-webkit-scrollbar,
+    .council-dialog-body::-webkit-scrollbar {
+        width: 4px;
+    }
+}
+
+/* ===== RESPONSIVE - SMALL MOBILE ===== */
+@media (max-width: 480px) {
+    /* Even smaller adjustments for tiny screens */
+    .council-pipeline-header,
+    .council-header {
+        padding: 8px 10px;
+    }
+
+    .council-pipeline-title,
+    .council-title {
+        font-size: 0.9rem;
+    }
+
+    .council-btn,
+    .council-pipeline-btn {
+        padding: 8px 12px;
+        font-size: 0.8rem;
+    }
+
+    .council-pipeline-tab,
+    .council-tab {
+        padding: 6px 10px;
+        font-size: 0.75rem;
+    }
+
+    .council-form-input,
+    .council-form-select,
+    .council-pipeline-input {
+        padding: 10px;
+    }
+
+    .council-card,
+    .council-pipeline-card {
+        padding: 10px;
+    }
+
+    .council-dialog-footer .council-btn,
+    .council-pipeline-dialog-actions .council-pipeline-btn {
+        flex: 1 1 100%;
+    }
+
+    .council-phase-item {
+        min-width: 50px;
+        padding: 6px 8px;
+        font-size: 0.7rem;
+    }
+
+    .council-phase-icon {
+        font-size: 0.9rem;
+    }
+
+    .exec-monitor-phases {
+        max-height: 150px;
+    }
+
+    .token-picker-popup {
+        height: 90vh;
+        max-height: 90vh;
+    }
+}
+
+/* ===== TOUCH DEVICE ENHANCEMENTS ===== */
+@media (hover: none) and (pointer: coarse) {
+    /* Increase touch targets */
+    .council-btn,
+    .council-pipeline-btn,
+    button[class*="council-"] {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* Show actions always (no hover) */
+    .council-position-row-actions,
+    .council-team-row-actions,
+    .council-list-item-actions {
+        opacity: 1;
+    }
+
+    .token-picker-token-insert {
+        opacity: 1;
+    }
+
+    /* Remove hover effects that don't work well on touch */
+    .council-btn:hover,
+    .council-pipeline-btn:hover {
+        transform: none;
+    }
+
+    /* Add active states for touch feedback */
+    .council-btn:active,
+    .council-pipeline-btn:active {
+        transform: scale(0.98);
+        opacity: 0.9;
+    }
+
+    .council-card:active,
+    .council-pipeline-card:active {
+        transform: scale(0.99);
+    }
+
+    .council-tab:active,
+    .council-pipeline-tab:active {
+        background: var(--council-bg-active);
+    }
+}
+
+/* ===== LANDSCAPE MOBILE ===== */
+@media (max-width: 900px) and (orientation: landscape) {
+    .council-dialog,
+    .council-pipeline-dialog {
+        max-height: 95vh;
+    }
+
+    .council-dialog-body,
+    .council-pipeline-dialog-body {
+        max-height: calc(95vh - 100px);
+    }
+
+    .exec-monitor-phases {
+        max-height: 120px;
+    }
+
+    .token-picker-popup {
+        height: 95vh;
+        max-height: 95vh;
+    }
+}
+
+/* ===== SAFE AREA INSETS (Notched phones) ===== */
+@supports (padding: max(0px)) {
+    .council-pipeline-panel,
+    .council-dialog,
+    .council-nav-modal {
+        padding-left: max(12px, env(safe-area-inset-left));
+        padding-right: max(12px, env(safe-area-inset-right));
+        padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+
+    .council-dialog-footer,
+    .council-pipeline-dialog-actions {
+        padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+}
+
+/* ===== REDUCED MOTION ===== */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ===== DARK MODE ENHANCEMENTS ===== */
+@media (prefers-color-scheme: dark) {
+    /* Already dark by default, but ensure contrast */
+    .council-form-input:focus,
+    .council-form-select:focus,
+    .council-pipeline-input:focus {
+        box-shadow: 0 0 0 2px var(--council-primary);
+    }
+}
+
+/* ===== HIGH CONTRAST MODE ===== */
+@media (prefers-contrast: high) {
+    :root {
+        --council-border: #888;
+        --council-text-muted: rgba(255, 255, 255, 0.8);
+    }
+
+    .council-btn,
+    .council-pipeline-btn {
+        border-width: 2px;
+    }
+
+    .council-form-input,
+    .council-form-select,
+    .council-pipeline-input {
+        border-width: 2px;
     }
 }

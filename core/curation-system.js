@@ -139,6 +139,9 @@ const CurationSystem = {
     // Register default curation positions
     this._registerDefaultPositions();
 
+    // Register default character pipelines
+    this._registerDefaultCharacterPipelines();
+
     // Load initial schemas if provided
     if (options.initialSchemas) {
       for (const schema of options.initialSchemas) {
@@ -156,7 +159,30 @@ const CurationSystem = {
     this._log("info", "Curation System initialized");
     this._emit("system:initialized");
 
+    // Load persisted data asynchronously
+    if (options.loadPersistedData !== false) {
+      this.loadPersistedData().catch((err) => {
+        this._log("warn", `Failed to load persisted data: ${err.message}`);
+      });
+    }
+
     return this;
+  },
+
+  /**
+   * Load all persisted data (stores and pipelines)
+   * @returns {Promise<void>}
+   */
+  async loadPersistedData() {
+    this._log("info", "Loading persisted curation data...");
+
+    try {
+      await Promise.all([this.loadAllStores(), this.loadPipelines()]);
+      this._log("info", "Persisted curation data loaded");
+    } catch (error) {
+      this._log("error", `Error loading persisted data: ${error.message}`);
+      throw error;
+    }
   },
 
   /**
@@ -397,8 +423,20 @@ const CurationSystem = {
           name: { type: "string", required: true },
           type: {
             type: "enum",
-            enumValues: ["main", "supporting", "minor", "npc"],
-            default: "supporting",
+            enumValues: [
+              "main",
+              "main_cast",
+              "recurring",
+              "recurring_cast",
+              "supporting",
+              "supporting_cast",
+              "minor",
+              "background",
+              "npc",
+            ],
+            default: "supporting_cast",
+            description:
+              "Character importance: main_cast (protagonists), recurring_cast (regular appearances), supporting_cast (occasional), background (extras/NPCs)",
           },
           description: { type: "string", default: "" },
           personality: { type: "string", default: "" },
@@ -411,6 +449,23 @@ const CurationSystem = {
           flaws: { type: "array", default: [] },
           speechPatterns: { type: "string", default: "" },
           isPresent: { type: "boolean", default: true },
+          // Character System integration fields
+          voicingGuidance: {
+            type: "string",
+            default: "",
+            description:
+              "Additional guidance for voicing this character in dialogue",
+          },
+          mannerisms: {
+            type: "array",
+            default: [],
+            description: "Distinctive mannerisms, gestures, or habits",
+          },
+          catchphrases: {
+            type: "array",
+            default: [],
+            description: "Signature phrases or expressions the character uses",
+          },
           createdAt: { type: "date" },
           updatedAt: { type: "date" },
         },
@@ -533,6 +588,337 @@ const CurationSystem = {
   /**
    * Register default curation positions
    */
+  /**
+   * Register default character-related pipelines
+   * @private
+   */
+  _registerDefaultCharacterPipelines() {
+    // ===== CHARACTER CRUD PIPELINES =====
+
+    // Character Type Classification Pipeline
+    this._crudPipelines.set("character_type_classification", {
+      id: "character_type_classification",
+      storeId: "characterSheets",
+      operation: "update",
+      name: "Character Type Classification",
+      description:
+        "Automatically classify character type based on story role and appearance frequency",
+      actions: [
+        {
+          id: "analyze_character",
+          name: "Analyze Character Role",
+          description: "Determine character importance from story context",
+          positionId: "character_topologist",
+          promptTemplate: `Analyze this character and determine their type based on story importance:
+
+## Character:
+{{input.name}}
+
+## Description:
+{{input.description}}
+
+## Background:
+{{input.background}}
+
+## Relationships:
+{{JSON.stringify(input.relationships)}}
+
+Classify as one of:
+- main_cast: Protagonists, central to the story
+- recurring_cast: Appear regularly, important supporting roles
+- supporting_cast: Occasional appearances, minor plot involvement
+- background: Extras, mentioned briefly, NPCs
+
+Respond with JSON: { "type": "<classification>", "reasoning": "<explanation>" }`,
+          inputMapping: {},
+          outputMapping: { type: "type" },
+        },
+      ],
+      inputSchema: {
+        name: { type: "string", required: true },
+        description: { type: "string" },
+        background: { type: "string" },
+        relationships: { type: "object" },
+      },
+      outputSchema: {
+        type: { type: "string" },
+      },
+    });
+
+    // Character Sheet Creation Pipeline
+    this._crudPipelines.set("character_sheet_create", {
+      id: "character_sheet_create",
+      storeId: "characterSheets",
+      operation: "create",
+      name: "Create Character Sheet",
+      description: "Create a new character sheet with auto-generated fields",
+      actions: [
+        {
+          id: "generate_character_details",
+          name: "Generate Character Details",
+          description:
+            "Fill in missing character details based on provided info",
+          positionId: "character_topologist",
+          promptTemplate: `Create a complete character sheet based on the provided information.
+
+## Provided Info:
+Name: {{input.name}}
+Description: {{input.description || "Not provided"}}
+Type: {{input.type || "supporting_cast"}}
+
+Generate the following (if not provided):
+- personality: Core personality traits
+- appearance: Physical description
+- background: Brief history
+- motivations: What drives them (array)
+- fears: What they fear (array)
+- speechPatterns: How they speak
+- mannerisms: Distinctive behaviors (array)
+
+Respond with JSON containing all fields.`,
+          inputMapping: {},
+          outputMapping: {},
+        },
+      ],
+      inputSchema: {
+        name: { type: "string", required: true },
+        description: { type: "string" },
+        type: { type: "string" },
+      },
+      outputSchema: {},
+    });
+
+    // Character Update Pipeline
+    this._crudPipelines.set("character_sheet_update", {
+      id: "character_sheet_update",
+      storeId: "characterSheets",
+      operation: "update",
+      name: "Update Character Sheet",
+      description: "Update character sheet with consistency checking",
+      actions: [
+        {
+          id: "validate_changes",
+          name: "Validate Character Changes",
+          description:
+            "Ensure updates are consistent with established character",
+          positionId: "character_topologist",
+          promptTemplate: `Review these character updates for consistency:
+
+## Current Character:
+{{JSON.stringify(input.current)}}
+
+## Proposed Changes:
+{{JSON.stringify(input.changes)}}
+
+Check for:
+1. Personality consistency
+2. Background contradictions
+3. Relationship logic
+
+Respond with JSON: { "valid": true/false, "issues": [], "mergedData": {...} }`,
+          inputMapping: {},
+          outputMapping: {},
+        },
+      ],
+      inputSchema: {
+        current: { type: "object", required: true },
+        changes: { type: "object", required: true },
+      },
+      outputSchema: {
+        valid: { type: "boolean" },
+        issues: { type: "array" },
+        mergedData: { type: "object" },
+      },
+    });
+
+    // ===== CHARACTER RAG PIPELINES =====
+
+    // Character Search RAG Pipeline
+    this._ragPipelines.set("character_search", {
+      id: "character_search",
+      name: "Character Search",
+      description: "Search for characters by name, traits, or relationships",
+      targetStores: ["characterSheets", "characterDevelopment"],
+      actions: [],
+      inputSchema: {
+        query: { type: "string", required: true },
+        limit: { type: "number", default: 10 },
+      },
+      outputSchema: {
+        results: { type: "array" },
+        count: { type: "number" },
+      },
+      canTriggerFromPipeline: true,
+      canTriggerManually: true,
+    });
+
+    // Character Context RAG Pipeline (for Character Workshop)
+    this._ragPipelines.set("character_context", {
+      id: "character_context",
+      name: "Character Context",
+      description:
+        "Retrieve full character context including development and relationships",
+      targetStores: [
+        "characterSheets",
+        "characterDevelopment",
+        "characterInventory",
+        "characterPositions",
+        "dialogueHistory",
+      ],
+      actions: [
+        {
+          id: "gather_context",
+          name: "Gather Character Context",
+          description: "Collect all relevant character information",
+          positionId: "character_topologist",
+          promptTemplate: `Compile comprehensive context for: {{input.characterName}}
+
+Include:
+- Core traits and personality
+- Recent development/changes
+- Key relationships
+- Speech patterns and mannerisms
+- Current story position
+
+Format as structured summary for character voicing.`,
+          inputMapping: {},
+          outputMapping: {},
+        },
+      ],
+      inputSchema: {
+        characterName: { type: "string", required: true },
+        includeDialogue: { type: "boolean", default: true },
+        includeDevelopment: { type: "boolean", default: true },
+      },
+      outputSchema: {
+        context: { type: "string" },
+        traits: { type: "object" },
+        recentDialogue: { type: "array" },
+      },
+      canTriggerFromPipeline: true,
+      canTriggerManually: true,
+    });
+
+    // Character Relationships RAG Pipeline
+    this._ragPipelines.set("character_relationships", {
+      id: "character_relationships",
+      name: "Character Relationships",
+      description: "Query character relationships and dynamics",
+      targetStores: ["characterSheets", "scenes", "dialogueHistory"],
+      actions: [
+        {
+          id: "map_relationships",
+          name: "Map Character Relationships",
+          description: "Build relationship map for specified characters",
+          positionId: "story_topologist",
+          promptTemplate: `Map relationships involving: {{input.characterNames}}
+
+For each relationship, identify:
+- Nature (friend, rival, family, romantic, etc.)
+- History
+- Current status
+- Key interactions
+
+Respond with structured relationship data.`,
+          inputMapping: {},
+          outputMapping: {},
+        },
+      ],
+      inputSchema: {
+        characterNames: { type: "array", items: { type: "string" } },
+        depth: { type: "number", default: 2 },
+      },
+      outputSchema: {
+        relationships: { type: "array" },
+        graph: { type: "object" },
+      },
+      canTriggerFromPipeline: true,
+      canTriggerManually: true,
+    });
+
+    // Character Voice RAG Pipeline (for consistency)
+    this._ragPipelines.set("character_voice", {
+      id: "character_voice",
+      name: "Character Voice Reference",
+      description:
+        "Retrieve character voice samples and speech patterns for consistency",
+      targetStores: ["characterSheets", "dialogueHistory"],
+      actions: [
+        {
+          id: "extract_voice",
+          name: "Extract Voice Patterns",
+          description: "Analyze dialogue to extract voice characteristics",
+          positionId: "character_topologist",
+          promptTemplate: `Analyze voice patterns for: {{input.characterName}}
+
+From their dialogue history, identify:
+- Vocabulary preferences
+- Sentence structure patterns
+- Common phrases/catchphrases
+- Emotional expression style
+- Formality level
+
+Provide examples and guidelines for consistent voicing.`,
+          inputMapping: {},
+          outputMapping: {},
+        },
+      ],
+      inputSchema: {
+        characterName: { type: "string", required: true },
+        sampleCount: { type: "number", default: 10 },
+      },
+      outputSchema: {
+        voiceProfile: { type: "object" },
+        examples: { type: "array" },
+        guidelines: { type: "string" },
+      },
+      canTriggerFromPipeline: true,
+      canTriggerManually: true,
+    });
+
+    // Scene Characters RAG Pipeline (for dynamic spawning)
+    this._ragPipelines.set("scene_characters", {
+      id: "scene_characters",
+      name: "Scene Characters",
+      description:
+        "Identify and retrieve characters relevant to a scene or context",
+      targetStores: ["characterSheets", "scenes", "characterPositions"],
+      actions: [
+        {
+          id: "identify_characters",
+          name: "Identify Scene Characters",
+          description: "Determine which characters should be in the scene",
+          positionId: "story_topologist",
+          promptTemplate: `Identify characters for this scene context:
+
+{{input.sceneContext}}
+
+Consider:
+- Explicitly mentioned characters
+- Characters likely present based on location
+- Characters involved in related plot lines
+
+Return list of character IDs/names with relevance reasoning.`,
+          inputMapping: {},
+          outputMapping: {},
+        },
+      ],
+      inputSchema: {
+        sceneContext: { type: "string", required: true },
+        location: { type: "string" },
+        plotLines: { type: "array" },
+      },
+      outputSchema: {
+        characters: { type: "array" },
+        reasoning: { type: "object" },
+      },
+      canTriggerFromPipeline: true,
+      canTriggerManually: true,
+    });
+
+    this._log("debug", "Registered default character pipelines");
+  },
+
   _registerDefaultPositions() {
     const positions = [
       {
@@ -1329,6 +1715,71 @@ const CurationSystem = {
     this._log("info", "All stores loaded from persistence");
   },
 
+  // ===== PIPELINE PERSISTENCE =====
+
+  /**
+   * Save all pipelines to persistence
+   * @returns {Promise<boolean>} Success
+   */
+  async savePipelines() {
+    if (!this._storage) {
+      return false;
+    }
+
+    const pipelineData = {
+      crud: Array.from(this._crudPipelines.values()),
+      rag: Array.from(this._ragPipelines.values()),
+    };
+
+    const success = await this._storage.set("curation_pipelines", pipelineData);
+
+    if (success) {
+      this._log("debug", "Saved curation pipelines");
+    }
+
+    return success;
+  },
+
+  /**
+   * Load all pipelines from persistence
+   * @returns {Promise<boolean>} Success
+   */
+  async loadPipelines() {
+    if (!this._storage) {
+      return false;
+    }
+
+    const data = await this._storage.get("curation_pipelines");
+
+    if (!data) {
+      this._log("debug", "No saved pipelines found");
+      return false;
+    }
+
+    // Load CRUD pipelines
+    if (Array.isArray(data.crud)) {
+      for (const pipeline of data.crud) {
+        if (pipeline.id) {
+          this._crudPipelines.set(pipeline.id, pipeline);
+        }
+      }
+      this._log("debug", `Loaded ${data.crud.length} CRUD pipelines`);
+    }
+
+    // Load RAG pipelines
+    if (Array.isArray(data.rag)) {
+      for (const pipeline of data.rag) {
+        if (pipeline.id) {
+          this._ragPipelines.set(pipeline.id, pipeline);
+        }
+      }
+      this._log("debug", `Loaded ${data.rag.length} RAG pipelines`);
+    }
+
+    this._log("info", "All pipelines loaded from persistence");
+    return true;
+  },
+
   /**
    * Start auto-save interval
    * @param {number} intervalMs - Interval in milliseconds
@@ -1380,6 +1831,9 @@ const CurationSystem = {
     this._log("info", `RAG pipeline registered: ${normalized.name}`);
     this._emit("ragPipeline:registered", { pipeline: normalized });
 
+    // Auto-save pipelines
+    this.savePipelines();
+
     return normalized;
   },
 
@@ -1398,6 +1852,21 @@ const CurationSystem = {
    */
   getAllRAGPipelines() {
     return Array.from(this._ragPipelines.values());
+  },
+
+  /**
+   * Delete a RAG pipeline
+   * @param {string} pipelineId - Pipeline ID
+   * @returns {boolean} Success
+   */
+  deleteRAGPipeline(pipelineId) {
+    const deleted = this._ragPipelines.delete(pipelineId);
+    if (deleted) {
+      this._log("info", `RAG pipeline deleted: ${pipelineId}`);
+      this._emit("ragPipeline:deleted", { pipelineId });
+      this.savePipelines();
+    }
+    return deleted;
   },
 
   /**
@@ -1532,7 +2001,25 @@ const CurationSystem = {
     this._log("info", `CRUD pipeline registered: ${normalized.name}`);
     this._emit("crudPipeline:registered", { pipeline: normalized });
 
+    // Auto-save pipelines
+    this.savePipelines();
+
     return normalized;
+  },
+
+  /**
+   * Delete a CRUD pipeline
+   * @param {string} pipelineId - Pipeline ID
+   * @returns {boolean} Success
+   */
+  deleteCRUDPipeline(pipelineId) {
+    const deleted = this._crudPipelines.delete(pipelineId);
+    if (deleted) {
+      this._log("info", `CRUD pipeline deleted: ${pipelineId}`);
+      this._emit("crudPipeline:deleted", { pipelineId });
+      this.savePipelines();
+    }
+    return deleted;
   },
 
   /**

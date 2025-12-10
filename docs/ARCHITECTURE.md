@@ -774,9 +774,9 @@ The three-system architecture is now fully implemented:
 ### 🔜 Next Steps (Optional Enhancements)
 
 1. **Testing**: Create unit tests for core modules
-2. **Presets**: Add preset pipeline and agent configurations
-3. **Documentation**: Expand user guide and API documentation
-4. **Legacy Cleanup**: Remove `modules/` directory after validation
+2. **Documentation**: Expand user guide and API documentation
+3. **Legacy Cleanup**: Remove `modules/` directory after validation
+4. **Additional Components**: schema-editor, entry-editor (P3)
 
 ### 📁 Directory Status
 
@@ -786,29 +786,42 @@ TheCouncil/
 │   └── systems.js           ✅ Complete
 ├── docs/
 │   ├── ARCHITECTURE.md      ✅ Complete
-│   └── DEFAULT_PIPELINE.md  ✅ Complete
+│   ├── DEFAULT_PIPELINE.md  ✅ Complete
+│   ├── ACTION_PLAN.md       ✅ Complete
+│   └── ISSUES.md            ✅ Tracking
 ├── utils/
 │   ├── logger.js            ✅ Complete
 │   ├── token-resolver.js    ✅ Complete
 │   └── api-client.js        ✅ Complete
 ├── core/
-│   ├── agents-system.js     ✅ Complete (~1,360 lines)
-│   ├── curation-system.js   ✅ Complete (~1,750 lines)
-│   ├── pipeline-system.js   ✅ Complete (~1,710 lines)
+│   ├── agents-system.js     ✅ Complete (~1,400 lines) - Added type/displayName fields, enhanced getSummary()
+│   ├── curation-system.js   ✅ Complete (~1,850 lines) - Added pipeline persistence
+│   ├── pipeline-system.js   ✅ Complete (~2,000 lines) - Added SME matching logic
+│   ├── preset-manager.js    ✅ Complete (~1,230 lines) - Unified preset loading/application
 │   ├── context-manager.js   ✅ Complete (~660 lines)
 │   ├── output-manager.js    ✅ Complete (~740 lines)
 │   └── thread-manager.js    ✅ Complete (~835 lines)
 ├── ui/
-│   ├── agents-modal.js      ✅ Complete (~2,990 lines)
+│   ├── agents-modal.js      ✅ Complete (~3,350 lines) - Added Curation team visual distinction
 │   ├── curation-modal.js    ✅ Complete (~1,980 lines)
-│   ├── pipeline-modal.js    ✅ Complete (~2,450 lines)
+│   ├── pipeline-modal.js    ✅ Complete (~2,500 lines) - Improved RAG UX
 │   ├── gavel-modal.js       ✅ Complete (~1,250 lines)
 │   ├── nav-modal.js         ✅ Complete (~930 lines)
-│   └── components/          📁 Reserved for future shared components
-├── modules/                 🗑️ Legacy (to be removed after validation)
+│   └── components/
+│       ├── prompt-builder.js         ✅ Complete
+│       ├── participant-selector.js   ✅ Complete - Fixed position loading
+│       ├── context-config.js         ✅ Complete
+│       ├── curation-pipeline-builder.js ✅ Complete
+│       ├── token-picker.js           ✅ Complete (~1,335 lines) - Token browser with categories
+│       └── execution-monitor.js      ✅ Complete (~1,660 lines) - Live pipeline monitoring
 ├── data/
-│   └── stories/             📁 Exists (empty)
-├── styles/                  📁 Exists (legacy CSS)
+│   └── presets/
+│       ├── default-pipeline.json     ✅ Editorial Board preset (19 phases)
+│       ├── standard-pipeline.json    ✅ Standard preset (10 phases)
+│       ├── quick-pipeline.json       ✅ Quick preset (4 phases)
+│       └── README.md                 ✅ Preset format documentation
+├── styles/
+│   └── main.css             ✅ Complete
 ├── index.js                 ✅ Complete (~870 lines) - New architecture entry point
 ├── manifest.json            ✅ Exists
 └── README.md                ✅ Exists
@@ -837,17 +850,40 @@ The `modules/` directory contains legacy code that will be replaced:
 
 ---
 
+## Recent Updates
+
+### Completed Features (Latest)
+- ✅ **ParticipantSelector Fix**: Now uses `getAllPositions()` directly instead of broken `getSummary()` call
+- ✅ **Preset Position Import**: Proper dependency ordering (Teams → Positions by tier → Team members)
+- ✅ **Pipeline Persistence**: CRUD and RAG pipelines now save/load via `savePipelines()`/`loadPipelines()`
+- ✅ **SME Matching**: Dynamic SME selection with keyword extraction and scoring in `_resolveDynamicSMEs()`
+- ✅ **Enhanced getSummary()**: Now includes actual `agents`, `positions`, `teams` arrays
+- ✅ **Curation Team UI**: Visual distinction between Pipeline and Curation teams in Agents modal
+- ✅ **Position Type Field**: Added `type` and `displayName` fields to position schema for preset mapping
+- ✅ **TokenPicker Component**: Full token browser with categories, search, recent tokens, and insertion
+- ✅ **ExecutionMonitor Component**: Real-time pipeline monitoring with progress, timing, and logs
+- ✅ **Quick Pipeline Preset**: 4-phase streamlined workflow for fast generation
+- ✅ **Standard Pipeline Preset**: 10-phase balanced workflow with key review cycles
+- ✅ **Preset Documentation**: Added README.md with preset format reference
+
+---
+
 ## Open Questions
 
 1. **Store Persistence**: Continue using localStorage + ST extension data, or introduce a better solution?
+   - *Current*: Using localStorage with auto-save interval
 
 2. **RAG Implementation**: Use simple keyword search, or integrate with ST's vector database if available?
+   - *Current*: Keyword-based search with scoring; SME matching uses keyword extraction
 
 3. **Default Pipeline**: What should the default "out of the box" pipeline look like? Minimal (3-4 phases) or comprehensive (10+ phases)?
+   - *Current*: Comprehensive 19-phase Editorial Board pipeline in `default-pipeline.json`
 
 4. **Import/Export**: Should users be able to share pipeline definitions, agent configurations, etc.?
+   - *Current*: PresetManager supports import/export of unified presets
 
 5. **Presets**: Should we ship with preset "company" configurations (e.g., "Minimal", "Standard", "Comprehensive")?
+   - *Planned*: Add Quick (3-4 phases) and Standard (10 phases) variants
 
 ---
 

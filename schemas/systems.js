@@ -1195,8 +1195,20 @@ const DefaultStoreSchemas = {
       type: {
         name: "type",
         type: "enum",
-        enumValues: ["main", "supporting", "minor", "npc"],
-        default: "supporting",
+        enumValues: [
+          "main",
+          "main_cast",
+          "recurring",
+          "recurring_cast",
+          "supporting",
+          "supporting_cast",
+          "minor",
+          "background",
+          "npc",
+        ],
+        default: "supporting_cast",
+        description:
+          "Character importance: main_cast (protagonists), recurring_cast (regular appearances), supporting_cast (occasional), background (extras/NPCs)",
       },
       description: { name: "description", type: "string" },
       personality: { name: "personality", type: "string" },
@@ -1217,6 +1229,25 @@ const DefaultStoreSchemas = {
       flaws: { name: "flaws", type: "array", items: { type: "string" } },
       speechPatterns: { name: "speechPatterns", type: "string" },
       isPresent: { name: "isPresent", type: "boolean", default: true },
+      // Character System integration fields
+      voicingGuidance: {
+        name: "voicingGuidance",
+        type: "string",
+        description:
+          "Additional guidance for voicing this character in dialogue",
+      },
+      mannerisms: {
+        name: "mannerisms",
+        type: "array",
+        items: { type: "string" },
+        description: "Distinctive mannerisms, gestures, or habits",
+      },
+      catchphrases: {
+        name: "catchphrases",
+        type: "array",
+        items: { type: "string" },
+        description: "Signature phrases or expressions the character uses",
+      },
       createdAt: { name: "createdAt", type: "date" },
       updatedAt: { name: "updatedAt", type: "date" },
     },

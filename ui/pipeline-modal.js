@@ -1169,9 +1169,20 @@ const PipelineModal = {
         </div>
 
         <div class="council-pipeline-detail-section">
-          <label>Threads</label>
+          <label>Threads Configuration</label>
           <div class="council-pipeline-thread-config">
-            <div>Phase Thread: ${phase.threads?.phaseThread?.enabled ? "✅ Enabled" : "❌ Disabled"}</div>
+            <div><strong>Phase Thread:</strong> ${phase.threads?.phaseThread?.enabled !== false ? "✅ Enabled" : "❌ Disabled"}</div>
+            ${
+              phase.threads?.phaseThread?.enabled !== false
+                ? `
+              <div class="council-pipeline-thread-details">
+                ${phase.threads?.phaseThread?.firstMessage ? `<div><strong>First Message:</strong> <span class="council-pipeline-truncate">${this._escapeHtml(phase.threads.phaseThread.firstMessage.substring(0, 100))}${phase.threads.phaseThread.firstMessage.length > 100 ? "..." : ""}</span></div>` : ""}
+                <div><strong>Max Messages:</strong> ${phase.threads?.phaseThread?.maxMessages || 50}</div>
+              </div>
+            `
+                : ""
+            }
+            <div style="margin-top: 4px;"><strong>Team Threads:</strong> ${phase.threads?.teamThreads ? "✅ Enabled" : "❌ Disabled"}</div>
           </div>
         </div>
 
@@ -1803,6 +1814,20 @@ const PipelineModal = {
     const phaseOutputs = this._outputManager?.getAllPhaseOutputs?.() || {};
     const finalOutput = this._outputManager?.getFinalOutput?.() || null;
 
+    // Standard global variable keys
+    const standardGlobals = [
+      "instructions",
+      "outlineDraft",
+      "finalOutline",
+      "firstDraft",
+      "secondDraft",
+      "finalDraft",
+      "commentary",
+    ];
+    const customGlobals = Object.keys(globals).filter(
+      (k) => !standardGlobals.includes(k) && k !== "custom",
+    );
+
     let html = `
       <div class="council-pipeline-outputs-tab">
         <div class="council-pipeline-toolbar">
@@ -1811,6 +1836,9 @@ const PipelineModal = {
           </button>
           <button class="council-pipeline-btn council-pipeline-btn-secondary" data-action="export-outputs">
             📤 Export All
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-action="clear-all-outputs">
+            🗑️ Clear All
           </button>
         </div>
 
@@ -1830,11 +1858,85 @@ const PipelineModal = {
 
           <div class="council-pipeline-output-section">
             <h4>🌐 Global Variables</h4>
-            <div class="council-pipeline-output-content">
+            <div class="council-pipeline-globals-toolbar">
+              <button class="council-pipeline-btn council-pipeline-btn-small council-pipeline-btn-secondary" data-action="add-global-variable">
+                ➕ Add Variable
+              </button>
+              <button class="council-pipeline-btn council-pipeline-btn-small council-pipeline-btn-secondary" data-action="clear-globals">
+                🗑️ Clear All
+              </button>
+            </div>
+            <div class="council-pipeline-globals-list">
               ${
                 Object.keys(globals).length === 0
                   ? '<div class="council-pipeline-empty-small">No global variables set</div>'
-                  : `<pre>${this._escapeHtml(JSON.stringify(globals, null, 2))}</pre>`
+                  : ""
+              }
+              ${standardGlobals
+                .map((key) => {
+                  const value = globals[key];
+                  const hasValue =
+                    value !== undefined && value !== "" && value !== null;
+                  return `
+                  <div class="council-pipeline-global-item ${hasValue ? "has-value" : "empty"}">
+                    <div class="council-pipeline-global-header">
+                      <span class="council-pipeline-global-key">${this._escapeHtml(key)}</span>
+                      <span class="council-pipeline-global-type">standard</span>
+                      <div class="council-pipeline-global-actions">
+                        <button class="council-pipeline-btn-icon" data-action="edit-global" data-key="${key}" title="Edit">✏️</button>
+                        ${hasValue ? `<button class="council-pipeline-btn-icon" data-action="copy-global" data-key="${key}" title="Copy">📋</button>` : ""}
+                        ${hasValue ? `<button class="council-pipeline-btn-icon" data-action="clear-global" data-key="${key}" title="Clear">🗑️</button>` : ""}
+                      </div>
+                    </div>
+                    ${
+                      hasValue
+                        ? `<div class="council-pipeline-global-value"><pre>${this._escapeHtml(typeof value === "string" ? value.substring(0, 500) + (value.length > 500 ? "..." : "") : JSON.stringify(value, null, 2).substring(0, 500))}</pre></div>`
+                        : '<div class="council-pipeline-global-empty">Not set</div>'
+                    }
+                  </div>
+                `;
+                })
+                .join("")}
+              ${customGlobals
+                .map((key) => {
+                  const value = globals[key];
+                  return `
+                  <div class="council-pipeline-global-item has-value custom">
+                    <div class="council-pipeline-global-header">
+                      <span class="council-pipeline-global-key">${this._escapeHtml(key)}</span>
+                      <span class="council-pipeline-global-type">custom</span>
+                      <div class="council-pipeline-global-actions">
+                        <button class="council-pipeline-btn-icon" data-action="edit-global" data-key="${key}" title="Edit">✏️</button>
+                        <button class="council-pipeline-btn-icon" data-action="copy-global" data-key="${key}" title="Copy">📋</button>
+                        <button class="council-pipeline-btn-icon" data-action="delete-global" data-key="${key}" title="Delete">🗑️</button>
+                      </div>
+                    </div>
+                    <div class="council-pipeline-global-value"><pre>${this._escapeHtml(typeof value === "string" ? value.substring(0, 500) + (value.length > 500 ? "..." : "") : JSON.stringify(value, null, 2).substring(0, 500))}</pre></div>
+                  </div>
+                `;
+                })
+                .join("")}
+              ${
+                globals.custom && Object.keys(globals.custom).length > 0
+                  ? Object.entries(globals.custom)
+                      .map(
+                        ([key, value]) => `
+                  <div class="council-pipeline-global-item has-value custom">
+                    <div class="council-pipeline-global-header">
+                      <span class="council-pipeline-global-key">custom.${this._escapeHtml(key)}</span>
+                      <span class="council-pipeline-global-type">custom</span>
+                      <div class="council-pipeline-global-actions">
+                        <button class="council-pipeline-btn-icon" data-action="edit-global" data-key="custom.${key}" title="Edit">✏️</button>
+                        <button class="council-pipeline-btn-icon" data-action="copy-global" data-key="custom.${key}" title="Copy">📋</button>
+                        <button class="council-pipeline-btn-icon" data-action="delete-global" data-key="custom.${key}" title="Delete">🗑️</button>
+                      </div>
+                    </div>
+                    <div class="council-pipeline-global-value"><pre>${this._escapeHtml(typeof value === "string" ? value.substring(0, 500) + (value.length > 500 ? "..." : "") : JSON.stringify(value, null, 2).substring(0, 500))}</pre></div>
+                  </div>
+                `,
+                      )
+                      .join("")
+                  : ""
               }
             </div>
           </div>
@@ -1849,7 +1951,13 @@ const PipelineModal = {
                       .map(
                         ([phaseId, output]) => `
                     <div class="council-pipeline-phase-output">
-                      <div class="council-pipeline-phase-output-header">${this._escapeHtml(phaseId)}</div>
+                      <div class="council-pipeline-phase-output-header">
+                        <span>${this._escapeHtml(phaseId)}</span>
+                        <div class="council-pipeline-phase-output-actions">
+                          <button class="council-pipeline-btn-icon" data-action="copy-phase-output" data-phase-id="${phaseId}" title="Copy">📋</button>
+                          <button class="council-pipeline-btn-icon" data-action="clear-phase-output" data-phase-id="${phaseId}" title="Clear">🗑️</button>
+                        </div>
+                      </div>
                       <div class="council-pipeline-output-content">
                         <pre>${this._escapeHtml(typeof output === "string" ? output : JSON.stringify(output, null, 2))}</pre>
                       </div>
@@ -2621,6 +2729,33 @@ const PipelineModal = {
             <label>Icon</label>
             <input type="text" class="council-pipeline-input" data-field="icon" value="${phase?.icon || "🎭"}" maxlength="4">
           </div>
+
+          <h4 class="council-pipeline-section-title">Thread Configuration</h4>
+          <div class="council-pipeline-form-group">
+            <label class="council-pipeline-checkbox">
+              <input type="checkbox" data-field="phaseThreadEnabled" ${phase?.threads?.phaseThread?.enabled !== false ? "checked" : ""}>
+              Enable Phase Thread
+            </label>
+            <p class="council-pipeline-form-hint">Creates a dedicated thread for this phase's context and conversation.</p>
+          </div>
+          <div class="council-pipeline-form-group">
+            <label>Phase Thread First Message (Instructions)</label>
+            <textarea class="council-pipeline-input" data-field="phaseThreadFirstMessage" rows="3" placeholder="Optional: Initial instructions for the phase thread...">${this._escapeHtml(phase?.threads?.phaseThread?.firstMessage || "")}</textarea>
+          </div>
+          <div class="council-pipeline-form-group">
+            <label>Max Thread Messages</label>
+            <input type="number" class="council-pipeline-input" data-field="phaseThreadMaxMessages" value="${phase?.threads?.phaseThread?.maxMessages || 50}" min="10" max="500">
+            <p class="council-pipeline-form-hint">Maximum messages to retain in thread (older messages are trimmed).</p>
+          </div>
+          <div class="council-pipeline-form-group">
+            <label class="council-pipeline-checkbox">
+              <input type="checkbox" data-field="teamThreadsEnabled" ${phase?.threads?.teamThreads ? "checked" : ""}>
+              Enable Team-Specific Threads
+            </label>
+            <p class="council-pipeline-form-hint">Creates separate threads for each participating team.</p>
+          </div>
+
+          <h4 class="council-pipeline-section-title">Output Configuration</h4>
           <div class="council-pipeline-form-group">
             <label>Output Consolidation</label>
             <select class="council-pipeline-input" data-field="consolidation">
@@ -2631,12 +2766,22 @@ const PipelineModal = {
               <option value="designated" ${phase?.output?.consolidation === "designated" ? "selected" : ""}>Designated Action</option>
             </select>
           </div>
+          <h4 class="council-pipeline-section-title">User Review</h4>
           <div class="council-pipeline-form-group">
-            <label>Gavel (User Review)</label>
             <label class="council-pipeline-checkbox">
               <input type="checkbox" data-field="gavelEnabled" ${phase?.gavel?.enabled ? "checked" : ""}>
-              Enable user review at end of phase
+              Enable Gavel (User Review) at end of phase
             </label>
+          </div>
+          <div class="council-pipeline-form-group" id="gavel-options" style="${phase?.gavel?.enabled ? "" : "display: none;"}">
+            <label class="council-pipeline-checkbox">
+              <input type="checkbox" data-field="gavelCanSkip" ${phase?.gavel?.canSkip !== false ? "checked" : ""}>
+              Allow user to skip review
+            </label>
+            <div class="council-pipeline-form-group" style="margin-top: 8px;">
+              <label>Gavel Prompt</label>
+              <textarea class="council-pipeline-input" data-field="gavelPrompt" rows="2" placeholder="Review the phase output...">${this._escapeHtml(phase?.gavel?.prompt || "")}</textarea>
+            </div>
           </div>
         </div>
         <div class="council-pipeline-dialog-actions">
@@ -2663,6 +2808,15 @@ const PipelineModal = {
       if (e.target === dialog) cleanup();
     });
 
+    // Toggle gavel options visibility
+    const gavelCheckbox = dialog.querySelector('[data-field="gavelEnabled"]');
+    const gavelOptions = dialog.querySelector("#gavel-options");
+    if (gavelCheckbox && gavelOptions) {
+      gavelCheckbox.addEventListener("change", () => {
+        gavelOptions.style.display = gavelCheckbox.checked ? "" : "none";
+      });
+    }
+
     dialog
       .querySelector('[data-dialog="save"]')
       .addEventListener("click", () => {
@@ -2672,20 +2826,54 @@ const PipelineModal = {
           return;
         }
 
+        // Thread configuration
+        const phaseThreadEnabled = dialog.querySelector(
+          '[data-field="phaseThreadEnabled"]',
+        ).checked;
+        const phaseThreadFirstMessage = dialog
+          .querySelector('[data-field="phaseThreadFirstMessage"]')
+          .value.trim();
+        const phaseThreadMaxMessages =
+          parseInt(
+            dialog.querySelector('[data-field="phaseThreadMaxMessages"]').value,
+          ) || 50;
+        const teamThreadsEnabled = dialog.querySelector(
+          '[data-field="teamThreadsEnabled"]',
+        ).checked;
+
+        // Gavel configuration
+        const gavelEnabled = dialog.querySelector(
+          '[data-field="gavelEnabled"]',
+        ).checked;
+        const gavelCanSkip =
+          dialog.querySelector('[data-field="gavelCanSkip"]')?.checked !==
+          false;
+        const gavelPrompt =
+          dialog.querySelector('[data-field="gavelPrompt"]')?.value.trim() ||
+          "";
+
         const data = {
           name,
           description: dialog
             .querySelector('[data-field="description"]')
             .value.trim(),
           icon: dialog.querySelector('[data-field="icon"]').value || "🎭",
+          threads: {
+            phaseThread: {
+              enabled: phaseThreadEnabled,
+              firstMessage: phaseThreadFirstMessage,
+              maxMessages: phaseThreadMaxMessages,
+            },
+            teamThreads: teamThreadsEnabled ? {} : null,
+          },
           output: {
             consolidation: dialog.querySelector('[data-field="consolidation"]')
               .value,
           },
           gavel: {
-            enabled: dialog.querySelector('[data-field="gavelEnabled"]')
-              .checked,
-            canSkip: true,
+            enabled: gavelEnabled,
+            canSkip: gavelCanSkip,
+            prompt: gavelPrompt,
           },
         };
 
@@ -2787,6 +2975,7 @@ const PipelineModal = {
             <button class="council-pipeline-dialog-tab" data-tab="curation">🗃️ Curation</button>
             <button class="council-pipeline-dialog-tab" data-tab="participants">👥 Participants</button>
             <button class="council-pipeline-dialog-tab" data-tab="context">📥 Context & I/O</button>
+            <button class="council-pipeline-dialog-tab" data-tab="threads">🧵 Threads</button>
             <button class="council-pipeline-dialog-tab" data-tab="prompt">✏️ Prompt</button>
           </div>
 
@@ -3006,6 +3195,49 @@ const PipelineModal = {
             </div>
           </div>
 
+          <div class="council-pipeline-dialog-tab-content" data-tab-content="threads" style="display: none;">
+            <h4 class="council-pipeline-section-title">Action Thread Configuration</h4>
+            <p class="council-pipeline-form-hint">Configure how threads are used during this action's execution.</p>
+
+            <div class="council-pipeline-form-group">
+              <label class="council-pipeline-checkbox">
+                <input type="checkbox" data-field="actionThreadEnabled" ${action?.threads?.actionThread?.enabled !== false ? "checked" : ""}>
+                Enable Action Thread
+              </label>
+              <p class="council-pipeline-form-hint">Creates a dedicated thread for this action's conversation context.</p>
+            </div>
+
+            <div class="council-pipeline-form-group">
+              <label>Action Thread First Message</label>
+              <textarea class="council-pipeline-input" data-field="actionThreadFirstMessage" rows="3" placeholder="Optional: Initial instructions or context for the action thread...">${this._escapeHtml(action?.threads?.actionThread?.firstMessage || "")}</textarea>
+              <p class="council-pipeline-form-hint">Sets the initial system/instruction message for this action's thread.</p>
+            </div>
+
+            <div class="council-pipeline-form-group">
+              <label>Max Thread Messages</label>
+              <input type="number" class="council-pipeline-input" data-field="actionThreadMaxMessages" value="${action?.threads?.actionThread?.maxMessages || 20}" min="5" max="100">
+              <p class="council-pipeline-form-hint">Maximum messages to retain in the action thread.</p>
+            </div>
+
+            <h4 class="council-pipeline-section-title">Team Task Threads</h4>
+            <div class="council-pipeline-form-group">
+              <label class="council-pipeline-checkbox">
+                <input type="checkbox" data-field="teamTaskThreadsEnabled" ${Object.keys(action?.threads?.teamTaskThreads || {}).length > 0 ? "checked" : ""}>
+                Enable Team Task Threads
+              </label>
+              <p class="council-pipeline-form-hint">Creates separate task threads for each participating team during this action.</p>
+            </div>
+
+            <div class="council-pipeline-thread-info">
+              <p class="council-pipeline-form-hint">
+                💡 <strong>Thread Hierarchy:</strong><br>
+                • <strong>Phase Thread:</strong> Shared context across all actions in a phase<br>
+                • <strong>Action Thread:</strong> Isolated context for this specific action<br>
+                • <strong>Team Task Thread:</strong> Per-team context within this action
+              </p>
+            </div>
+          </div>
+
           <div class="council-pipeline-dialog-tab-content" data-tab-content="prompt" style="display: none;">
             <div class="council-pipeline-form-group">
               <label>Prompt Template</label>
@@ -3014,12 +3246,13 @@ const PipelineModal = {
               </p>
               <textarea class="council-pipeline-input council-pipeline-code" data-field="promptTemplate" rows="12">${this._escapeHtml(action?.promptTemplate || "You are participating in a collaborative writing session.\n\n{{context}}\n\nUser Input: {{input}}\n\nProvide your response:")}</textarea>
             </div>
-            <div class="council-pipeline-form-group">
-              <label>
-                <input type="checkbox" data-field="ragEnabled" ${action?.rag?.enabled ? "checked" : ""}>
-                Enable RAG (Retrieval-Augmented Generation)
-              </label>
-              <p class="council-pipeline-form-hint">When enabled, uses the RAG configuration from the Curation tab.</p>
+            <div class="council-pipeline-form-group council-pipeline-rag-link">
+              <p class="council-pipeline-form-hint">
+                💡 Need to add RAG (retrieval-augmented context) to this action?
+                <button type="button" class="council-pipeline-link-btn" data-action="goto-curation-tab">
+                  Configure RAG in the Curation tab →
+                </button>
+              </p>
             </div>
           </div>
         </div>
@@ -3047,6 +3280,22 @@ const PipelineModal = {
         });
       });
     });
+
+    // Handle "goto curation tab" link button
+    const gotoCurationBtn = dialog.querySelector(
+      '[data-action="goto-curation-tab"]',
+    );
+    if (gotoCurationBtn) {
+      gotoCurationBtn.addEventListener("click", () => {
+        // Find and click the curation tab
+        const curationTab = dialog.querySelector(
+          '.council-pipeline-dialog-tab[data-tab="curation"]',
+        );
+        if (curationTab) {
+          curationTab.click();
+        }
+      });
+    }
 
     // Initialize ParticipantSelector component
     const participantContainer = dialog.querySelector(
@@ -3310,6 +3559,32 @@ const PipelineModal = {
             ) || 0,
         };
 
+        // Get Thread config
+        const actionThreadEnabled =
+          dialog.querySelector('[data-field="actionThreadEnabled"]')
+            ?.checked !== false;
+        const actionThreadFirstMessage =
+          dialog
+            .querySelector('[data-field="actionThreadFirstMessage"]')
+            ?.value.trim() || "";
+        const actionThreadMaxMessages =
+          parseInt(
+            dialog.querySelector('[data-field="actionThreadMaxMessages"]')
+              ?.value,
+          ) || 20;
+        const teamTaskThreadsEnabled =
+          dialog.querySelector('[data-field="teamTaskThreadsEnabled"]')
+            ?.checked || false;
+
+        const threadsConfig = {
+          actionThread: {
+            enabled: actionThreadEnabled,
+            firstMessage: actionThreadFirstMessage,
+            maxMessages: actionThreadMaxMessages,
+          },
+          teamTaskThreads: teamTaskThreadsEnabled ? {} : null,
+        };
+
         const data = {
           name,
           actionType,
@@ -3338,6 +3613,7 @@ const PipelineModal = {
             useActionInput: true,
           },
           output: outputData,
+          threads: threadsConfig,
           promptTemplate: dialog.querySelector('[data-field="promptTemplate"]')
             .value,
           rag: {
@@ -4585,6 +4861,385 @@ const PipelineModal = {
         gap: 4px;
         font-size: 0.9em;
         color: var(--SmartThemeBodyColor, #888);
+      }
+
+      /* ===== RESPONSIVE - TABLET ===== */
+      @media (max-width: 1024px) {
+        .council-pipeline-modal {
+          width: 95vw;
+          max-width: 95vw;
+        }
+
+        .council-pipeline-phases-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      /* ===== RESPONSIVE - MOBILE ===== */
+      @media (max-width: 768px) {
+        .council-pipeline-modal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          width: 100% !important;
+          max-width: 100% !important;
+          height: 100% !important;
+          max-height: 100% !important;
+          border-radius: 0;
+          transform: none;
+        }
+
+        .council-pipeline-modal.visible {
+          transform: none;
+        }
+
+        .council-pipeline-header {
+          padding: 12px 14px;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .council-pipeline-title {
+          font-size: 1rem;
+          flex: 1 1 100%;
+          justify-content: center;
+        }
+
+        .council-pipeline-header-actions {
+          flex: 1 1 100%;
+          justify-content: center;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .council-pipeline-tabs {
+          padding: 8px 12px;
+          gap: 4px;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .council-pipeline-tabs::-webkit-scrollbar {
+          display: none;
+        }
+
+        .council-pipeline-tab {
+          padding: 8px 12px;
+          font-size: 0.8rem;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .council-pipeline-content {
+          padding: 12px;
+        }
+
+        .council-pipeline-footer {
+          padding: 10px 14px;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .council-pipeline-btn {
+          min-height: 44px;
+          padding: 10px 14px;
+        }
+
+        .council-pipeline-btn-sm {
+          min-height: 36px;
+          padding: 8px 10px;
+        }
+
+        /* Phases grid - single column on mobile */
+        .council-pipeline-phases-grid {
+          grid-template-columns: 1fr;
+          gap: 10px;
+        }
+
+        .council-pipeline-phase-card {
+          padding: 12px;
+        }
+
+        .council-pipeline-phase-header {
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .council-pipeline-phase-actions {
+          width: 100%;
+          justify-content: flex-end;
+          padding-top: 8px;
+          border-top: 1px solid var(--SmartThemeBorderColor, #333);
+        }
+
+        /* Actions list - mobile */
+        .council-pipeline-actions-list {
+          gap: 8px;
+        }
+
+        .council-pipeline-action-item {
+          padding: 10px;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 8px;
+        }
+
+        .council-pipeline-action-header {
+          width: 100%;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .council-pipeline-action-actions {
+          width: 100%;
+          justify-content: flex-end;
+          padding-top: 8px;
+          border-top: 1px solid var(--SmartThemeBorderColor, #333);
+        }
+
+        /* Dialogs - Mobile full screen */
+        .council-pipeline-dialog-overlay {
+          padding: 0;
+          align-items: flex-end;
+        }
+
+        .council-pipeline-dialog {
+          width: 100% !important;
+          max-width: 100% !important;
+          max-height: 90vh;
+          margin: 0;
+          border-radius: 12px 12px 0 0;
+        }
+
+        .council-pipeline-dialog-header {
+          padding: 14px 16px;
+        }
+
+        .council-pipeline-dialog-header h3 {
+          font-size: 1rem;
+        }
+
+        .council-pipeline-dialog-body {
+          padding: 14px 16px;
+          max-height: calc(90vh - 130px);
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .council-pipeline-dialog-tabs {
+          padding: 8px 12px;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          gap: 4px;
+        }
+
+        .council-pipeline-dialog-tabs::-webkit-scrollbar {
+          display: none;
+        }
+
+        .council-pipeline-dialog-tab {
+          padding: 8px 12px;
+          font-size: 0.8rem;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .council-pipeline-dialog-actions {
+          padding: 12px 16px;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .council-pipeline-dialog-actions .council-pipeline-btn {
+          flex: 1 1 calc(50% - 4px);
+        }
+
+        /* Form elements - Mobile */
+        .council-pipeline-input,
+        .council-pipeline-form-input,
+        select.council-pipeline-input,
+        textarea.council-pipeline-input {
+          min-height: 44px;
+          padding: 12px;
+          font-size: 16px; /* Prevents iOS zoom */
+        }
+
+        textarea.council-pipeline-input,
+        .council-pipeline-code {
+          min-height: 120px;
+        }
+
+        .council-pipeline-form-row {
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .council-pipeline-form-row .council-pipeline-form-group {
+          flex: 1 1 100%;
+        }
+
+        /* Preset cards - Mobile */
+        .council-pipeline-preset-card {
+          padding: 12px;
+        }
+
+        .council-pipeline-preset-header {
+          flex-direction: column;
+          gap: 8px;
+          align-items: flex-start;
+        }
+
+        .council-pipeline-preset-actions {
+          width: 100%;
+          display: flex;
+          justify-content: stretch;
+          gap: 8px;
+        }
+
+        .council-pipeline-preset-actions .council-pipeline-btn {
+          flex: 1;
+        }
+
+        .council-pipeline-preset-stats {
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        /* Execution panel - Mobile */
+        .council-pipeline-execution-panel {
+          padding: 12px;
+        }
+
+        .council-pipeline-execution-controls {
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .council-pipeline-execution-controls .council-pipeline-btn {
+          flex: 1 1 calc(50% - 4px);
+        }
+
+        /* Threads - Mobile */
+        .council-pipeline-threads-container {
+          flex-direction: column;
+        }
+
+        .council-pipeline-thread-panel {
+          width: 100%;
+          max-height: 250px;
+        }
+
+        /* Curation sections - Mobile */
+        .council-pipeline-curation-config {
+          padding: 12px;
+        }
+
+        .council-pipeline-curation-section {
+          padding: 12px;
+          margin-bottom: 12px;
+        }
+
+        /* Component containers - Mobile */
+        .council-pipeline-participants-container,
+        .council-pipeline-context-config-container {
+          min-height: 200px;
+        }
+
+        /* Empty states - Mobile */
+        .council-pipeline-empty {
+          padding: 30px 16px;
+        }
+      }
+
+      /* ===== SMALL MOBILE ===== */
+      @media (max-width: 480px) {
+        .council-pipeline-header {
+          padding: 10px 12px;
+        }
+
+        .council-pipeline-title {
+          font-size: 0.9rem;
+        }
+
+        .council-pipeline-tab {
+          padding: 6px 10px;
+          font-size: 0.75rem;
+        }
+
+        .council-pipeline-btn {
+          padding: 8px 12px;
+          font-size: 0.8rem;
+        }
+
+        .council-pipeline-dialog-actions .council-pipeline-btn {
+          flex: 1 1 100%;
+        }
+
+        .council-pipeline-phase-card {
+          padding: 10px;
+        }
+
+        .council-pipeline-action-item {
+          padding: 8px;
+        }
+      }
+
+      /* ===== TOUCH DEVICES ===== */
+      @media (hover: none) and (pointer: coarse) {
+        .council-pipeline-btn {
+          min-height: 44px;
+        }
+
+        .council-pipeline-phase-actions,
+        .council-pipeline-action-actions {
+          opacity: 1;
+        }
+
+        .council-pipeline-btn:active {
+          transform: scale(0.98);
+          opacity: 0.9;
+        }
+
+        .council-pipeline-phase-card:active,
+        .council-pipeline-action-item:active {
+          transform: scale(0.99);
+        }
+      }
+
+      /* ===== SAFE AREA (Notched phones) ===== */
+      @supports (padding: max(0px)) {
+        @media (max-width: 768px) {
+          .council-pipeline-modal {
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+
+          .council-pipeline-footer,
+          .council-pipeline-dialog-actions {
+            padding-bottom: max(12px, env(safe-area-inset-bottom));
+          }
+        }
+      }
+
+      /* ===== LANDSCAPE MOBILE ===== */
+      @media (max-width: 900px) and (orientation: landscape) {
+        .council-pipeline-dialog {
+          max-height: 95vh;
+        }
+
+        .council-pipeline-dialog-body {
+          max-height: calc(95vh - 100px);
+        }
+      }
+
+      /* ===== REDUCED MOTION ===== */
+      @media (prefers-reduced-motion: reduce) {
+        .council-pipeline-modal,
+        .council-pipeline-dialog,
+        .council-pipeline-btn {
+          transition: none !important;
+        }
       }
     `;
     document.head.appendChild(style);

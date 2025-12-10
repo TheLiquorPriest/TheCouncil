@@ -1,0 +1,443 @@
+{
+  "id": "standard-pipeline",
+  "name": "Standard Pipeline",
+  "description": "A balanced 10-phase workflow with key review cycles and user gavel points. Good balance between quality and speed.",
+  "version": "2.0.0",
+  "staticContext": {
+    "includeCharacterCard": true,
+    "includeWorldInfo": true,
+    "includePersona": true,
+    "includeScenario": true,
+    "custom": {}
+  },
+  "globals": {
+    "instructions": "",
+    "outline": "",
+    "firstDraft": "",
+    "finalDraft": "",
+    "custom": {}
+  },
+  "constants": {
+    "maxSMEs": 2,
+    "defaultTimeout": 45000,
+    "deliberationRounds": 2
+  },
+  "agents": {
+    "executive": [
+      {
+        "id": "publisher",
+        "name": "Publisher",
+        "position": "executive",
+        "tier": "leader",
+        "description": "Executive leader who directs the creative process and makes key decisions.",
+        "systemPrompt": "You are the Publisher, the executive leader of this editorial team. Your role is to direct the overall creative process, make decisions on content direction, and ensure quality standards are met. Balance efficiency with quality."
+      }
+    ],
+    "proseTeam": [
+      {
+        "id": "editor",
+        "name": "Editor",
+        "position": "prose_lead",
+        "tier": "leader",
+        "description": "Leads prose quality, synthesizes drafts, makes editorial decisions.",
+        "systemPrompt": "You are the Editor, leading the Prose Team. Your role is to oversee prose quality, synthesize contributions, and make editorial passes. Focus on clarity, flow, engagement, and consistency of voice."
+      },
+      {
+        "id": "writer_main",
+        "name": "Lead Writer",
+        "position": "prose_member",
+        "tier": "member",
+        "description": "Primary narrative writer responsible for drafting content.",
+        "systemPrompt": "You are the Lead Writer. Your role is to craft engaging, well-written narrative content. Focus on vivid prose, natural dialogue, and compelling storytelling that matches the established tone."
+      },
+      {
+        "id": "writer_dialogue",
+        "name": "Dialogue Specialist",
+        "position": "prose_member",
+        "tier": "member",
+        "description": "Specializes in character voice and conversation.",
+        "systemPrompt": "You are the Dialogue Specialist. Your role is to ensure character voices are distinct and authentic, conversations flow naturally, and subtext is conveyed effectively through dialogue."
+      }
+    ],
+    "plotTeam": [
+      {
+        "id": "plot_architect",
+        "name": "Plot Architect",
+        "position": "plot_lead",
+        "tier": "leader",
+        "description": "Designs story structure and ensures narrative coherence.",
+        "systemPrompt": "You are the Plot Architect. Your role is to design story structure, create outlines, and ensure narrative beats land effectively. Focus on dramatic tension, pacing, and satisfying story progression."
+      },
+      {
+        "id": "continuity",
+        "name": "Continuity Manager",
+        "position": "plot_member",
+        "tier": "member",
+        "description": "Tracks story consistency and flags contradictions.",
+        "systemPrompt": "You are the Continuity Manager. Your role is to ensure consistency with established story events, track character positions and timeline, and flag any contradictions."
+      }
+    ],
+    "worldTeam": [
+      {
+        "id": "world_keeper",
+        "name": "World Keeper",
+        "position": "world_lead",
+        "tier": "leader",
+        "description": "Maintains world consistency and lore accuracy.",
+        "systemPrompt": "You are the World Keeper. Your role is to ensure the narrative respects established world rules, lore, and setting details. Verify that world elements are used consistently."
+      }
+    ],
+    "curationTeam": [
+      {
+        "id": "archivist",
+        "name": "Archivist",
+        "position": "curation_lead",
+        "tier": "leader",
+        "description": "Manages story data and retrieves relevant context.",
+        "systemPrompt": "You are the Archivist. Your role is to manage story data, retrieve relevant context from previous events, and ensure important information is available to the team."
+      }
+    ]
+  },
+  "teams": [
+    {
+      "id": "prose_team",
+      "name": "Prose Team",
+      "leaderId": "editor",
+      "memberPositions": ["prose_member"]
+    },
+    {
+      "id": "plot_team",
+      "name": "Plot Team",
+      "leaderId": "plot_architect",
+      "memberPositions": ["plot_member"]
+    },
+    {
+      "id": "world_team",
+      "name": "World Team",
+      "leaderId": "world_keeper",
+      "memberPositions": []
+    },
+    {
+      "id": "curation_team",
+      "name": "Curation Team",
+      "leaderId": "archivist",
+      "memberPositions": []
+    }
+  ],
+  "threads": {
+    "main": {
+      "id": "main",
+      "name": "Main",
+      "description": "Primary deliberation space",
+      "visible": true
+    },
+    "context": {
+      "id": "context",
+      "name": "Context",
+      "description": "Context gathering and analysis",
+      "visible": true
+    },
+    "outline": {
+      "id": "outline",
+      "name": "Outline",
+      "description": "Outline development",
+      "visible": true
+    },
+    "drafting": {
+      "id": "drafting",
+      "name": "Drafting",
+      "description": "Draft development",
+      "visible": true
+    },
+    "final": {
+      "id": "final",
+      "name": "Final",
+      "description": "Final output",
+      "visible": true
+    }
+  },
+  "phases": [
+    {
+      "id": "phase_1_curate",
+      "name": "Curate Context",
+      "description": "Gather and organize relevant story context",
+      "icon": "📚",
+      "teams": ["curation_team"],
+      "threads": {
+        "phaseThread": { "enabled": true },
+        "teamThreads": { "curation": true }
+      },
+      "actions": [
+        {
+          "id": "gather_context",
+          "name": "Gather Context",
+          "actionType": "standard",
+          "description": "Retrieve relevant story information",
+          "participants": {
+            "positionIds": ["archivist"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Review the current story context and identify key information relevant to the upcoming response.\n\nContext:\n{{context}}\n\nUser Input:\n{{input}}\n\nSummarize the most relevant story elements, character states, and recent events that should inform the response."
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      }
+    },
+    {
+      "id": "phase_2_understand",
+      "name": "Understand Instructions",
+      "description": "Analyze user input and determine direction",
+      "icon": "🎯",
+      "teams": ["plot_team"],
+      "threads": {
+        "phaseThread": { "enabled": true },
+        "teamThreads": {}
+      },
+      "actions": [
+        {
+          "id": "analyze_instructions",
+          "name": "Analyze Instructions",
+          "actionType": "standard",
+          "description": "Understand what the user wants",
+          "participants": {
+            "positionIds": ["plot_architect", "continuity"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Analyze the user's input to understand their intent and desired direction.\n\nRelevant Context:\n{{previousPhase.output}}\n\nUser Input:\n{{input}}\n\nIdentify:\n1. What action or response is being requested\n2. Key story beats that should occur\n3. Any continuity considerations\n4. Tone and pacing guidance"
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      },
+      "gavel": {
+        "enabled": true,
+        "prompt": "Review the interpreted instructions. Edit if needed or approve to continue.",
+        "editableFields": ["instructions"],
+        "canSkip": true
+      }
+    },
+    {
+      "id": "phase_3_gavel_instructions",
+      "name": "User Gavel - Instructions",
+      "description": "User reviews and approves the interpreted instructions",
+      "icon": "🔨",
+      "actions": [
+        {
+          "id": "gavel_instructions",
+          "name": "Review Instructions",
+          "actionType": "gavel",
+          "gavelConfig": {
+            "prompt": "Review how I understood your instructions. Edit if needed or approve to proceed with outlining.",
+            "editableFields": ["instructions"],
+            "canSkip": true,
+            "timeout": 300000
+          }
+        }
+      ]
+    },
+    {
+      "id": "phase_4_outline",
+      "name": "Create Outline",
+      "description": "Develop a structured outline for the response",
+      "icon": "📝",
+      "teams": ["plot_team", "world_team"],
+      "threads": {
+        "phaseThread": { "enabled": true },
+        "teamThreads": { "plot": true }
+      },
+      "actions": [
+        {
+          "id": "draft_outline",
+          "name": "Draft Outline",
+          "actionType": "standard",
+          "description": "Create the response outline",
+          "participants": {
+            "positionIds": ["plot_architect"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Create a structured outline for the narrative response.\n\nApproved Instructions:\n{{globals.instructions}}\n\nContext:\n{{context}}\n\nCreate an outline with:\n- Key scenes/beats\n- Character actions\n- Dialogue highlights\n- Pacing notes"
+        },
+        {
+          "id": "world_check",
+          "name": "World Consistency Check",
+          "actionType": "standard",
+          "description": "Verify outline against world rules",
+          "participants": {
+            "positionIds": ["world_keeper"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Review this outline for world consistency.\n\nOutline:\n{{previousAction.output}}\n\nFlag any issues with world rules, lore, or setting. If no issues, confirm the outline is world-consistent."
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      }
+    },
+    {
+      "id": "phase_5_first_draft",
+      "name": "First Draft",
+      "description": "Write the initial narrative draft",
+      "icon": "✍️",
+      "teams": ["prose_team"],
+      "threads": {
+        "phaseThread": { "enabled": true },
+        "teamThreads": { "prose": true }
+      },
+      "actions": [
+        {
+          "id": "write_draft",
+          "name": "Write First Draft",
+          "actionType": "standard",
+          "description": "Create the initial narrative",
+          "participants": {
+            "positionIds": ["writer_main"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Write the first draft based on the approved outline.\n\nOutline:\n{{previousPhase.output}}\n\nContext:\n{{context}}\n\nWrite an engaging narrative that follows the outline. Focus on vivid prose, natural dialogue, and compelling storytelling."
+        },
+        {
+          "id": "dialogue_pass",
+          "name": "Dialogue Enhancement",
+          "actionType": "standard",
+          "description": "Enhance dialogue quality",
+          "participants": {
+            "positionIds": ["writer_dialogue"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Review and enhance the dialogue in this draft.\n\nDraft:\n{{previousAction.output}}\n\nEnsure character voices are distinct and authentic. Improve conversation flow and subtext. Return the full draft with enhanced dialogue."
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      }
+    },
+    {
+      "id": "phase_6_gavel_first_draft",
+      "name": "User Gavel - First Draft",
+      "description": "User reviews the first draft",
+      "icon": "🔨",
+      "actions": [
+        {
+          "id": "gavel_first_draft",
+          "name": "Review First Draft",
+          "actionType": "gavel",
+          "gavelConfig": {
+            "prompt": "Review the first draft. You can edit it directly, request changes, or approve to continue with review.",
+            "editableFields": ["firstDraft"],
+            "canSkip": true,
+            "timeout": 300000
+          }
+        }
+      ]
+    },
+    {
+      "id": "phase_7_review",
+      "name": "Editorial Review",
+      "description": "Review for quality, consistency, and polish",
+      "icon": "🔍",
+      "teams": ["prose_team", "plot_team"],
+      "threads": {
+        "phaseThread": { "enabled": true },
+        "teamThreads": {}
+      },
+      "actions": [
+        {
+          "id": "continuity_review",
+          "name": "Continuity Review",
+          "actionType": "standard",
+          "description": "Check for consistency issues",
+          "participants": {
+            "positionIds": ["continuity"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Review this draft for continuity issues.\n\nDraft:\n{{globals.firstDraft}}\n\nContext:\n{{context}}\n\nIdentify any contradictions with established facts, timeline issues, or character inconsistencies. List specific issues or confirm the draft is consistent."
+        },
+        {
+          "id": "editorial_review",
+          "name": "Editorial Review",
+          "actionType": "standard",
+          "description": "Polish prose and fix issues",
+          "participants": {
+            "positionIds": ["editor"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Review and polish this draft, addressing any continuity notes.\n\nDraft:\n{{globals.firstDraft}}\n\nContinuity Notes:\n{{previousAction.output}}\n\nFix any issues noted. Polish the prose for clarity, flow, and engagement. Return the improved draft."
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      }
+    },
+    {
+      "id": "phase_8_final_draft",
+      "name": "Final Draft",
+      "description": "Prepare the final polished version",
+      "icon": "📜",
+      "teams": ["prose_team"],
+      "threads": {
+        "phaseThread": { "enabled": true },
+        "teamThreads": {}
+      },
+      "actions": [
+        {
+          "id": "finalize_draft",
+          "name": "Finalize Draft",
+          "actionType": "standard",
+          "description": "Create the final version",
+          "participants": {
+            "positionIds": ["editor"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Prepare the final version of this draft.\n\nReviewed Draft:\n{{previousPhase.output}}\n\nMake any final polish passes. Ensure the narrative is complete, engaging, and ready for delivery. Return the final draft."
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      }
+    },
+    {
+      "id": "phase_9_gavel_final",
+      "name": "User Gavel - Final Draft",
+      "description": "User approves the final draft",
+      "icon": "🔨",
+      "actions": [
+        {
+          "id": "gavel_final",
+          "name": "Approve Final Draft",
+          "actionType": "gavel",
+          "gavelConfig": {
+            "prompt": "Review the final draft. Approve to deliver, or edit/request changes.",
+            "editableFields": ["finalDraft"],
+            "canSkip": true,
+            "timeout": 300000
+          }
+        }
+      ]
+    },
+    {
+      "id": "phase_10_deliver",
+      "name": "Deliver Response",
+      "description": "Output the final narrative response",
+      "icon": "✅",
+      "actions": [
+        {
+          "id": "deliver",
+          "name": "Deliver",
+          "actionType": "deliverables",
+          "description": "Output the final response",
+          "promptTemplate": "{{globals.finalDraft}}"
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      }
+    }
+  ],
+  "metadata": {
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z",
+    "author": "The Council",
+    "tags": ["standard", "balanced", "recommended", "10-phase"]
+  }
+}

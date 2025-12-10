@@ -80,6 +80,8 @@ const PipelineSystem = {
     USER_GAVEL: "user_gavel",
     /** System action (no LLM call) */
     SYSTEM: "system",
+    /** Character workshop - dedicated character refinement action */
+    CHARACTER_WORKSHOP: "character_workshop",
   },
 
   // ===== STATE =====
@@ -113,6 +115,7 @@ const PipelineSystem = {
    */
   _agentsSystem: null,
   _curationSystem: null,
+  _characterSystem: null,
   _contextManager: null,
   _outputManager: null,
   _threadManager: null,
@@ -157,6 +160,7 @@ const PipelineSystem = {
     this._logger = options.logger || null;
     this._agentsSystem = options.agentsSystem || null;
     this._curationSystem = options.curationSystem || null;
+    this._characterSystem = options.characterSystem || null;
     this._contextManager = options.contextManager || null;
     this._outputManager = options.outputManager || null;
     this._threadManager = options.threadManager || null;
@@ -396,6 +400,31 @@ const PipelineSystem = {
         teamIds: action.participants?.teamIds || [],
         orchestration: action.participants?.orchestration || "sequential",
         maxRounds: action.participants?.maxRounds || 3,
+        // Character participation configuration
+        characters: {
+          enabled: action.participants?.characters?.enabled || false,
+          // How to select characters: "dynamic" (Director picks), "explicit" (specific IDs), "spawned" (use currently spawned)
+          mode: action.participants?.characters?.mode || "dynamic",
+          // Explicit character IDs (when mode is "explicit")
+          characterIds: action.participants?.characters?.characterIds || [],
+          // Character types to include (when mode is "dynamic")
+          characterTypes: action.participants?.characters?.characterTypes || [],
+          // Include Character Director as orchestrator
+          includeDirector:
+            action.participants?.characters?.includeDirector || false,
+          // Supplementary voicing guidance prompt
+          voicingGuidance:
+            action.participants?.characters?.voicingGuidance || "",
+          // RAG configuration for character context
+          ragContext: {
+            enabled:
+              action.participants?.characters?.ragContext?.enabled || false,
+            pipelineId:
+              action.participants?.characters?.ragContext?.pipelineId || "",
+            queryTemplate:
+              action.participants?.characters?.ragContext?.queryTemplate || "",
+          },
+        },
       },
       threads: {
         actionThread: this._normalizeThreadConfig(action.threads?.actionThread),
@@ -481,6 +510,53 @@ const PipelineSystem = {
         editableFields: action.gavelConfig?.editableFields || ["output"],
         canSkip: action.gavelConfig?.canSkip !== false,
         timeout: action.gavelConfig?.timeout || 0, // 0 = no timeout
+      };
+    }
+
+    if (actionType === this.ActionType.CHARACTER_WORKSHOP) {
+      normalized.characterWorkshopConfig = {
+        // Workshop mode: "refinement" (refine voice), "consistency" (check consistency), "collaboration" (cross-team)
+        mode: action.characterWorkshopConfig?.mode || "refinement",
+        // Character IDs to workshop (empty = use spawned characters)
+        characterIds: action.characterWorkshopConfig?.characterIds || [],
+        // Include Character Director
+        includeDirector:
+          action.characterWorkshopConfig?.includeDirector !== false,
+        // Editorial team positions to include for collaboration
+        editorialPositions:
+          action.characterWorkshopConfig?.editorialPositions || [],
+        // RAG configuration for pulling character data
+        ragConfig: {
+          enabled: action.characterWorkshopConfig?.ragConfig?.enabled || true,
+          pipelineId:
+            action.characterWorkshopConfig?.ragConfig?.pipelineId || "",
+          storeIds: action.characterWorkshopConfig?.ragConfig?.storeIds || [
+            "characterSheets",
+          ],
+        },
+        // Prompts for workshop
+        prompts: {
+          director:
+            action.characterWorkshopConfig?.prompts?.director ||
+            "As Character Director, guide this workshop to refine character voices and ensure consistency.",
+          refinement:
+            action.characterWorkshopConfig?.prompts?.refinement ||
+            "Analyze and refine this character's voice, mannerisms, and speech patterns based on the provided context.",
+          consistency:
+            action.characterWorkshopConfig?.prompts?.consistency ||
+            "Check this character's portrayal for consistency with established traits and history.",
+        },
+        // Output consolidation
+        consolidation:
+          action.characterWorkshopConfig?.consolidation || "synthesize",
+        // Thread configuration
+        workshopThread: {
+          enabled:
+            action.characterWorkshopConfig?.workshopThread?.enabled !== false,
+          name:
+            action.characterWorkshopConfig?.workshopThread?.name ||
+            "Character Workshop",
+        },
       };
     }
 
@@ -1089,6 +1165,14 @@ const PipelineSystem = {
           );
           break;
 
+        case this.ActionType.CHARACTER_WORKSHOP:
+          output = await this._executeCharacterWorkshopAction(
+            action,
+            actionState,
+            phaseState,
+          );
+          break;
+
         case this.ActionType.STANDARD:
         default:
           // Standard action with optional RAG
@@ -1607,6 +1691,516 @@ Provide a consolidated summary of the relevant information.`;
   },
 
   /**
+   * Execute a Character Workshop action - dedicated character refinement
+   * @param {Object} action - Action definition
+   * @param {Object} actionState - Action state
+   * @param {Object} phaseState - Phase state
+   * @returns {Promise<string>} Workshop output
+   */
+  async _executeCharacterWorkshopAction(action, actionState, phaseState) {
+    const config = action.characterWorkshopConfig;
+    this._log(
+      "info",
+      `Character Workshop action: ${action.name} (mode: ${config.mode})`,
+    );
+
+    if (!this._characterSystem) {
+      throw new Error(
+        "CharacterSystem not available for Character Workshop action",
+      );
+    }
+
+    // Set up workshop thread if enabled
+    let threadId = null;
+    if (config.workshopThread?.enabled && this._threadManager) {
+      threadId = this._threadManager.createThread({
+        name: config.workshopThread.name || "Character Workshop",
+        type: "character_workshop",
+      });
+    }
+
+    const workshopLog = [];
+
+    // Get character agents to workshop
+    let characterAgents = [];
+    if (config.characterIds?.length > 0) {
+      // Explicit character IDs
+      for (const charId of config.characterIds) {
+        const agent = this._characterSystem.getAgentByCharacterId(charId);
+        if (agent) characterAgents.push(agent);
+      }
+    } else {
+      // Use spawned characters
+      characterAgents = this._characterSystem.getSpawnedAgents();
+      // Fallback to main cast if none spawned
+      if (characterAgents.length === 0) {
+        characterAgents = this._characterSystem.getAgentsByType(
+          this._characterSystem.CharacterType?.MAIN_CAST || "main_cast",
+        );
+      }
+    }
+
+    if (characterAgents.length === 0) {
+      this._log("warn", "No character agents available for workshop");
+      return actionState.input;
+    }
+
+    // Get Character Director if included
+    let director = null;
+    if (config.includeDirector) {
+      director = this._characterSystem.getCharacterDirector();
+    }
+
+    // Fetch RAG context for characters if enabled
+    let ragContext = "";
+    if (config.ragConfig?.enabled && this._curationSystem) {
+      try {
+        const characterNames = characterAgents.map((a) => a.name).join(", ");
+        const ragResult = await this._curationSystem.executeRAGPipeline(
+          config.ragConfig.pipelineId || "default",
+          {
+            query: `Character information for: ${characterNames}`,
+            limit: 10,
+          },
+        );
+        if (ragResult?.results?.length > 0) {
+          ragContext = ragResult.results
+            .map((r) => r.text || r.content)
+            .join("\n\n");
+        }
+      } catch (error) {
+        this._log("warn", `RAG context fetch failed: ${error.message}`);
+      }
+    }
+
+    // Build workshop based on mode
+    let output = "";
+
+    switch (config.mode) {
+      case "refinement":
+        output = await this._executeRefinementWorkshop(
+          characterAgents,
+          director,
+          config,
+          actionState,
+          ragContext,
+          workshopLog,
+          threadId,
+        );
+        break;
+
+      case "consistency":
+        output = await this._executeConsistencyWorkshop(
+          characterAgents,
+          director,
+          config,
+          actionState,
+          ragContext,
+          workshopLog,
+          threadId,
+        );
+        break;
+
+      case "collaboration":
+        output = await this._executeCollaborationWorkshop(
+          characterAgents,
+          director,
+          config,
+          actionState,
+          ragContext,
+          workshopLog,
+          threadId,
+        );
+        break;
+
+      default:
+        output = await this._executeRefinementWorkshop(
+          characterAgents,
+          director,
+          config,
+          actionState,
+          ragContext,
+          workshopLog,
+          threadId,
+        );
+    }
+
+    this._emit("character:workshop:complete", {
+      actionId: action.id,
+      mode: config.mode,
+      characterCount: characterAgents.length,
+      workshopLog,
+    });
+
+    return output;
+  },
+
+  /**
+   * Execute refinement workshop - refine character voices
+   * @private
+   */
+  async _executeRefinementWorkshop(
+    characterAgents,
+    director,
+    config,
+    actionState,
+    ragContext,
+    workshopLog,
+    threadId,
+  ) {
+    const refinements = [];
+
+    // Director sets the stage if present
+    if (director && this._apiClient) {
+      const directorPrompt = `${config.prompts.director}
+
+## Characters in Workshop:
+${characterAgents.map((a) => `- ${a.name} (${a.type})`).join("\n")}
+
+## Context:
+${actionState.input}
+
+${ragContext ? `## Character Data:\n${ragContext}` : ""}
+
+Provide guidance for refining each character's voice in this context.`;
+
+      try {
+        const directorResponse = await this._apiClient.chat({
+          messages: [
+            {
+              role: "system",
+              content: director.systemPrompt?.customText || "",
+            },
+            { role: "user", content: directorPrompt },
+          ],
+          ...director.apiConfig,
+        });
+
+        const guidance =
+          directorResponse?.content || directorResponse?.message?.content || "";
+        workshopLog.push({
+          participant: "Character Director",
+          role: "director",
+          content: guidance,
+        });
+
+        if (threadId && this._threadManager) {
+          this._threadManager.addMessage(threadId, {
+            role: "assistant",
+            content: guidance,
+          });
+        }
+      } catch (error) {
+        this._log("warn", `Director guidance failed: ${error.message}`);
+      }
+    }
+
+    // Each character refines their voice
+    for (const agent of characterAgents) {
+      const systemPrompt = this._characterSystem.generateSystemPrompt(agent.id);
+      const refinementPrompt = `${config.prompts.refinement}
+
+## Your Character: ${agent.name}
+${ragContext ? `\n## Character Background:\n${ragContext}` : ""}
+
+## Scene/Context:
+${actionState.input}
+
+Respond in character, demonstrating your refined voice and mannerisms.`;
+
+      try {
+        const response = await this._apiClient.chat({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: refinementPrompt },
+          ],
+          ...agent.apiConfig,
+        });
+
+        const content = response?.content || response?.message?.content || "";
+        refinements.push({
+          character: agent.name,
+          characterId: agent.characterId,
+          response: content,
+        });
+
+        workshopLog.push({
+          participant: agent.name,
+          role: "character",
+          content,
+        });
+
+        if (threadId && this._threadManager) {
+          this._threadManager.addMessage(threadId, {
+            role: "assistant",
+            content: `[${agent.name}]: ${content}`,
+          });
+        }
+      } catch (error) {
+        this._log(
+          "warn",
+          `Character ${agent.name} refinement failed: ${error.message}`,
+        );
+      }
+    }
+
+    // Consolidate output
+    if (config.consolidation === "synthesize" && director && this._apiClient) {
+      const synthesizePrompt = `Synthesize the following character refinements into a cohesive summary:
+
+${refinements.map((r) => `## ${r.character}\n${r.response}`).join("\n\n")}`;
+
+      try {
+        const synthesis = await this._apiClient.chat({
+          messages: [
+            {
+              role: "system",
+              content: director.systemPrompt?.customText || "",
+            },
+            { role: "user", content: synthesizePrompt },
+          ],
+          ...director.apiConfig,
+        });
+
+        return (
+          synthesis?.content ||
+          synthesis?.message?.content ||
+          refinements.map((r) => r.response).join("\n\n")
+        );
+      } catch (error) {
+        this._log("warn", `Synthesis failed: ${error.message}`);
+      }
+    }
+
+    return refinements
+      .map((r) => `[${r.character}]: ${r.response}`)
+      .join("\n\n");
+  },
+
+  /**
+   * Execute consistency workshop - check character consistency
+   * @private
+   */
+  async _executeConsistencyWorkshop(
+    characterAgents,
+    director,
+    config,
+    actionState,
+    ragContext,
+    workshopLog,
+    threadId,
+  ) {
+    const consistencyChecks = [];
+
+    for (const agent of characterAgents) {
+      const systemPrompt = this._characterSystem.generateSystemPrompt(agent.id);
+      const checkPrompt = `${config.prompts.consistency}
+
+## Your Character: ${agent.name}
+${ragContext ? `\n## Established Character Data:\n${ragContext}` : ""}
+
+## Content to Check:
+${actionState.input}
+
+Analyze if this content is consistent with your established character. Note any inconsistencies.`;
+
+      try {
+        const response = await this._apiClient.chat({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: checkPrompt },
+          ],
+          ...agent.apiConfig,
+        });
+
+        const content = response?.content || response?.message?.content || "";
+        consistencyChecks.push({
+          character: agent.name,
+          analysis: content,
+        });
+
+        workshopLog.push({
+          participant: agent.name,
+          role: "character",
+          type: "consistency_check",
+          content,
+        });
+      } catch (error) {
+        this._log(
+          "warn",
+          `Consistency check for ${agent.name} failed: ${error.message}`,
+        );
+      }
+    }
+
+    // Director synthesizes consistency findings
+    if (director && this._apiClient) {
+      const synthesizePrompt = `Review and synthesize the following character consistency checks:
+
+${consistencyChecks.map((c) => `## ${c.character}\n${c.analysis}`).join("\n\n")}
+
+Provide a summary of consistency issues found and recommendations.`;
+
+      try {
+        const synthesis = await this._apiClient.chat({
+          messages: [
+            {
+              role: "system",
+              content: director.systemPrompt?.customText || "",
+            },
+            { role: "user", content: synthesizePrompt },
+          ],
+          ...director.apiConfig,
+        });
+
+        return synthesis?.content || synthesis?.message?.content || "";
+      } catch (error) {
+        this._log("warn", `Director synthesis failed: ${error.message}`);
+      }
+    }
+
+    return consistencyChecks
+      .map((c) => `[${c.character}]: ${c.analysis}`)
+      .join("\n\n");
+  },
+
+  /**
+   * Execute collaboration workshop - Editorial ↔ Character team collaboration
+   * @private
+   */
+  async _executeCollaborationWorkshop(
+    characterAgents,
+    director,
+    config,
+    actionState,
+    ragContext,
+    workshopLog,
+    threadId,
+  ) {
+    const collaborationRounds = [];
+
+    // Get editorial participants
+    const editorialParticipants = [];
+    if (config.editorialPositions?.length > 0 && this._agentsSystem) {
+      for (const positionId of config.editorialPositions) {
+        const position = this._agentsSystem.getPosition(positionId);
+        const agent = this._agentsSystem.getAgentForPosition(positionId);
+        if (position && agent) {
+          editorialParticipants.push({ position, agent });
+        }
+      }
+    }
+
+    // Round 1: Editorial feedback on characters
+    for (const { position, agent } of editorialParticipants) {
+      const feedbackPrompt = `As ${position.name}, provide feedback on these characters in the context:
+
+## Characters:
+${characterAgents.map((a) => `- ${a.name}: ${a.cachedTraits?.personality || "No description"}`).join("\n")}
+
+## Context:
+${actionState.input}
+
+Provide editorial feedback on character portrayal and voice.`;
+
+      try {
+        const response = await this._callAgent(agent, feedbackPrompt);
+        collaborationRounds.push({
+          round: 1,
+          participant: position.name,
+          role: "editorial",
+          content: response.content,
+        });
+
+        workshopLog.push({
+          participant: position.name,
+          role: "editorial",
+          content: response.content,
+        });
+      } catch (error) {
+        this._log(
+          "warn",
+          `Editorial feedback from ${position.name} failed: ${error.message}`,
+        );
+      }
+    }
+
+    // Round 2: Characters respond to feedback
+    const editorialFeedback = collaborationRounds
+      .filter((r) => r.role === "editorial")
+      .map((r) => `${r.participant}: ${r.content}`)
+      .join("\n\n");
+
+    for (const agent of characterAgents) {
+      const systemPrompt = this._characterSystem.generateSystemPrompt(agent.id);
+      const responsePrompt = `Editorial team has provided feedback on your portrayal:
+
+${editorialFeedback}
+
+Respond to this feedback in character, acknowledging valid points and clarifying your voice.`;
+
+      try {
+        const response = await this._apiClient.chat({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: responsePrompt },
+          ],
+          ...agent.apiConfig,
+        });
+
+        const content = response?.content || response?.message?.content || "";
+        collaborationRounds.push({
+          round: 2,
+          participant: agent.name,
+          role: "character",
+          content,
+        });
+
+        workshopLog.push({
+          participant: agent.name,
+          role: "character",
+          content,
+        });
+      } catch (error) {
+        this._log(
+          "warn",
+          `Character ${agent.name} response failed: ${error.message}`,
+        );
+      }
+    }
+
+    // Director synthesizes collaboration
+    if (director && this._apiClient) {
+      const synthesizePrompt = `Synthesize the editorial-character collaboration:
+
+${collaborationRounds.map((r) => `## ${r.participant} (${r.role}, Round ${r.round})\n${r.content}`).join("\n\n")}
+
+Provide actionable insights for improving character voice and consistency.`;
+
+      try {
+        const synthesis = await this._apiClient.chat({
+          messages: [
+            {
+              role: "system",
+              content: director.systemPrompt?.customText || "",
+            },
+            { role: "user", content: synthesizePrompt },
+          ],
+          ...director.apiConfig,
+        });
+
+        return synthesis?.content || synthesis?.message?.content || "";
+      } catch (error) {
+        this._log("warn", `Director synthesis failed: ${error.message}`);
+      }
+    }
+
+    return collaborationRounds
+      .map((r) => `[${r.participant}]: ${r.content}`)
+      .join("\n\n");
+  },
+
+  /**
    * Map action input using mapping configuration
    * @param {any} input - Raw input
    * @param {Object} mapping - Input mapping
@@ -1752,7 +2346,7 @@ Provide a consolidated summary of the relevant information.`;
    * @returns {Promise<string>} Combined output
    */
   async _executeActionParticipants(action, actionState, ragResults) {
-    const participants = this._resolveParticipants(action);
+    const participants = this._resolveParticipants(action, actionState);
 
     if (participants.length === 0) {
       this._log("warn", `No participants for action ${action.id}`);
@@ -1840,7 +2434,7 @@ Provide a consolidated summary of the relevant information.`;
    * @param {Object} action - Action definition
    * @returns {Object[]} Array of participant info
    */
-  _resolveParticipants(action) {
+  _resolveParticipants(action, actionState = {}) {
     const participants = [];
 
     // Add specific positions
@@ -1895,7 +2489,509 @@ Provide a consolidated summary of the relevant information.`;
       }
     }
 
+    // Handle dynamic SME selection
+    const dynamicConfig = action.participants.dynamic;
+    if (dynamicConfig?.enabled && this._agentsSystem) {
+      const smeParticipants = this._resolveDynamicSMEs(
+        dynamicConfig,
+        actionState,
+        participants,
+      );
+      participants.push(...smeParticipants);
+    }
+
+    // Handle character participation
+    const characterConfig = action.participants.characters;
+    if (characterConfig?.enabled && this._characterSystem) {
+      const characterParticipants = this._resolveCharacterParticipants(
+        characterConfig,
+        actionState,
+        participants,
+      );
+      participants.push(...characterParticipants);
+    }
+
     return participants;
+  },
+
+  /**
+   * Resolve character participants for an action
+   * @param {Object} characterConfig - Character participation configuration
+   * @param {Object} actionState - Current action state
+   * @param {Object[]} existingParticipants - Already resolved participants
+   * @returns {Object[]} Array of character participants
+   */
+  _resolveCharacterParticipants(
+    characterConfig,
+    actionState,
+    existingParticipants,
+  ) {
+    const characterParticipants = [];
+
+    if (!this._characterSystem) {
+      this._log(
+        "warn",
+        "CharacterSystem not available for character participation",
+      );
+      return characterParticipants;
+    }
+
+    const mode = characterConfig.mode || "dynamic";
+
+    // Include Character Director if requested
+    if (characterConfig.includeDirector) {
+      const directorResolved =
+        this._characterSystem.resolvePositionAgent("character_director");
+      if (directorResolved) {
+        characterParticipants.push({
+          position: directorResolved.position,
+          agent: directorResolved.agent,
+          positionId: "character_director",
+          isCharacterParticipant: true,
+          isDirector: true,
+        });
+      }
+    }
+
+    let characterAgents = [];
+
+    switch (mode) {
+      case "explicit":
+        // Use explicitly specified character IDs
+        for (const characterId of characterConfig.characterIds || []) {
+          const agent =
+            this._characterSystem.getAgentByCharacterId(characterId);
+          if (agent) {
+            characterAgents.push(agent);
+          } else {
+            this._log(
+              "debug",
+              `No agent found for character ID: ${characterId}`,
+            );
+          }
+        }
+        break;
+
+      case "spawned":
+        // Use currently spawned characters
+        characterAgents = this._characterSystem.getSpawnedAgents();
+        break;
+
+      case "dynamic":
+      default:
+        // Dynamic selection based on scene/input context
+        characterAgents = this._resolveDynamicCharacters(
+          characterConfig,
+          actionState,
+        );
+        break;
+    }
+
+    // Filter by character types if specified
+    const typeFilter = characterConfig.characterTypes || [];
+    if (typeFilter.length > 0) {
+      characterAgents = characterAgents.filter((agent) =>
+        typeFilter.includes(agent.type),
+      );
+    }
+
+    // Convert character agents to participant format
+    for (const agent of characterAgents) {
+      // Skip if already a participant
+      const positionId = `character_${agent.characterId}`;
+      if (existingParticipants.find((p) => p.positionId === positionId)) {
+        continue;
+      }
+      if (characterParticipants.find((p) => p.positionId === positionId)) {
+        continue;
+      }
+
+      // Get or create position for character
+      let position = this._characterSystem.getPosition(positionId);
+      if (!position) {
+        // Use agent info as position
+        position = {
+          id: positionId,
+          name: agent.name,
+          displayName: agent.displayName || agent.name,
+          type: agent.type,
+          isCharacterPosition: true,
+        };
+      }
+
+      // Generate system prompt with voicing guidance if provided
+      let systemPrompt = this._characterSystem.generateSystemPrompt(agent.id);
+      if (characterConfig.voicingGuidance) {
+        systemPrompt += `\n\n## Voicing Guidance\n${characterConfig.voicingGuidance}`;
+      }
+
+      // Create participant with enhanced agent
+      const enhancedAgent = {
+        ...agent,
+        systemPrompt,
+      };
+
+      characterParticipants.push({
+        position,
+        agent: enhancedAgent,
+        positionId,
+        isCharacterParticipant: true,
+        isDirector: false,
+      });
+    }
+
+    this._log(
+      "debug",
+      `Resolved ${characterParticipants.length} character participants (mode: ${mode})`,
+    );
+
+    return characterParticipants;
+  },
+
+  /**
+   * Dynamically resolve characters based on scene context
+   * Uses Character Director to identify relevant characters
+   * @param {Object} characterConfig - Character configuration
+   * @param {Object} actionState - Current action state
+   * @returns {Object[]} Array of character agents
+   */
+  async _resolveDynamicCharacters(characterConfig, actionState) {
+    if (!this._characterSystem) {
+      return [];
+    }
+
+    // Get input context for analysis
+    const input = actionState.input || "";
+    const context = this._activeRun?.context || {};
+
+    // Try to get Character Director's assessment
+    const director = this._characterSystem.getCharacterDirector();
+    if (director && this._apiClient) {
+      try {
+        // Build prompt for Character Director to identify characters
+        const analysisPrompt = `Analyze the following scene/content and identify which characters should participate.
+
+## Scene Content:
+${input}
+
+## Available Characters:
+${this._characterSystem
+  .getAllCharacterAgents()
+  .map(
+    (a) =>
+      `- ${a.name} (${a.type}): ${a.cachedTraits?.personality || "No description"}`,
+  )
+  .join("\n")}
+
+Respond with a JSON array of character names that should participate in this scene.
+Example: ["Character A", "Character B"]
+
+Only include characters that are directly relevant to the scene content.`;
+
+        const response = await this._apiClient.chat({
+          messages: [
+            {
+              role: "system",
+              content: director.systemPrompt?.customText || "",
+            },
+            { role: "user", content: analysisPrompt },
+          ],
+          ...director.apiConfig,
+        });
+
+        // Parse director's response
+        const responseText =
+          response?.content || response?.message?.content || "";
+        const jsonMatch = responseText.match(/\[.*?\]/s);
+        if (jsonMatch) {
+          const characterNames = JSON.parse(jsonMatch[0]);
+          const allAgents = this._characterSystem.getAllCharacterAgents();
+          return allAgents.filter((agent) =>
+            characterNames.some(
+              (name) =>
+                agent.name.toLowerCase().includes(name.toLowerCase()) ||
+                name.toLowerCase().includes(agent.name.toLowerCase()),
+            ),
+          );
+        }
+      } catch (error) {
+        this._log(
+          "warn",
+          `Character Director analysis failed: ${error.message}`,
+        );
+      }
+    }
+
+    // Fallback: return all spawned characters or main cast
+    const spawned = this._characterSystem.getSpawnedAgents();
+    if (spawned.length > 0) {
+      return spawned;
+    }
+
+    // Default to main cast characters
+    return this._characterSystem.getAgentsByType(
+      this._characterSystem?.CharacterType?.MAIN_CAST || "main_cast",
+    );
+  },
+
+  /**
+   * Resolve dynamic SME participants based on keyword matching
+   * @param {Object} dynamicConfig - Dynamic configuration
+   * @param {Object} actionState - Current action state
+   * @param {Object[]} existingParticipants - Already resolved participants
+   * @returns {Object[]} Array of SME participants
+   */
+  _resolveDynamicSMEs(dynamicConfig, actionState, existingParticipants) {
+    const smeParticipants = [];
+    const maxSMEs = dynamicConfig.maxSMEs || 3;
+
+    // Extract keywords from input or context
+    const keywords = this._extractSMEKeywords(dynamicConfig, actionState);
+
+    if (keywords.length === 0) {
+      this._log("debug", "No keywords found for SME matching");
+      // Use fallback if specified
+      if (dynamicConfig.fallbackPosition) {
+        const fallback = this._resolvePositionParticipant(
+          dynamicConfig.fallbackPosition,
+        );
+        if (fallback) {
+          return [fallback];
+        }
+      }
+      return [];
+    }
+
+    this._log("debug", `SME keyword search: [${keywords.join(", ")}]`);
+
+    // Get all SME positions
+    const allPositions = this._agentsSystem.getAllPositions();
+    const smePositions = allPositions.filter(
+      (p) => p.isSME && p.smeKeywords?.length > 0,
+    );
+
+    // Score each SME position by keyword matches
+    const scoredSMEs = [];
+    for (const position of smePositions) {
+      // Skip if already a participant
+      if (existingParticipants.find((p) => p.positionId === position.id)) {
+        continue;
+      }
+
+      const score = this._calculateSMEScore(keywords, position.smeKeywords);
+      if (score > 0) {
+        scoredSMEs.push({ position, score });
+      }
+    }
+
+    // Sort by score descending and take top N
+    scoredSMEs.sort((a, b) => b.score - a.score);
+    const topSMEs = scoredSMEs.slice(0, maxSMEs);
+
+    // Resolve to full participant objects
+    for (const { position } of topSMEs) {
+      const agent = this._agentsSystem.getAgentForPosition(position.id);
+      if (agent) {
+        smeParticipants.push({
+          position,
+          agent,
+          positionId: position.id,
+          isDynamicSME: true,
+        });
+        this._log("debug", `Selected SME: ${position.name} (${position.id})`);
+      }
+    }
+
+    // Use fallback if no SMEs found
+    if (smeParticipants.length === 0 && dynamicConfig.fallbackPosition) {
+      const fallback = this._resolvePositionParticipant(
+        dynamicConfig.fallbackPosition,
+      );
+      if (fallback) {
+        this._log(
+          "debug",
+          `Using fallback position: ${dynamicConfig.fallbackPosition}`,
+        );
+        return [fallback];
+      }
+    }
+
+    return smeParticipants;
+  },
+
+  /**
+   * Extract keywords for SME matching
+   * @param {Object} dynamicConfig - Dynamic configuration
+   * @param {Object} actionState - Current action state
+   * @returns {string[]} Array of keywords (lowercase)
+   */
+  _extractSMEKeywords(dynamicConfig, actionState) {
+    let text = "";
+
+    // Determine source text
+    const source = dynamicConfig.keywordSource || "input";
+    if (source === "input") {
+      text = actionState.input || "";
+    } else if (source === "context") {
+      text = actionState.context?.combined || actionState.input || "";
+    } else if (source === "custom" && dynamicConfig.customKeywords) {
+      return dynamicConfig.customKeywords.map((k) => k.toLowerCase());
+    }
+
+    // Extract keywords from text
+    // Simple approach: split on non-word characters, filter short words and common words
+    const commonWords = new Set([
+      "the",
+      "a",
+      "an",
+      "and",
+      "or",
+      "but",
+      "in",
+      "on",
+      "at",
+      "to",
+      "for",
+      "of",
+      "with",
+      "by",
+      "from",
+      "as",
+      "is",
+      "was",
+      "are",
+      "were",
+      "been",
+      "be",
+      "have",
+      "has",
+      "had",
+      "do",
+      "does",
+      "did",
+      "will",
+      "would",
+      "could",
+      "should",
+      "may",
+      "might",
+      "must",
+      "shall",
+      "can",
+      "need",
+      "that",
+      "this",
+      "these",
+      "those",
+      "it",
+      "its",
+      "they",
+      "them",
+      "their",
+      "he",
+      "she",
+      "him",
+      "her",
+      "his",
+      "we",
+      "us",
+      "our",
+      "you",
+      "your",
+      "i",
+      "me",
+      "my",
+      "what",
+      "which",
+      "who",
+      "whom",
+      "when",
+      "where",
+      "why",
+      "how",
+      "all",
+      "each",
+      "every",
+      "both",
+      "few",
+      "more",
+      "most",
+      "other",
+      "some",
+      "such",
+      "no",
+      "not",
+      "only",
+      "own",
+      "same",
+      "so",
+      "than",
+      "too",
+      "very",
+      "just",
+      "also",
+      "now",
+      "here",
+      "there",
+      "then",
+      "once",
+    ]);
+
+    const words = text
+      .toLowerCase()
+      .split(/\W+/)
+      .filter((word) => {
+        return word.length >= 3 && !commonWords.has(word);
+      });
+
+    // Return unique keywords
+    return [...new Set(words)];
+  },
+
+  /**
+   * Calculate SME score based on keyword matches
+   * @param {string[]} searchKeywords - Keywords to search for
+   * @param {string[]} smeKeywords - SME's registered keywords
+   * @returns {number} Match score
+   */
+  _calculateSMEScore(searchKeywords, smeKeywords) {
+    let score = 0;
+    const normalizedSMEKeywords = smeKeywords.map((k) => k.toLowerCase());
+
+    for (const keyword of searchKeywords) {
+      // Exact match = 3 points
+      if (normalizedSMEKeywords.includes(keyword)) {
+        score += 3;
+        continue;
+      }
+
+      // Partial match (SME keyword contains search keyword or vice versa) = 1 point
+      for (const smeKeyword of normalizedSMEKeywords) {
+        if (smeKeyword.includes(keyword) || keyword.includes(smeKeyword)) {
+          score += 1;
+          break;
+        }
+      }
+    }
+
+    return score;
+  },
+
+  /**
+   * Resolve a single position to a participant object
+   * @param {string} positionId - Position ID
+   * @returns {Object|null} Participant object or null
+   */
+  _resolvePositionParticipant(positionId) {
+    if (!this._agentsSystem) return null;
+
+    const position = this._agentsSystem.getPosition(positionId);
+    const agent = this._agentsSystem.getAgentForPosition(positionId);
+
+    if (position && agent) {
+      return { position, agent, positionId };
+    }
+    return null;
   },
 
   /**

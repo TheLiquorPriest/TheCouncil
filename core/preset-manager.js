@@ -233,7 +233,11 @@ const PresetManager = {
    */
   async _fetchKnownPresets() {
     const presetsPath = this._getPresetsPath();
-    const knownFiles = ["default-pipeline.json"];
+    const knownFiles = [
+      "default-pipeline.json",
+      "standard-pipeline.json",
+      "quick-pipeline.json",
+    ];
     const validFiles = [];
 
     for (const file of knownFiles) {
@@ -542,9 +546,18 @@ const PresetManager = {
 
         for (const agent of agents) {
           const positionType = agent.position || "member";
-          const tier =
-            agent.tier || (positionType.includes("lead") ? "leader" : "member");
-          const actualTier = positionType === "executive" ? "executive" : tier;
+
+          // Determine tier based on position type
+          let tier = agent.tier || "member";
+          if (positionType === "executive") {
+            tier = "executive";
+          } else if (positionType.includes("_lead") || tier === "leader") {
+            tier = "leader";
+          }
+
+          // Determine if this is a leader position for a team
+          const isTeamLeader =
+            positionType.includes("_lead") || tier === "leader";
 
           allAgents.push({
             id: agent.id,
@@ -552,9 +565,10 @@ const PresetManager = {
             systemPrompt: agent.systemPrompt || "",
             description: agent.description || "",
             category,
-            teamId: actualTier === "executive" ? null : teamId,
+            teamId: tier === "executive" ? null : teamId,
             positionType,
-            tier: actualTier,
+            tier,
+            isTeamLeader,
           });
         }
       }
@@ -571,7 +585,10 @@ const PresetManager = {
             description: agent.description,
           });
           agentCount++;
-          this._log("debug", `Created agent: ${agent.name} (${agent.id})`);
+          this._log(
+            "debug",
+            `Created agent: ${agent.name} (${agent.id}) - position: ${agent.positionType}, tier: ${agent.tier}`,
+          );
         }
       } catch (error) {
         this._log(
@@ -595,21 +612,28 @@ const PresetManager = {
    */
   async _applyTeamsStructure(preset, options = {}) {
     let count = 0;
+    const importedAgents = this._lastImportedAgents || [];
 
     for (const team of preset.teams || []) {
       try {
         if (typeof this._agentsSystem.createTeam === "function") {
-          // Create team with empty members - we'll add them after positions exist
+          // Find the leader agent - leaderId in preset is the agent ID
+          const leaderAgent = importedAgents.find(
+            (a) => a.id === team.leaderId,
+          );
+
+          // Create team with the leader position ID (which equals agent ID)
           this._agentsSystem.createTeam({
             id: team.id,
             name: team.name,
-            leaderId: team.leaderId,
-            memberIds: [], // Empty for now
+            leaderId: team.leaderId, // Agent ID = Position ID
+            leaderPositionId: team.leaderId, // Explicitly set leader position
+            memberIds: [], // Empty for now - will be populated in step 4
           });
           count++;
           this._log(
             "debug",
-            `Created team structure: ${team.name} (${team.id})`,
+            `Created team structure: ${team.name} (${team.id}), leader: ${team.leaderId}`,
           );
         }
       } catch (error) {
@@ -630,57 +654,102 @@ const PresetManager = {
     let positionCount = 0;
     const allAgents = this._lastImportedAgents || [];
 
-    for (const agent of allAgents) {
-      try {
-        if (typeof this._agentsSystem.createPosition === "function") {
-          const positionData = {
-            id: agent.id,
-            name: agent.name,
-            teamId: agent.teamId,
-            tier: agent.tier,
-            assignedAgentId: agent.id,
-            promptModifiers: {
-              prefix: "",
-              suffix: "",
-              roleDescription: agent.description || "",
-            },
-          };
+    // First pass: Create executive positions (no team dependency)
+    for (const agent of allAgents.filter((a) => a.tier === "executive")) {
+      positionCount += await this._createSinglePosition(agent);
+    }
 
-          this._agentsSystem.createPosition(positionData);
-          positionCount++;
-          this._log(
-            "debug",
-            `Created position: ${agent.name} (${agent.id}) - tier: ${agent.tier}, team: ${agent.teamId || "executive"}`,
-          );
-        }
-      } catch (error) {
-        // Position might already exist (e.g., publisher is mandatory)
-        if (
-          error.message.includes("already exists") &&
-          typeof this._agentsSystem.updatePosition === "function"
-        ) {
-          try {
-            this._agentsSystem.updatePosition(agent.id, {
-              name: agent.name,
-              assignedAgentId: agent.id,
-              teamId: agent.teamId,
-              tier: agent.tier,
-            });
-            positionCount++;
-            this._log("debug", `Updated existing position: ${agent.id}`);
-          } catch (e) {
-            this._log(
-              "debug",
-              `Could not update position ${agent.id}: ${e.message}`,
-            );
-          }
-        } else {
-          this._log("debug", `Position ${agent.id}: ${error.message}`);
-        }
-      }
+    // Second pass: Create leader positions (teams exist but need positions)
+    for (const agent of allAgents.filter(
+      (a) => a.tier === "leader" && a.teamId,
+    )) {
+      positionCount += await this._createSinglePosition(agent);
+    }
+
+    // Third pass: Create member positions
+    for (const agent of allAgents.filter(
+      (a) => a.tier === "member" && a.teamId,
+    )) {
+      positionCount += await this._createSinglePosition(agent);
+    }
+
+    // Fourth pass: Any remaining positions
+    const createdIds = new Set(
+      allAgents
+        .filter(
+          (a) =>
+            a.tier === "executive" ||
+            (a.tier === "leader" && a.teamId) ||
+            (a.tier === "member" && a.teamId),
+        )
+        .map((a) => a.id),
+    );
+
+    for (const agent of allAgents.filter((a) => !createdIds.has(a.id))) {
+      positionCount += await this._createSinglePosition(agent);
     }
 
     return { success: true, count: positionCount };
+  },
+
+  /**
+   * Create a single position from agent data
+   * @param {Object} agent - Agent data with position info
+   * @returns {number} 1 if created/updated, 0 if failed
+   */
+  async _createSinglePosition(agent) {
+    try {
+      if (typeof this._agentsSystem.createPosition === "function") {
+        const positionData = {
+          id: agent.id,
+          name: this._formatPositionName(agent.positionType) || agent.name,
+          displayName: agent.name,
+          teamId: agent.teamId,
+          tier: agent.tier,
+          type: agent.positionType, // Store the position type for matching
+          assignedAgentId: agent.id,
+          promptModifiers: {
+            prefix: "",
+            suffix: "",
+            roleDescription: agent.description || "",
+          },
+        };
+
+        this._agentsSystem.createPosition(positionData);
+        this._log(
+          "debug",
+          `Created position: ${agent.name} (${agent.id}) - type: ${agent.positionType}, tier: ${agent.tier}, team: ${agent.teamId || "executive"}`,
+        );
+        return 1;
+      }
+    } catch (error) {
+      // Position might already exist (e.g., publisher is mandatory)
+      if (
+        error.message.includes("already exists") &&
+        typeof this._agentsSystem.updatePosition === "function"
+      ) {
+        try {
+          this._agentsSystem.updatePosition(agent.id, {
+            name: this._formatPositionName(agent.positionType) || agent.name,
+            displayName: agent.name,
+            assignedAgentId: agent.id,
+            teamId: agent.teamId,
+            tier: agent.tier,
+            type: agent.positionType,
+          });
+          this._log("debug", `Updated existing position: ${agent.id}`);
+          return 1;
+        } catch (e) {
+          this._log(
+            "debug",
+            `Could not update position ${agent.id}: ${e.message}`,
+          );
+        }
+      } else {
+        this._log("debug", `Position ${agent.id}: ${error.message}`);
+      }
+    }
+    return 0;
   },
 
   /**
@@ -693,13 +762,17 @@ const PresetManager = {
 
     for (const team of preset.teams || []) {
       try {
-        // Find member position IDs by position type
+        // Find all agents belonging to this team
+        const teamAgents = importedAgents.filter((a) => a.teamId === team.id);
+
+        // Collect member IDs (agents whose positionType matches memberPositions)
         const memberIds = [];
         const memberPositionTypes = team.memberPositions || [];
 
+        // Method 1: Match by position type from memberPositions array
         for (const positionType of memberPositionTypes) {
-          const matchingAgents = importedAgents.filter(
-            (a) => a.positionType === positionType && a.teamId === team.id,
+          const matchingAgents = teamAgents.filter(
+            (a) => a.positionType === positionType,
           );
           for (const agent of matchingAgents) {
             if (!memberIds.includes(agent.id)) {
@@ -708,17 +781,35 @@ const PresetManager = {
           }
         }
 
-        // Update team with member IDs
-        if (
-          memberIds.length > 0 &&
-          typeof this._agentsSystem.updateTeam === "function"
-        ) {
-          this._agentsSystem.updateTeam(team.id, {
-            memberIds: memberIds,
-          });
+        // Method 2: Also include any "member" tier agents in this team not already included
+        const memberTierAgents = teamAgents.filter(
+          (a) => a.tier === "member" && !memberIds.includes(a.id),
+        );
+        for (const agent of memberTierAgents) {
+          memberIds.push(agent.id);
+        }
+
+        // Get leader info
+        const leaderId = team.leaderId;
+        const leaderAgent = importedAgents.find((a) => a.id === leaderId);
+
+        // Build update object
+        const updateData = {
+          memberIds: memberIds,
+        };
+
+        // Ensure leader is set correctly
+        if (leaderId) {
+          updateData.leaderId = leaderId;
+          updateData.leaderPositionId = leaderId;
+        }
+
+        // Update team with members and leader
+        if (typeof this._agentsSystem.updateTeam === "function") {
+          this._agentsSystem.updateTeam(team.id, updateData);
           this._log(
-            "debug",
-            `Updated team ${team.id} with members: ${memberIds.join(", ")}`,
+            "info",
+            `Updated team ${team.id}: leader=${leaderId}, members=[${memberIds.join(", ")}]`,
           );
         }
       } catch (error) {

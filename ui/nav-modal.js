@@ -54,6 +54,7 @@ const NavModal = {
   _modals: {
     agents: null,
     curation: null,
+    character: null,
     pipeline: null,
     gavel: null,
   },
@@ -106,6 +107,7 @@ const NavModal = {
    * @param {Object} options - Configuration options
    * @param {Object} options.agentsModal - Reference to AgentsModal
    * @param {Object} options.curationModal - Reference to CurationModal
+   * @param {Object} options.characterModal - Reference to CharacterModal
    * @param {Object} options.pipelineModal - Reference to PipelineModal
    * @param {Object} options.gavelModal - Reference to GavelModal
    * @param {Object} options.pipelineSystem - Reference to PipelineSystem
@@ -120,6 +122,7 @@ const NavModal = {
 
     this._modals.agents = options.agentsModal;
     this._modals.curation = options.curationModal;
+    this._modals.character = options.characterModal;
     this._modals.pipeline = options.pipelineModal;
     this._modals.gavel = options.gavelModal;
     this._pipelineSystem = options.pipelineSystem;
@@ -243,6 +246,10 @@ const NavModal = {
         <button class="council-nav-btn" data-action="open-curation" title="Curation System">
           <span class="council-nav-btn-icon">📚</span>
           <span class="council-nav-btn-label">Curation</span>
+        </button>
+        <button class="council-nav-btn" data-action="open-character" title="Character System">
+          <span class="council-nav-btn-icon">🎭</span>
+          <span class="council-nav-btn-label">Characters</span>
         </button>
         <button class="council-nav-btn" data-action="open-pipeline" title="Pipeline System">
           <span class="council-nav-btn-icon">🔄</span>
@@ -502,6 +509,9 @@ const NavModal = {
         break;
       case "open-curation":
         this._openModal("curation");
+        break;
+      case "open-character":
+        this._openModal("character");
         break;
       case "open-pipeline":
         this._openModal("pipeline");

@@ -858,20 +858,50 @@ const AgentsModal = {
   // ===== POSITIONS TAB =====
 
   /**
+   * Check if a team is a curation/record-keeping team
+   * @param {Object} team - Team object
+   * @returns {boolean}
+   */
+  _isCurationTeam(team) {
+    if (!team) return false;
+    const id = (team.id || "").toLowerCase();
+    const name = (team.name || "").toLowerCase();
+    return (
+      id.includes("curation") ||
+      id.includes("record") ||
+      name.includes("curation") ||
+      name.includes("record keeping") ||
+      name.includes("record-keeping")
+    );
+  },
+
+  /**
    * Render positions tab
    */
   _renderPositionsTab() {
     const positions = this._agentsSystem.getAllPositions();
     const teams = this._agentsSystem.getAllTeams();
 
+    // Separate curation and pipeline teams
+    const curationTeams = teams.filter((t) => this._isCurationTeam(t));
+    const pipelineTeams = teams.filter((t) => !this._isCurationTeam(t));
+
     // Group positions by team
     const grouped = {
       executive: positions.filter((p) => p.tier === "executive" || !p.teamId),
-      byTeam: {},
+      curation: {},
+      pipeline: {},
     };
 
-    for (const team of teams) {
-      grouped.byTeam[team.id] = {
+    for (const team of curationTeams) {
+      grouped.curation[team.id] = {
+        team,
+        positions: positions.filter((p) => p.teamId === team.id),
+      };
+    }
+
+    for (const team of pipelineTeams) {
+      grouped.pipeline[team.id] = {
         team,
         positions: positions.filter((p) => p.teamId === team.id),
       };
@@ -907,22 +937,61 @@ const AgentsModal = {
               `
                   : ""
               }
-              ${Object.values(grouped.byTeam)
-                .map(
-                  ({ team, positions: teamPositions }) => `
-                <div class="council-position-group">
-                  <div class="council-group-header">
-                    <span class="council-group-icon">${team.icon || "👥"}</span>
-                    <span class="council-group-name">${this._escapeHtml(team.name)}</span>
-                    <span class="council-group-count">${teamPositions.length}</span>
+              ${
+                Object.keys(grouped.pipeline).length > 0
+                  ? `
+                <div class="council-position-section">
+                  <div class="council-section-header">
+                    <span class="council-section-title">📝 Pipeline Teams</span>
                   </div>
-                  <div class="council-positions-list">
-                    ${teamPositions.map((p) => this._renderPositionRow(p)).join("")}
-                  </div>
+                  ${Object.values(grouped.pipeline)
+                    .map(
+                      ({ team, positions: teamPositions }) => `
+                    <div class="council-position-group">
+                      <div class="council-group-header">
+                        <span class="council-group-icon">${team.icon || "👥"}</span>
+                        <span class="council-group-name">${this._escapeHtml(team.name)}</span>
+                        <span class="council-group-count">${teamPositions.length}</span>
+                      </div>
+                      <div class="council-positions-list">
+                        ${teamPositions.map((p) => this._renderPositionRow(p)).join("")}
+                      </div>
+                    </div>
+                  `,
+                    )
+                    .join("")}
                 </div>
-              `,
-                )
-                .join("")}
+              `
+                  : ""
+              }
+              ${
+                Object.keys(grouped.curation).length > 0
+                  ? `
+                <div class="council-position-section council-curation-section">
+                  <div class="council-section-header">
+                    <span class="council-section-title">📚 Curation Teams</span>
+                    <span class="council-section-badge curation">Data Management</span>
+                  </div>
+                  ${Object.values(grouped.curation)
+                    .map(
+                      ({ team, positions: teamPositions }) => `
+                    <div class="council-position-group curation-team">
+                      <div class="council-group-header">
+                        <span class="council-group-icon">${team.icon || "📁"}</span>
+                        <span class="council-group-name">${this._escapeHtml(team.name)}</span>
+                        <span class="council-group-count">${teamPositions.length}</span>
+                      </div>
+                      <div class="council-positions-list">
+                        ${teamPositions.map((p) => this._renderPositionRow(p)).join("")}
+                      </div>
+                    </div>
+                  `,
+                    )
+                    .join("")}
+                </div>
+              `
+                  : ""
+              }
             </div>
           `
               : `
@@ -1006,6 +1075,8 @@ const AgentsModal = {
    */
   _renderTeamsTab() {
     const teams = this._agentsSystem.getAllTeams();
+    const curationTeams = teams.filter((t) => this._isCurationTeam(t));
+    const pipelineTeams = teams.filter((t) => !this._isCurationTeam(t));
 
     this._elements.content.innerHTML = `
       <div class="council-agents-list-view">
@@ -1020,9 +1091,37 @@ const AgentsModal = {
           ${
             teams.length > 0
               ? `
-            <div class="council-teams-list">
-              ${teams.map((team) => this._renderTeamRow(team)).join("")}
-            </div>
+            ${
+              pipelineTeams.length > 0
+                ? `
+              <div class="council-teams-section">
+                <div class="council-section-header">
+                  <span class="council-section-title">📝 Pipeline Teams</span>
+                  <span class="council-section-count">${pipelineTeams.length}</span>
+                </div>
+                <div class="council-teams-list">
+                  ${pipelineTeams.map((team) => this._renderTeamRow(team, false)).join("")}
+                </div>
+              </div>
+            `
+                : ""
+            }
+            ${
+              curationTeams.length > 0
+                ? `
+              <div class="council-teams-section council-curation-section">
+                <div class="council-section-header">
+                  <span class="council-section-title">📚 Curation Teams</span>
+                  <span class="council-section-badge curation">Data Management</span>
+                  <span class="council-section-count">${curationTeams.length}</span>
+                </div>
+                <div class="council-teams-list">
+                  ${curationTeams.map((team) => this._renderTeamRow(team, true)).join("")}
+                </div>
+              </div>
+            `
+                : ""
+            }
           `
               : `
             <div class="council-empty-state">
@@ -1042,18 +1141,19 @@ const AgentsModal = {
   },
 
   /**
-   * Render a team row
+   * Render a single team row
    * @param {Object} team - Team data
+   * @param {boolean} isCuration - Whether this is a curation team
    * @returns {string} HTML
    */
-  _renderTeamRow(team) {
+  _renderTeamRow(team, isCuration = false) {
     const leader = team.leaderId
       ? this._agentsSystem.getPosition(team.leaderId)
       : null;
     const memberCount = team.memberIds.length;
 
     return `
-      <div class="council-team-row" data-team-id="${team.id}">
+      <div class="council-team-row ${isCuration ? "curation-team" : ""}" data-team-id="${team.id}">
         <div class="council-team-row-main">
           <span class="council-team-icon">${team.icon || "👥"}</span>
           <span class="council-team-name">${this._escapeHtml(team.name)}</span>
@@ -3097,6 +3197,81 @@ const AgentsModal = {
         color: var(--council-text-muted, rgba(255, 255, 255, 0.6));
       }
 
+      /* Section headers for grouping Pipeline vs Curation */
+      .council-section-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        margin-bottom: 12px;
+        background: var(--council-bg-hover, rgba(255, 255, 255, 0.1));
+        border-radius: var(--council-radius-md, 6px);
+        border-left: 3px solid var(--council-primary, #667eea);
+      }
+
+      .council-section-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--council-text, #eee);
+      }
+
+      .council-section-badge {
+        font-size: 0.7rem;
+        padding: 3px 8px;
+        border-radius: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .council-section-badge.curation {
+        background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+        color: white;
+      }
+
+      .council-section-count {
+        margin-left: auto;
+        font-size: 0.8rem;
+        color: var(--council-text-muted, rgba(255, 255, 255, 0.6));
+      }
+
+      /* Curation section styling */
+      .council-curation-section {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px dashed var(--council-border, #444);
+      }
+
+      .council-curation-section .council-section-header {
+        border-left-color: #8b5cf6;
+        background: linear-gradient(90deg, rgba(139, 92, 246, 0.15) 0%, transparent 100%);
+      }
+
+      .council-position-group.curation-team,
+      .council-team-row.curation-team {
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(99, 102, 241, 0.05) 100%);
+      }
+
+      .council-position-group.curation-team .council-group-header {
+        background: linear-gradient(90deg, rgba(139, 92, 246, 0.2) 0%, rgba(139, 92, 246, 0.1) 100%);
+      }
+
+      .council-team-row.curation-team::before {
+        content: '📚';
+        margin-right: 4px;
+      }
+
+      /* Position section containers */
+      .council-position-section,
+      .council-teams-section {
+        margin-bottom: 20px;
+      }
+
+      .council-position-section:last-child,
+      .council-teams-section:last-child {
+        margin-bottom: 0;
+      }
+
       /* Animations */
       @keyframes council-fadeIn {
         from { opacity: 0; }
@@ -3114,50 +3289,320 @@ const AgentsModal = {
         }
       }
 
-      /* Responsive */
-      @media (max-width: 768px) {
+      /* Responsive - Tablet */
+      @media (max-width: 900px) {
         .council-agents-modal {
           width: 95%;
-          max-height: 95vh;
+          max-width: 95%;
+        }
+
+        .council-org-teams-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      /* Responsive - Mobile */
+      @media (max-width: 768px) {
+        .council-agents-modal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          width: 100% !important;
+          max-width: 100% !important;
+          height: 100% !important;
+          max-height: 100% !important;
+          border-radius: 0;
+          transform: none;
+        }
+
+        .council-agents-modal.visible {
+          transform: none;
+        }
+
+        .council-agents-header {
+          padding: 12px 14px;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .council-agents-title {
+          font-size: 1rem;
+          flex: 1 1 100%;
+          justify-content: center;
+        }
+
+        .council-agents-header-actions {
+          flex: 1 1 100%;
+          justify-content: center;
+        }
+
+        .council-agents-tabs {
+          padding: 8px 12px;
+          gap: 4px;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .council-agents-tabs::-webkit-scrollbar {
+          display: none;
+        }
+
+        .council-agents-tab {
+          padding: 8px 12px;
+          font-size: 0.8rem;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .council-agents-content {
+          padding: 12px;
+        }
+
+        .council-agents-footer {
+          padding: 10px 14px;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .council-agents-btn {
+          min-height: 44px;
+          padding: 10px 14px;
+        }
+
+        .council-agents-btn-sm {
+          min-height: 36px;
+          padding: 8px 10px;
         }
 
         .council-hierarchy-header {
           flex-direction: column;
+          gap: 12px;
+          text-align: center;
         }
 
         .council-hierarchy-stats {
           width: 100%;
-          justify-content: space-around;
+          justify-content: center;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+
+        .council-stat-item {
+          min-width: 70px;
+        }
+
+        .council-org-executive {
+          padding: 12px;
         }
 
         .council-org-teams-grid {
           grid-template-columns: 1fr;
+          gap: 12px;
+        }
+
+        .council-team-card {
+          padding: 12px;
         }
 
         .council-agents-grid,
         .council-pools-grid {
           grid-template-columns: 1fr;
+          gap: 10px;
+        }
+
+        .council-agent-card,
+        .council-pool-card {
+          padding: 12px;
         }
 
         .council-position-row {
           flex-direction: column;
           align-items: flex-start;
-          gap: 8px;
+          gap: 10px;
+          padding: 12px;
+        }
+
+        .council-position-row-main {
+          width: 100%;
+          flex-wrap: wrap;
+        }
+
+        .council-position-row-assignment {
+          width: 100%;
+          padding: 6px 0;
         }
 
         .council-position-row-actions {
           width: 100%;
           justify-content: flex-end;
+          padding-top: 8px;
+          border-top: 1px solid var(--council-border, #444);
         }
 
         .council-team-row {
           flex-direction: column;
           align-items: flex-start;
+          gap: 10px;
+          padding: 12px;
+        }
+
+        .council-team-row-main {
+          width: 100%;
         }
 
         .council-team-row-info {
+          width: 100%;
           flex-direction: column;
+          gap: 6px;
+        }
+
+        .council-team-row-actions {
+          width: 100%;
+          justify-content: flex-end;
+          padding-top: 8px;
+          border-top: 1px solid var(--council-border, #444);
+        }
+
+        /* Section headers - mobile */
+        .council-section-header {
+          flex-wrap: wrap;
+          padding: 10px 12px;
           gap: 8px;
+        }
+
+        .council-section-title {
+          font-size: 0.85rem;
+        }
+
+        .council-position-section,
+        .council-teams-section {
+          margin-bottom: 16px;
+        }
+
+        /* Dialogs - Mobile full screen */
+        .council-dialog-overlay[data-dialog] {
+          padding: 0;
+          align-items: flex-end;
+        }
+
+        .council-dialog {
+          width: 100% !important;
+          max-width: 100% !important;
+          max-height: 90vh;
+          margin: 0;
+          border-radius: 12px 12px 0 0;
+        }
+
+        .council-dialog-header {
+          padding: 14px 16px;
+        }
+
+        .council-dialog-header h3 {
+          font-size: 1rem;
+        }
+
+        .council-dialog-body {
+          padding: 14px 16px;
+          max-height: calc(90vh - 130px);
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .council-dialog-footer {
+          padding: 12px 16px;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .council-dialog-footer .council-agents-btn {
+          flex: 1 1 calc(50% - 4px);
+        }
+
+        /* Form elements - Mobile */
+        .council-form-input,
+        .council-form-select,
+        .council-form-textarea {
+          min-height: 44px;
+          padding: 12px;
+          font-size: 16px;
+        }
+
+        .council-form-row {
+          flex-direction: column;
+        }
+
+        .council-form-row .council-form-group {
+          flex: 1 1 100%;
+        }
+
+        .council-prompt-builder-container {
+          min-height: 250px;
+        }
+
+        /* Empty states - Mobile */
+        .council-empty-state {
+          padding: 30px 16px;
+        }
+
+        .council-empty-icon {
+          font-size: 2.5rem;
+        }
+      }
+
+      /* Small Mobile */
+      @media (max-width: 480px) {
+        .council-agents-header {
+          padding: 10px 12px;
+        }
+
+        .council-agents-title {
+          font-size: 0.9rem;
+        }
+
+        .council-agents-tab {
+          padding: 6px 10px;
+          font-size: 0.75rem;
+        }
+
+        .council-dialog-footer .council-agents-btn {
+          flex: 1 1 100%;
+        }
+
+        .council-position-tier-badge {
+          font-size: 0.6rem;
+          padding: 2px 5px;
+        }
+      }
+
+      /* Touch devices */
+      @media (hover: none) and (pointer: coarse) {
+        .council-agents-btn {
+          min-height: 44px;
+        }
+
+        .council-position-row-actions,
+        .council-team-row-actions {
+          opacity: 1;
+        }
+
+        .council-agents-btn:active {
+          transform: scale(0.98);
+          opacity: 0.9;
+        }
+      }
+
+      /* Safe area for notched phones */
+      @supports (padding: max(0px)) {
+        @media (max-width: 768px) {
+          .council-agents-modal {
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+
+          .council-dialog-footer {
+            padding-bottom: max(12px, env(safe-area-inset-bottom));
+          }
         }
       }
     `;

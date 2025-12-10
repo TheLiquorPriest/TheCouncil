@@ -1,0 +1,199 @@
+{
+  "id": "quick-pipeline",
+  "name": "Quick Pipeline",
+  "description": "A streamlined 4-phase workflow for fast narrative generation. Minimal review cycles, no user gavels, optimized for speed.",
+  "version": "2.0.0",
+  "staticContext": {
+    "includeCharacterCard": true,
+    "includeWorldInfo": true,
+    "includePersona": true,
+    "includeScenario": true,
+    "custom": {}
+  },
+  "globals": {
+    "instructions": "",
+    "draft": "",
+    "finalResponse": "",
+    "custom": {}
+  },
+  "constants": {
+    "maxSMEs": 1,
+    "defaultTimeout": 30000,
+    "deliberationRounds": 1
+  },
+  "agents": {
+    "executive": [
+      {
+        "id": "director",
+        "name": "Director",
+        "position": "executive",
+        "tier": "leader",
+        "description": "Oversees the quick pipeline, makes rapid decisions on content direction.",
+        "systemPrompt": "You are the Director, leading this streamlined creative process. Your role is to quickly assess input, guide the narrative direction, and ensure quality output. Be decisive and efficient while maintaining story consistency."
+      }
+    ],
+    "proseTeam": [
+      {
+        "id": "writer",
+        "name": "Writer",
+        "position": "prose_lead",
+        "tier": "leader",
+        "description": "Primary content creator responsible for drafting narrative responses.",
+        "systemPrompt": "You are the Writer, the primary creative force in this pipeline. Your role is to craft engaging, well-written narrative content that matches the established tone and style. Focus on vivid prose, natural dialogue, and compelling scene construction."
+      },
+      {
+        "id": "editor",
+        "name": "Editor",
+        "position": "prose_member",
+        "tier": "member",
+        "description": "Reviews and polishes drafts for quality and consistency.",
+        "systemPrompt": "You are the Editor. Your role is to review drafts for clarity, consistency, grammar, and engagement. Provide constructive feedback and polish the prose while preserving the author's voice."
+      }
+    ],
+    "plotTeam": [
+      {
+        "id": "continuity_checker",
+        "name": "Continuity Checker",
+        "position": "plot_lead",
+        "tier": "leader",
+        "description": "Ensures story consistency and tracks narrative elements.",
+        "systemPrompt": "You are the Continuity Checker. Your role is to ensure the narrative remains consistent with established facts, character positions, timeline, and world rules. Flag any contradictions briefly and suggest corrections."
+      }
+    ]
+  },
+  "teams": [
+    {
+      "id": "prose_team",
+      "name": "Prose Team",
+      "leaderId": "writer",
+      "memberPositions": ["prose_member"]
+    },
+    {
+      "id": "plot_team",
+      "name": "Plot Team",
+      "leaderId": "continuity_checker",
+      "memberPositions": []
+    }
+  ],
+  "threads": {
+    "main": {
+      "id": "main",
+      "name": "Main",
+      "description": "Primary workspace for the quick pipeline",
+      "visible": true
+    },
+    "drafting": {
+      "id": "drafting",
+      "name": "Drafting",
+      "description": "Draft development thread",
+      "visible": true
+    }
+  },
+  "phases": [
+    {
+      "id": "phase_1_context",
+      "name": "Gather Context",
+      "description": "Analyze input and gather relevant context",
+      "icon": "📋",
+      "teams": ["plot_team"],
+      "threads": {
+        "phaseThread": { "enabled": true },
+        "teamThreads": {}
+      },
+      "actions": [
+        {
+          "id": "analyze_input",
+          "name": "Analyze Input",
+          "actionType": "standard",
+          "description": "Understand the user's input and story context",
+          "participants": {
+            "positionIds": ["continuity_checker"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Analyze the following input and current story context. Identify key elements, character positions, and any continuity considerations.\n\nContext:\n{{context}}\n\nUser Input:\n{{input}}\n\nProvide a brief analysis (2-3 sentences) highlighting what needs to be addressed in the response."
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      }
+    },
+    {
+      "id": "phase_2_draft",
+      "name": "Generate Draft",
+      "description": "Create the initial narrative draft",
+      "icon": "✍️",
+      "teams": ["prose_team"],
+      "threads": {
+        "phaseThread": { "enabled": true },
+        "teamThreads": { "prose": true }
+      },
+      "actions": [
+        {
+          "id": "create_draft",
+          "name": "Create Draft",
+          "actionType": "standard",
+          "description": "Write the narrative response",
+          "participants": {
+            "positionIds": ["writer"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Based on the context and analysis, write a narrative response.\n\nContext:\n{{context}}\n\nAnalysis:\n{{previousPhase.output}}\n\nUser Input:\n{{input}}\n\nWrite an engaging narrative response that advances the story naturally. Match the established tone and style."
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      }
+    },
+    {
+      "id": "phase_3_review",
+      "name": "Quick Review",
+      "description": "Fast editorial review and polish",
+      "icon": "🔍",
+      "teams": ["prose_team"],
+      "threads": {
+        "phaseThread": { "enabled": true },
+        "teamThreads": {}
+      },
+      "actions": [
+        {
+          "id": "editorial_review",
+          "name": "Editorial Review",
+          "actionType": "standard",
+          "description": "Review and polish the draft",
+          "participants": {
+            "positionIds": ["editor"],
+            "orchestration": "sequential"
+          },
+          "promptTemplate": "Review and polish the following draft. Fix any issues with clarity, grammar, or flow. Make minimal but impactful improvements.\n\nDraft:\n{{previousPhase.output}}\n\nProvide the polished version directly, without commentary."
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      }
+    },
+    {
+      "id": "phase_4_final",
+      "name": "Final Output",
+      "description": "Deliver the final response",
+      "icon": "✅",
+      "actions": [
+        {
+          "id": "deliver_response",
+          "name": "Deliver Response",
+          "actionType": "deliverables",
+          "description": "Output the final narrative response",
+          "promptTemplate": "{{previousPhase.output}}"
+        }
+      ],
+      "output": {
+        "consolidation": "last"
+      }
+    }
+  ],
+  "metadata": {
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z",
+    "author": "The Council",
+    "tags": ["quick", "minimal", "fast", "streamlined"]
+  }
+}

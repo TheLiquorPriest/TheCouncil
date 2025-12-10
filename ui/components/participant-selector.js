@@ -203,6 +203,11 @@ const ParticipantSelector = {
   _getPositions() {
     if (!this._agentsSystem) return [];
     try {
+      // Use getAllPositions() directly - getSummary() only returns counts
+      if (typeof this._agentsSystem.getAllPositions === "function") {
+        return this._agentsSystem.getAllPositions() || [];
+      }
+      // Fallback: try to get from summary if it has positions array
       const summary = this._agentsSystem.getSummary?.();
       return summary?.positions || [];
     } catch (e) {
@@ -218,6 +223,11 @@ const ParticipantSelector = {
   _getTeams() {
     if (!this._agentsSystem) return [];
     try {
+      // Use getAllTeams() directly - getSummary() only returns counts
+      if (typeof this._agentsSystem.getAllTeams === "function") {
+        return this._agentsSystem.getAllTeams() || [];
+      }
+      // Fallback: try to get from summary if it has teams array
       const summary = this._agentsSystem.getSummary?.();
       return summary?.teams || [];
     } catch (e) {
