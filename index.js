@@ -579,6 +579,14 @@
   }
 
   /**
+   * Add UI elements to SillyTavern
+   */
+  function addSTUIElements() {
+    addExtensionButton();
+    addPipelineTriggerButton();
+  }
+
+  /**
    * Add extension button to SillyTavern UI
    * @param {number} retryCount - Current retry count
    */
@@ -638,6 +646,171 @@
 
     extensionButtons.appendChild(button);
     logger.debug("Extension button added to menu");
+  }
+
+  /**
+   * Add Pipeline trigger button near ST send button
+   * @param {number} retryCount - Current retry count
+   */
+  function addPipelineTriggerButton(retryCount = 0) {
+    // Check if button already exists
+    if (document.getElementById("thecouncil-pipeline-trigger-btn")) {
+      return;
+    }
+
+    // Try to find the send button area - ST has different layouts
+    const selectors = [
+      "#send_but_sheld",
+      "#form_sheld .send_form",
+      "#send_form",
+      ".send_form",
+      "#rightSendForm",
+    ];
+
+    let sendArea = null;
+    for (const selector of selectors) {
+      sendArea = document.querySelector(selector);
+      if (sendArea) {
+        logger.debug(`Found send area with selector: ${selector}`);
+        break;
+      }
+    }
+
+    if (!sendArea) {
+      if (retryCount < 5) {
+        logger.debug(`Send area not found, retry ${retryCount + 1}/5...`);
+        setTimeout(() => addPipelineTriggerButton(retryCount + 1), 1000);
+      } else {
+        logger.debug("Could not find send area for pipeline trigger button");
+      }
+      return;
+    }
+
+    // Create the pipeline trigger button
+    const button = document.createElement("div");
+    button.id = "thecouncil-pipeline-trigger-btn";
+    button.className = "fa-solid fa-play-circle";
+    button.title = "Run Council Pipeline";
+    button.style.cssText = `
+      cursor: pointer;
+      padding: 8px;
+      font-size: 1.2em;
+      color: var(--SmartThemeBodyColor, #ccc);
+      opacity: 0.7;
+      transition: opacity 0.2s, color 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    `;
+
+    // Hover effect
+    button.addEventListener("mouseenter", () => {
+      button.style.opacity = "1";
+      button.style.color = "var(--SmartThemeQuoteColor, #4a90d9)";
+    });
+    button.addEventListener("mouseleave", () => {
+      button.style.opacity = "0.7";
+      button.style.color = "var(--SmartThemeBodyColor, #ccc)";
+    });
+
+    // Click handler - run pipeline with current input
+    button.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!Systems.PipelineSystem) {
+        logger.warn("PipelineSystem not available");
+        return;
+      }
+
+      // Get user input from ST input field
+      const inputSelectors = [
+        "#send_textarea",
+        "#chat-message-input",
+        "textarea[name='chat']",
+      ];
+
+      let userInput = "";
+      for (const selector of inputSelectors) {
+        const input = document.querySelector(selector);
+        if (input && input.value) {
+          userInput = input.value.trim();
+          break;
+        }
+      }
+
+      if (!userInput) {
+        // Show notification or prompt for input
+        const stHelpers = getSillyTavernHelpers();
+        if (stHelpers.callPopup) {
+          userInput = await stHelpers.callPopup(
+            "Enter input for pipeline:",
+            "input",
+          );
+        }
+      }
+
+      if (!userInput) {
+        logger.debug("No input provided for pipeline");
+        return;
+      }
+
+      // Check if there's an active pipeline to run
+      const pipelines = Systems.PipelineSystem.getAllPipelines();
+      if (pipelines.length === 0) {
+        logger.warn("No pipelines configured");
+        if (Systems.NavModal) {
+          Systems.NavModal.show();
+        }
+        return;
+      }
+
+      // Run the first (or selected/active) pipeline
+      const activePipeline = pipelines[0]; // Could be enhanced to track "active" pipeline
+      logger.log("info", `Running pipeline: ${activePipeline.name}`);
+
+      try {
+        button.classList.remove("fa-play-circle");
+        button.classList.add("fa-spinner", "fa-spin");
+
+        await Systems.PipelineSystem.startRun(activePipeline.id, {
+          userInput,
+        });
+
+        button.classList.remove("fa-spinner", "fa-spin");
+        button.classList.add("fa-check-circle");
+        button.style.color = "#4caf50";
+
+        setTimeout(() => {
+          button.classList.remove("fa-check-circle");
+          button.classList.add("fa-play-circle");
+          button.style.color = "";
+        }, 2000);
+      } catch (error) {
+        logger.error("Pipeline run failed:", error);
+        button.classList.remove("fa-spinner", "fa-spin");
+        button.classList.add("fa-times-circle");
+        button.style.color = "#f44336";
+
+        setTimeout(() => {
+          button.classList.remove("fa-times-circle");
+          button.classList.add("fa-play-circle");
+          button.style.color = "";
+        }, 2000);
+      }
+    });
+
+    // Insert before the send button or at the start of send area
+    const sendButton = sendArea.querySelector(
+      "#send_but, .send_button, button[type='submit']",
+    );
+    if (sendButton) {
+      sendButton.parentNode.insertBefore(button, sendButton);
+    } else {
+      sendArea.insertBefore(button, sendArea.firstChild);
+    }
+
+    logger.debug("Pipeline trigger button added near send area");
   }
 
   /**
@@ -904,8 +1077,8 @@
         // Register SillyTavern event listeners
         registerSTEventListeners();
 
-        // Add extension button
-        addExtensionButton();
+        // Add ST UI elements (extension button + pipeline trigger)
+        addSTUIElements();
 
         // Register keyboard shortcut
         registerKeyboardShortcut();

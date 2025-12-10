@@ -289,14 +289,17 @@ TheCouncil/
 
 ## System 2: Curation System
 
-### Status: ~70% Complete
+### Status: ~85% Complete
 
 ### Remaining Tasks
 
-- [ ] **2.1 Agent Isolation (P1)**
+- [x] **2.1 Agent Isolation (P1)** ✅
   - Completely separate curation agents from pipeline agents
-  - Own agent registry within CurationSystem
-  - Clear integration interface with PipelineSystem
+  - Own agent registry within CurationSystem (`_curationAgents` Map)
+  - Default agents for each position (Archivist, Topologists)
+  - `registerCurationAgent()`, `getCurationAgent()`, `getAgentForPosition()`
+  - Position-to-agent assignments (`_positionAssignments` Map)
+  - `getCurationTeamSummary()` for team overview
 
 - [ ] **2.2 Quality Pass (P1)**
   - Review all CRUD operations
@@ -321,25 +324,31 @@ TheCouncil/
 - Data persistence
 - Default stores
 - Curation positions (Archivist, Topologists)
+- Curation agent isolation (dedicated registry)
+- Default curation agents with system prompts
+- Character CRUD/RAG pipelines
 
 ---
 
 ## System 3: Pipeline System
 
-### Status: ~80% Complete
+### Status: ~95% Complete
 
 ### Remaining Tasks
 
-- [ ] **3.1 Threads Subsystem UI (P1)**
-  - Add thread configuration to Phase editor
-  - Add thread configuration to Action editor
+- [x] **3.1 Threads Subsystem UI (P1)** ✅
+  - Added thread configuration to Phase editor (phaseThread, teamThreads)
+  - Added thread configuration to Action editor (actionThread, teamTaskThreads)
   - User control over firstMessage (instructions)
-  - Thread visibility controls
+  - Max messages configuration
+  - Thread hierarchy info display
 
-- [ ] **3.2 Outputs/Variables Refinement (P1)**
-  - Complete output routing implementation
-  - Variable scoping rules
-  - Global variable management UI
+- [x] **3.2 Outputs/Variables Refinement (P1)** ✅
+  - Enhanced Outputs tab with global variable management UI
+  - Add/Edit/Copy/Clear/Delete operations for globals
+  - Standard vs custom variable distinction
+  - Phase output copy/clear actions
+  - Clear all outputs functionality
 
 - [ ] **3.3 Quality Pass (P1)**
   - Review execution flow
@@ -347,19 +356,25 @@ TheCouncil/
   - Validate trigger conditions
   - Error handling improvements
 
-- [ ] **3.4 Pipeline Trigger Button (P2)**
-  - Add button next to ST send button
+- [x] **3.4 Pipeline Trigger Button (P2)** ✅
+  - Added button next to ST send button
   - Runs active pipeline with user input
+  - Visual feedback (spinner, success/error icons)
+  - Auto-discovers pipelines
 
 ### Completed ✅
 - Phase/Action CRUD
 - Execution engine
 - Participant resolution
 - SME dynamic matching
-- Action types (Standard, CRUD, RAG, Deliberative, Gavel, System)
+- Action types (Standard, CRUD, RAG, Deliberative, Gavel, System, CHARACTER_WORKSHOP)
 - Thread creation during runs
 - Context management
 - Preset integration
+- Thread configuration UI (Phase + Action editors)
+- Global variable management UI
+- Pipeline trigger button near ST send
+- Character participation in actions
 
 ---
 
@@ -495,6 +510,45 @@ The Curation system is designed to:
 ---
 
 ## Change Log
+
+### 2024-XX-XX - Pipeline UI Enhancements & Curation Agent Isolation
+- Updated `ui/pipeline-modal.js`:
+  - Enhanced Phase editor with thread configuration:
+    - Phase thread enable/disable toggle
+    - First message (instructions) field
+    - Max thread messages setting
+    - Team-specific threads toggle
+  - Enhanced Action editor with Threads tab:
+    - Action thread configuration
+    - Team task threads toggle
+    - Thread hierarchy documentation
+  - Enhanced Outputs tab with global variable management:
+    - Add/Edit/Copy/Clear/Delete operations for globals
+    - Standard vs custom variable visual distinction
+    - Phase output copy/clear actions
+    - Clear all outputs button
+  - Added CSS styles for new UI components
+- Updated `core/curation-system.js`:
+  - Added `_curationAgents` Map for isolated agent registry
+  - Added `_positionAssignments` Map for position-agent mapping
+  - Added `_registerDefaultCurationAgents()` with 6 default agents:
+    - Archivist Agent (leader)
+    - Story Topologist Agent
+    - Character Topologist Agent
+    - Lore Topologist Agent
+    - Location Topologist Agent
+    - Scene Topologist Agent
+  - Added agent management methods:
+    - `registerCurationAgent()`, `getCurationAgent()`, `getAllCurationAgents()`
+    - `getAgentForPosition()`, `assignAgentToPosition()`
+    - `updateCurationAgent()`, `deleteCurationAgent()`
+  - Added `getCurationTeamSummary()` for team overview
+  - Updated `getSummary()` to include curation agent info
+- Updated `index.js`:
+  - Added `addSTUIElements()` function
+  - Added `addPipelineTriggerButton()` for pipeline trigger near ST send button
+  - Pipeline trigger shows spinner during execution
+  - Visual feedback for success/error states
 
 ### 2024-XX-XX - Character System Phase 4 Complete (Curation Integration)
 - Updated `schemas/systems.js`:

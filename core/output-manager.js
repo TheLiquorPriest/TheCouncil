@@ -457,6 +457,58 @@ const OutputManager = {
   },
 
   /**
+   * Set a global variable (public method)
+   * @param {string} key - Variable key (supports dot notation like "custom.myVar")
+   * @param {*} value - Variable value
+   */
+  setGlobal(key, value) {
+    this._setGlobal(key, value);
+    this._emit("global:set", { key, value });
+  },
+
+  /**
+   * Delete a global variable
+   * @param {string} key - Variable key (supports dot notation)
+   */
+  deleteGlobal(key) {
+    if (!key) return;
+
+    const parts = key.split(".");
+    if (parts.length === 1) {
+      delete this._globals[key];
+    } else {
+      // Handle nested keys like "custom.myVar"
+      let target = this._globals;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!target[parts[i]]) return;
+        target = target[parts[i]];
+      }
+      delete target[parts[parts.length - 1]];
+    }
+
+    this._emit("global:deleted", { key });
+  },
+
+  /**
+   * Clear all global variables
+   */
+  clearGlobals() {
+    this._globals = {};
+    this._emit("globals:cleared");
+  },
+
+  /**
+   * Clear a specific phase output
+   * @param {string} phaseId - Phase ID
+   */
+  clearPhaseOutput(phaseId) {
+    if (this._phaseOutputs.has(phaseId)) {
+      this._phaseOutputs.delete(phaseId);
+      this._emit("phaseOutput:cleared", { phaseId });
+    }
+  },
+
+  /**
    * Get action output
    * @param {string} actionId - Action ID
    * @returns {*} Output value

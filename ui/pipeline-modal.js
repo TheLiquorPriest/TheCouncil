@@ -2041,6 +2041,33 @@ const PipelineModal = {
       case "clear-threads":
         this._clearThreads();
         break;
+      case "add-global-variable":
+        this._showAddGlobalVariableDialog();
+        break;
+      case "edit-global":
+        this._showEditGlobalVariableDialog(e.target?.dataset?.key);
+        break;
+      case "copy-global":
+        this._copyGlobalVariable(e.target?.dataset?.key);
+        break;
+      case "clear-global":
+        this._clearGlobalVariable(e.target?.dataset?.key);
+        break;
+      case "delete-global":
+        this._deleteGlobalVariable(e.target?.dataset?.key);
+        break;
+      case "clear-globals":
+        this._clearAllGlobals();
+        break;
+      case "clear-all-outputs":
+        this._clearAllOutputs();
+        break;
+      case "copy-phase-output":
+        this._copyPhaseOutput(e.target?.dataset?.phaseId);
+        break;
+      case "clear-phase-output":
+        this._clearPhaseOutput(e.target?.dataset?.phaseId);
+        break;
       default:
         this._log("debug", `Unhandled action: ${action}`);
     }
@@ -3766,6 +3793,271 @@ const PipelineModal = {
     this._showNotification("Threads cleared", "success");
   },
 
+  // ===== GLOBAL VARIABLE MANAGEMENT =====
+
+  /**
+   * Show dialog to add a new global variable
+   */
+  _showAddGlobalVariableDialog() {
+    const dialog = document.createElement("div");
+    dialog.className = "council-pipeline-dialog-overlay";
+    dialog.innerHTML = `
+      <div class="council-pipeline-dialog">
+        <div class="council-pipeline-dialog-header">
+          <h3>Add Global Variable</h3>
+          <button class="council-pipeline-dialog-close" data-dialog="cancel">✕</button>
+        </div>
+        <div class="council-pipeline-dialog-content">
+          <div class="council-pipeline-form-group">
+            <label>Variable Name *</label>
+            <input type="text" class="council-pipeline-input" data-field="key" placeholder="e.g., myCustomVar">
+            <p class="council-pipeline-form-hint">Use camelCase. Will be accessible as custom.yourName in tokens.</p>
+          </div>
+          <div class="council-pipeline-form-group">
+            <label>Value *</label>
+            <textarea class="council-pipeline-input" data-field="value" rows="6" placeholder="Enter variable value..."></textarea>
+          </div>
+        </div>
+        <div class="council-pipeline-dialog-actions">
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-dialog="cancel">Cancel</button>
+          <button class="council-pipeline-btn council-pipeline-btn-primary" data-dialog="save">Add Variable</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(dialog);
+
+    const cleanup = () => dialog.remove();
+
+    dialog
+      .querySelectorAll('[data-dialog="cancel"]')
+      .forEach((btn) => btn.addEventListener("click", cleanup));
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) cleanup();
+    });
+
+    dialog
+      .querySelector('[data-dialog="save"]')
+      .addEventListener("click", () => {
+        const key = dialog.querySelector('[data-field="key"]').value.trim();
+        const value = dialog.querySelector('[data-field="value"]').value;
+
+        if (!key) {
+          this._showNotification("Variable name is required", "error");
+          return;
+        }
+
+        if (this._outputManager?.setGlobal) {
+          this._outputManager.setGlobal(`custom.${key}`, value);
+          this._showNotification(`Variable custom.${key} added`, "success");
+          cleanup();
+          this._refreshCurrentTab();
+        } else {
+          this._showNotification("Output manager not available", "error");
+        }
+      });
+
+    setTimeout(() => dialog.querySelector('[data-field="key"]')?.focus(), 100);
+  },
+
+  /**
+   * Show dialog to edit a global variable
+   * @param {string} key - Variable key
+   */
+  _showEditGlobalVariableDialog(key) {
+    if (!key) return;
+
+    const globals = this._outputManager?.getGlobals?.() || {};
+    let currentValue = "";
+
+    // Handle nested keys like custom.myVar
+    if (key.startsWith("custom.")) {
+      const subKey = key.substring(7);
+      currentValue = globals.custom?.[subKey] || "";
+    } else {
+      currentValue = globals[key] || "";
+    }
+
+    const dialog = document.createElement("div");
+    dialog.className = "council-pipeline-dialog-overlay";
+    dialog.innerHTML = `
+      <div class="council-pipeline-dialog council-pipeline-dialog-large">
+        <div class="council-pipeline-dialog-header">
+          <h3>Edit Variable: ${this._escapeHtml(key)}</h3>
+          <button class="council-pipeline-dialog-close" data-dialog="cancel">✕</button>
+        </div>
+        <div class="council-pipeline-dialog-content">
+          <div class="council-pipeline-form-group">
+            <label>Value</label>
+            <textarea class="council-pipeline-input council-pipeline-code" data-field="value" rows="15">${this._escapeHtml(typeof currentValue === "string" ? currentValue : JSON.stringify(currentValue, null, 2))}</textarea>
+          </div>
+        </div>
+        <div class="council-pipeline-dialog-actions">
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-dialog="cancel">Cancel</button>
+          <button class="council-pipeline-btn council-pipeline-btn-primary" data-dialog="save">Save</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(dialog);
+
+    const cleanup = () => dialog.remove();
+
+    dialog
+      .querySelectorAll('[data-dialog="cancel"]')
+      .forEach((btn) => btn.addEventListener("click", cleanup));
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) cleanup();
+    });
+
+    dialog
+      .querySelector('[data-dialog="save"]')
+      .addEventListener("click", () => {
+        const value = dialog.querySelector('[data-field="value"]').value;
+
+        if (this._outputManager?.setGlobal) {
+          this._outputManager.setGlobal(key, value);
+          this._showNotification(`Variable ${key} updated`, "success");
+          cleanup();
+          this._refreshCurrentTab();
+        } else {
+          this._showNotification("Output manager not available", "error");
+        }
+      });
+  },
+
+  /**
+   * Copy a global variable value to clipboard
+   * @param {string} key - Variable key
+   */
+  async _copyGlobalVariable(key) {
+    if (!key) return;
+
+    const globals = this._outputManager?.getGlobals?.() || {};
+    let value = "";
+
+    if (key.startsWith("custom.")) {
+      const subKey = key.substring(7);
+      value = globals.custom?.[subKey] || "";
+    } else {
+      value = globals[key] || "";
+    }
+
+    try {
+      const text =
+        typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      await navigator.clipboard.writeText(text);
+      this._showNotification(`Copied ${key}`, "success");
+    } catch (error) {
+      this._showNotification("Failed to copy", "error");
+    }
+  },
+
+  /**
+   * Clear a global variable value
+   * @param {string} key - Variable key
+   */
+  _clearGlobalVariable(key) {
+    if (!key) return;
+    if (!confirm(`Clear variable "${key}"?`)) return;
+
+    if (this._outputManager?.setGlobal) {
+      this._outputManager.setGlobal(key, "");
+      this._showNotification(`Variable ${key} cleared`, "success");
+      this._refreshCurrentTab();
+    }
+  },
+
+  /**
+   * Delete a custom global variable
+   * @param {string} key - Variable key
+   */
+  _deleteGlobalVariable(key) {
+    if (!key) return;
+    if (!confirm(`Delete variable "${key}"?`)) return;
+
+    if (this._outputManager?.deleteGlobal) {
+      this._outputManager.deleteGlobal(key);
+      this._showNotification(`Variable ${key} deleted`, "success");
+      this._refreshCurrentTab();
+    } else if (this._outputManager?.setGlobal) {
+      // Fallback: set to undefined
+      this._outputManager.setGlobal(key, undefined);
+      this._refreshCurrentTab();
+    }
+  },
+
+  /**
+   * Clear all global variables
+   */
+  _clearAllGlobals() {
+    if (!confirm("Clear all global variables?")) return;
+
+    if (this._outputManager?.clearGlobals) {
+      this._outputManager.clearGlobals();
+      this._showNotification("All globals cleared", "success");
+      this._refreshCurrentTab();
+    }
+  },
+
+  /**
+   * Clear all outputs (globals, phase outputs, final output)
+   */
+  _clearAllOutputs() {
+    if (
+      !confirm(
+        "Clear all outputs? This will reset globals, phase outputs, and final output.",
+      )
+    )
+      return;
+
+    if (this._outputManager?.clear) {
+      this._outputManager.clear();
+      this._showNotification("All outputs cleared", "success");
+      this._refreshCurrentTab();
+    }
+  },
+
+  /**
+   * Copy a phase output to clipboard
+   * @param {string} phaseId - Phase ID
+   */
+  async _copyPhaseOutput(phaseId) {
+    if (!phaseId) return;
+
+    const phaseOutputs = this._outputManager?.getAllPhaseOutputs?.() || {};
+    const output = phaseOutputs[phaseId];
+
+    if (!output) {
+      this._showNotification("No output for this phase", "info");
+      return;
+    }
+
+    try {
+      const text =
+        typeof output === "string" ? output : JSON.stringify(output, null, 2);
+      await navigator.clipboard.writeText(text);
+      this._showNotification(`Copied phase ${phaseId} output`, "success");
+    } catch (error) {
+      this._showNotification("Failed to copy", "error");
+    }
+  },
+
+  /**
+   * Clear a phase output
+   * @param {string} phaseId - Phase ID
+   */
+  _clearPhaseOutput(phaseId) {
+    if (!phaseId) return;
+    if (!confirm(`Clear output for phase "${phaseId}"?`)) return;
+
+    if (this._outputManager?.clearPhaseOutput) {
+      this._outputManager.clearPhaseOutput(phaseId);
+      this._showNotification(`Phase ${phaseId} output cleared`, "success");
+      this._refreshCurrentTab();
+    }
+  },
+
   // ===== STATUS AND NOTIFICATIONS =====
 
   /**
@@ -4411,6 +4703,119 @@ const PipelineModal = {
       .council-pipeline-phase-output-header {
         font-weight: 600;
         margin-bottom: 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .council-pipeline-phase-output-actions {
+        display: flex;
+        gap: 4px;
+      }
+
+      /* Global Variable Management */
+      .council-pipeline-globals-toolbar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .council-pipeline-globals-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .council-pipeline-global-item {
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid var(--SmartThemeBorderColor, #333);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .council-pipeline-global-item.has-value {
+        border-color: var(--SmartThemeQuoteColor, #4a90d9);
+      }
+      .council-pipeline-global-item.custom {
+        border-color: #9c27b0;
+      }
+      .council-pipeline-global-item.empty {
+        opacity: 0.6;
+      }
+      .council-pipeline-global-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.2);
+        border-bottom: 1px solid var(--SmartThemeBorderColor, #333);
+      }
+      .council-pipeline-global-key {
+        font-weight: 600;
+        font-family: monospace;
+        flex: 1;
+      }
+      .council-pipeline-global-type {
+        font-size: 0.75em;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--SmartThemeBodyColor, #aaa);
+      }
+      .council-pipeline-global-item.custom .council-pipeline-global-type {
+        background: rgba(156, 39, 176, 0.3);
+        color: #ce93d8;
+      }
+      .council-pipeline-global-actions {
+        display: flex;
+        gap: 4px;
+      }
+      .council-pipeline-global-value {
+        padding: 8px 12px;
+        max-height: 150px;
+        overflow: auto;
+      }
+      .council-pipeline-global-value pre {
+        margin: 0;
+        font-size: 0.85em;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .council-pipeline-global-empty {
+        padding: 8px 12px;
+        color: var(--SmartThemeBodyColor, #666);
+        font-style: italic;
+        font-size: 0.9em;
+      }
+      .council-pipeline-btn-icon {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        opacity: 0.7;
+        transition: opacity 0.2s, background 0.2s;
+      }
+      .council-pipeline-btn-icon:hover {
+        opacity: 1;
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .council-pipeline-thread-info {
+        margin-top: 16px;
+        padding: 12px;
+        background: rgba(102, 126, 234, 0.1);
+        border: 1px solid rgba(102, 126, 234, 0.3);
+        border-radius: 6px;
+      }
+      .council-pipeline-thread-details {
+        margin-top: 4px;
+        padding-left: 16px;
+        font-size: 0.9em;
+        color: var(--SmartThemeBodyColor, #aaa);
+      }
+      .council-pipeline-truncate {
+        display: inline-block;
+        max-width: 300px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: bottom;
       }
 
       /* Dialogs */

@@ -25,6 +25,12 @@ const CurationSystem = {
   // ===== STATE =====
 
   /**
+   * Curation-specific agents registry (isolated from AgentsSystem)
+   * @type {Map<string, Object>}
+   */
+  _curationAgents: new Map(),
+
+  /**
    * Store schemas registry
    * @type {Map<string, Object>}
    */
@@ -53,6 +59,12 @@ const CurationSystem = {
    * @type {Map<string, Object>}
    */
   _positions: new Map(),
+
+  /**
+   * Position to agent assignments
+   * @type {Map<string, string>}
+   */
+  _positionAssignments: new Map(),
 
   /**
    * Storage backend adapter
@@ -139,6 +151,9 @@ const CurationSystem = {
     // Register default curation positions
     this._registerDefaultPositions();
 
+    // Register default curation agents
+    this._registerDefaultCurationAgents();
+
     // Register default character pipelines
     this._registerDefaultCharacterPipelines();
 
@@ -202,7 +217,346 @@ const CurationSystem = {
     this._crudPipelines.clear();
     this._ragPipelines.clear();
     this._positions.clear();
+    this._positionAssignments.clear();
+    this._curationAgents.clear();
     this._dirtyStores.clear();
+  },
+
+  // ===== CURATION AGENT MANAGEMENT =====
+
+  /**
+   * Register default curation agents (isolated from AgentsSystem)
+   * @private
+   */
+  _registerDefaultCurationAgents() {
+    const defaultAgents = [
+      {
+        id: "curation_archivist",
+        name: "Archivist Agent",
+        description: "Default agent for the Archivist position",
+        positionId: "archivist",
+        apiConfig: {
+          useCurrentConnection: true,
+          temperature: 0.3,
+          maxTokens: 2000,
+        },
+        systemPrompt: {
+          source: "custom",
+          customText: `You are the Archivist, the leader of the Record Keeping team. Your role is to:
+- Oversee all data management operations
+- Ensure consistency and accuracy across all data stores
+- Coordinate the activities of the Topologist team members
+- Make final decisions on data organization and structure
+
+When responding, be precise, organized, and thorough. Focus on data integrity and proper categorization.`,
+        },
+      },
+      {
+        id: "curation_story_topologist",
+        name: "Story Topologist Agent",
+        description: "Default agent for story structure analysis",
+        positionId: "story_topologist",
+        apiConfig: {
+          useCurrentConnection: true,
+          temperature: 0.5,
+          maxTokens: 2000,
+        },
+        systemPrompt: {
+          source: "custom",
+          customText: `You are the Story Topologist, specializing in narrative structure. Your expertise includes:
+- Plot line tracking and development
+- Scene analysis and organization
+- Narrative flow and pacing
+- Story arc identification
+
+When analyzing content, focus on the structural elements of the narrative and how they connect.`,
+        },
+      },
+      {
+        id: "curation_character_topologist",
+        name: "Character Topologist Agent",
+        description: "Default agent for character analysis",
+        positionId: "character_topologist",
+        apiConfig: {
+          useCurrentConnection: true,
+          temperature: 0.5,
+          maxTokens: 2000,
+        },
+        systemPrompt: {
+          source: "custom",
+          customText: `You are the Character Topologist, specializing in character analysis. Your expertise includes:
+- Character traits and personality analysis
+- Relationship mapping and dynamics
+- Character development tracking
+- Dialogue patterns and speech characteristics
+
+When analyzing content, focus on character-related details and interpersonal dynamics.`,
+        },
+      },
+      {
+        id: "curation_lore_topologist",
+        name: "Lore Topologist Agent",
+        description: "Default agent for world-building analysis",
+        positionId: "lore_topologist",
+        apiConfig: {
+          useCurrentConnection: true,
+          temperature: 0.5,
+          maxTokens: 2000,
+        },
+        systemPrompt: {
+          source: "custom",
+          customText: `You are the Lore Topologist, specializing in world-building. Your expertise includes:
+- World history and background lore
+- Faction and organization tracking
+- Cultural and societal elements
+- Rules and systems of the story world
+
+When analyzing content, focus on world-building elements and background information.`,
+        },
+      },
+      {
+        id: "curation_location_topologist",
+        name: "Location Topologist Agent",
+        description: "Default agent for location analysis",
+        positionId: "location_topologist",
+        apiConfig: {
+          useCurrentConnection: true,
+          temperature: 0.4,
+          maxTokens: 1500,
+        },
+        systemPrompt: {
+          source: "custom",
+          customText: `You are the Location Topologist, specializing in spatial analysis. Your expertise includes:
+- Location descriptions and details
+- Spatial relationships between places
+- Environmental and atmospheric elements
+- Geographic and architectural features
+
+When analyzing content, focus on location-related details and spatial context.`,
+        },
+      },
+      {
+        id: "curation_scene_topologist",
+        name: "Scene Topologist Agent",
+        description: "Default agent for scene analysis",
+        positionId: "scene_topologist",
+        apiConfig: {
+          useCurrentConnection: true,
+          temperature: 0.5,
+          maxTokens: 1500,
+        },
+        systemPrompt: {
+          source: "custom",
+          customText: `You are the Scene Topologist, specializing in scene management. Your expertise includes:
+- Scene composition and structure
+- Environmental and situational details
+- Timing and sequence tracking
+- Mood and atmosphere analysis
+
+When analyzing content, focus on scene-specific elements and situational context.`,
+        },
+      },
+    ];
+
+    for (const agent of defaultAgents) {
+      this._curationAgents.set(agent.id, {
+        ...agent,
+        metadata: {
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          isDefault: true,
+        },
+      });
+
+      // Assign to position
+      if (agent.positionId) {
+        this._positionAssignments.set(agent.positionId, agent.id);
+      }
+    }
+
+    this._log(
+      "debug",
+      `Registered ${defaultAgents.length} default curation agents`,
+    );
+  },
+
+  /**
+   * Register a curation agent
+   * @param {Object} agent - Agent configuration
+   * @returns {Object} Registered agent
+   */
+  registerCurationAgent(agent) {
+    if (!agent.id) {
+      throw new Error("Curation agent requires an id");
+    }
+
+    const normalized = {
+      id: agent.id,
+      name: agent.name || agent.id,
+      description: agent.description || "",
+      positionId: agent.positionId || null,
+      apiConfig: {
+        useCurrentConnection: agent.apiConfig?.useCurrentConnection !== false,
+        endpoint: agent.apiConfig?.endpoint || "",
+        apiKey: agent.apiConfig?.apiKey || "",
+        model: agent.apiConfig?.model || "",
+        temperature: agent.apiConfig?.temperature ?? 0.5,
+        maxTokens: agent.apiConfig?.maxTokens || 2000,
+        topP: agent.apiConfig?.topP ?? 1,
+        frequencyPenalty: agent.apiConfig?.frequencyPenalty ?? 0,
+        presencePenalty: agent.apiConfig?.presencePenalty ?? 0,
+      },
+      systemPrompt: {
+        source: agent.systemPrompt?.source || "custom",
+        customText: agent.systemPrompt?.customText || "",
+      },
+      metadata: {
+        createdAt: agent.metadata?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+        isDefault: agent.metadata?.isDefault || false,
+      },
+    };
+
+    this._curationAgents.set(normalized.id, normalized);
+
+    // Update position assignment if specified
+    if (normalized.positionId) {
+      this._positionAssignments.set(normalized.positionId, normalized.id);
+    }
+
+    this._emit("agent:registered", { agent: normalized });
+    return normalized;
+  },
+
+  /**
+   * Get a curation agent by ID
+   * @param {string} agentId - Agent ID
+   * @returns {Object|null} Agent or null
+   */
+  getCurationAgent(agentId) {
+    return this._curationAgents.get(agentId) || null;
+  },
+
+  /**
+   * Get all curation agents
+   * @returns {Object[]} All curation agents
+   */
+  getAllCurationAgents() {
+    return Array.from(this._curationAgents.values());
+  },
+
+  /**
+   * Get curation agent for a position
+   * @param {string} positionId - Position ID
+   * @returns {Object|null} Agent or null
+   */
+  getAgentForPosition(positionId) {
+    const agentId = this._positionAssignments.get(positionId);
+    if (!agentId) return null;
+    return this._curationAgents.get(agentId) || null;
+  },
+
+  /**
+   * Assign an agent to a position
+   * @param {string} positionId - Position ID
+   * @param {string} agentId - Agent ID
+   */
+  assignAgentToPosition(positionId, agentId) {
+    if (!this._positions.has(positionId)) {
+      throw new Error(`Position ${positionId} not found`);
+    }
+    if (agentId && !this._curationAgents.has(agentId)) {
+      throw new Error(`Agent ${agentId} not found`);
+    }
+
+    if (agentId) {
+      this._positionAssignments.set(positionId, agentId);
+      // Update agent's positionId
+      const agent = this._curationAgents.get(agentId);
+      if (agent) {
+        agent.positionId = positionId;
+        agent.metadata.updatedAt = Date.now();
+      }
+    } else {
+      this._positionAssignments.delete(positionId);
+    }
+
+    this._emit("position:assigned", { positionId, agentId });
+  },
+
+  /**
+   * Update a curation agent
+   * @param {string} agentId - Agent ID
+   * @param {Object} updates - Updates to apply
+   * @returns {Object} Updated agent
+   */
+  updateCurationAgent(agentId, updates) {
+    const agent = this._curationAgents.get(agentId);
+    if (!agent) {
+      throw new Error(`Curation agent ${agentId} not found`);
+    }
+
+    const updated = {
+      ...agent,
+      ...updates,
+      id: agent.id, // Preserve ID
+      apiConfig: { ...agent.apiConfig, ...updates.apiConfig },
+      systemPrompt: { ...agent.systemPrompt, ...updates.systemPrompt },
+      metadata: {
+        ...agent.metadata,
+        ...updates.metadata,
+        updatedAt: Date.now(),
+      },
+    };
+
+    this._curationAgents.set(agentId, updated);
+    this._emit("agent:updated", { agent: updated });
+    return updated;
+  },
+
+  /**
+   * Delete a curation agent
+   * @param {string} agentId - Agent ID
+   * @returns {boolean} True if deleted
+   */
+  deleteCurationAgent(agentId) {
+    const agent = this._curationAgents.get(agentId);
+    if (!agent) return false;
+
+    // Remove from position assignments
+    if (agent.positionId) {
+      this._positionAssignments.delete(agent.positionId);
+    }
+
+    this._curationAgents.delete(agentId);
+    this._emit("agent:deleted", { agentId });
+    return true;
+  },
+
+  /**
+   * Get curation team summary
+   * @returns {Object} Team summary
+   */
+  getCurationTeamSummary() {
+    const positions = Array.from(this._positions.values());
+    const agents = Array.from(this._curationAgents.values());
+
+    return {
+      positionCount: positions.length,
+      agentCount: agents.length,
+      assignedPositions: positions.filter((p) =>
+        this._positionAssignments.has(p.id),
+      ).length,
+      positions: positions.map((p) => ({
+        id: p.id,
+        name: p.name,
+        tier: p.tier,
+        assignedAgentId: this._positionAssignments.get(p.id) || null,
+        assignedAgentName:
+          this._curationAgents.get(this._positionAssignments.get(p.id))?.name ||
+          null,
+      })),
+    };
   },
 
   /**
@@ -2156,6 +2510,9 @@ Return list of character IDs/names with relevance reasoning.`,
       };
     }
 
+    // Build curation team summary
+    const curationTeam = this.getCurationTeamSummary();
+
     return {
       version: this.VERSION,
       initialized: this._initialized,
@@ -2165,6 +2522,9 @@ Return list of character IDs/names with relevance reasoning.`,
       ragPipelineCount: this._ragPipelines.size,
       positionCount: this._positions.size,
       dirtyStoreCount: this._dirtyStores.size,
+      // Curation agent information (isolated from AgentsSystem)
+      curationAgentCount: this._curationAgents.size,
+      curationTeam: curationTeam,
     };
   },
 
