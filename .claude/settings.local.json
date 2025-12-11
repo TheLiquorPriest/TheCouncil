@@ -9,7 +9,9 @@
       "Bash(git cherry-pick:*)",
       "Bash(git checkout:*)",
       "Bash(node -c:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(find:*)",
+      "Bash(git stash:*)"
     ],
     "deny": [],
     "ask": []
