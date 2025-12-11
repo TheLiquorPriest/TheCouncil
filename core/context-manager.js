@@ -1,6 +1,20 @@
 /**
  * TheCouncil - Context Manager
  *
+ * *** DEPRECATED ***
+ * This file has been absorbed into PipelineBuilderSystem (core/pipeline-builder-system.js)
+ * as part of Task 4.2 implementation.
+ *
+ * Context configuration functionality is now available via:
+ * - PipelineBuilderSystem.getPhaseContextConfig()
+ * - PipelineBuilderSystem.getActionContextOverrides()
+ * - PipelineBuilderSystem.updatePhaseContextConfig()
+ * - PipelineBuilderSystem.updateActionContextOverrides()
+ * - PipelineBuilderSystem.validateContextBlock()
+ *
+ * This file is kept for reference only and will be removed in a future cleanup task.
+ *
+ * Original description:
  * Core module for managing context assembly and routing:
  * - Static context (character card, world info, persona, scenario)
  * - Global context (pipeline-level variables)
@@ -12,6 +26,7 @@
  * during pipeline execution.
  *
  * @version 2.0.0
+ * @deprecated Use PipelineBuilderSystem instead
  */
 
 const ContextManager = {

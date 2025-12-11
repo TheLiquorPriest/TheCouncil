@@ -1542,16 +1542,28 @@ const PipelineBuilderSystem = {
 
   /**
    * Get a phase by ID
-   * @param {string} pipelineId - Pipeline ID
-   * @param {string} phaseId - Phase ID
+   * @param {string} pipelineIdOrPhaseId - Pipeline ID or Phase ID (if single param)
+   * @param {string} phaseId - Phase ID (optional if first param is phase ID)
    * @returns {Object|null} Phase or null
    */
-  getPhase(pipelineId, phaseId) {
-    const pipeline = this._pipelines.get(pipelineId);
-    if (!pipeline) {
-      return null;
+  getPhase(pipelineIdOrPhaseId, phaseId = null) {
+    // If phaseId is provided, use standard two-param syntax
+    if (phaseId !== null) {
+      const pipeline = this._pipelines.get(pipelineIdOrPhaseId);
+      if (!pipeline) {
+        return null;
+      }
+      return pipeline.phases.find((p) => p.id === phaseId) || null;
     }
-    return pipeline.phases.find((p) => p.id === phaseId) || null;
+
+    // Single param syntax: search all pipelines for phase by ID
+    for (const pipeline of this._pipelines.values()) {
+      const phase = pipeline.phases.find((p) => p.id === pipelineIdOrPhaseId);
+      if (phase) {
+        return phase;
+      }
+    }
+    return null;
   },
 
   /**
@@ -1738,17 +1750,31 @@ const PipelineBuilderSystem = {
 
   /**
    * Get an action by ID
-   * @param {string} pipelineId - Pipeline ID
-   * @param {string} phaseId - Phase ID
-   * @param {string} actionId - Action ID
+   * @param {string} pipelineIdOrActionId - Pipeline ID or Action ID (if single param)
+   * @param {string} phaseId - Phase ID (optional)
+   * @param {string} actionId - Action ID (optional)
    * @returns {Object|null} Action or null
    */
-  getAction(pipelineId, phaseId, actionId) {
-    const phase = this.getPhase(pipelineId, phaseId);
-    if (!phase) {
-      return null;
+  getAction(pipelineIdOrActionId, phaseId = null, actionId = null) {
+    // If all three params provided, use standard syntax
+    if (phaseId !== null && actionId !== null) {
+      const phase = this.getPhase(pipelineIdOrActionId, phaseId);
+      if (!phase) {
+        return null;
+      }
+      return phase.actions.find((a) => a.id === actionId) || null;
     }
-    return phase.actions.find((a) => a.id === actionId) || null;
+
+    // Single param syntax: search all pipelines/phases for action by ID
+    for (const pipeline of this._pipelines.values()) {
+      for (const phase of pipeline.phases) {
+        const action = phase.actions.find((a) => a.id === pipelineIdOrActionId);
+        if (action) {
+          return action;
+        }
+      }
+    }
+    return null;
   },
 
   /**
@@ -2043,6 +2069,418 @@ const PipelineBuilderSystem = {
       target: config?.target || "phaseOutput",
       targetKey: config?.targetKey || "",
       append: config?.append || false,
+    };
+  },
+
+  // =========================================================================
+  // THREAD CONFIGURATION (absorbed from thread-manager.js)
+  // =========================================================================
+
+  /**
+   * Get thread configuration for a phase
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @returns {Object|null} Thread configuration
+   */
+  getPhaseThreadConfig(pipelineId, phaseId) {
+    const phase = this.getPhase(pipelineId, phaseId);
+    if (!phase) {
+      return null;
+    }
+    return phase.threads || null;
+  },
+
+  /**
+   * Get thread configuration for an action
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @param {string} actionId - Action ID
+   * @returns {Object|null} Thread configuration
+   */
+  getActionThreadConfig(pipelineId, phaseId, actionId) {
+    const action = this.getAction(pipelineId, phaseId, actionId);
+    if (!action) {
+      return null;
+    }
+    return action.threads || null;
+  },
+
+  /**
+   * Update thread configuration for a phase
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @param {Object} threadConfig - Updated thread configuration
+   * @returns {Object} Updated phase
+   */
+  updatePhaseThreadConfig(pipelineId, phaseId, threadConfig) {
+    const phase = this.getPhase(pipelineId, phaseId);
+    if (!phase) {
+      throw new Error(`Phase "${phaseId}" not found in pipeline "${pipelineId}"`);
+    }
+
+    return this.updatePhase(pipelineId, phaseId, {
+      threads: {
+        phaseThread: this._normalizeThreadConfig(threadConfig.phaseThread || phase.threads?.phaseThread),
+        teamThreads: {
+          ...phase.threads?.teamThreads,
+          ...threadConfig.teamThreads,
+        },
+      },
+    });
+  },
+
+  /**
+   * Update thread configuration for an action
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @param {string} actionId - Action ID
+   * @param {Object} threadConfig - Updated thread configuration
+   * @returns {Object} Updated action
+   */
+  updateActionThreadConfig(pipelineId, phaseId, actionId, threadConfig) {
+    const action = this.getAction(pipelineId, phaseId, actionId);
+    if (!action) {
+      throw new Error(`Action "${actionId}" not found`);
+    }
+
+    return this.updateAction(pipelineId, phaseId, actionId, {
+      threads: {
+        actionThread: this._normalizeThreadConfig(threadConfig.actionThread || action.threads?.actionThread),
+        teamTaskThreads: {
+          ...action.threads?.teamTaskThreads,
+          ...threadConfig.teamTaskThreads,
+        },
+      },
+    });
+  },
+
+  /**
+   * Create a thread configuration schema for a team
+   * @param {string} teamId - Team ID
+   * @param {Object} config - Thread configuration
+   * @returns {Object} Normalized thread config
+   */
+  createTeamThreadConfig(teamId, config = {}) {
+    return {
+      [teamId]: this._normalizeThreadConfig(config),
+    };
+  },
+
+  // =========================================================================
+  // CONTEXT CONFIGURATION (absorbed from context-manager.js)
+  // =========================================================================
+
+  /**
+   * Context block types
+   * @type {Object}
+   */
+  ContextBlockType: {
+    STATIC: "static",
+    GLOBAL: "global",
+    PHASE: "phase",
+    TEAM: "team",
+    STORE: "store",
+    RAG: "rag",
+    CUSTOM: "custom",
+  },
+
+  /**
+   * Get context configuration for a phase
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @returns {Object|null} Context configuration
+   */
+  getPhaseContextConfig(pipelineId, phaseId) {
+    const phase = this.getPhase(pipelineId, phaseId);
+    if (!phase) {
+      return null;
+    }
+    return phase.context || null;
+  },
+
+  /**
+   * Get context overrides for an action
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @param {string} actionId - Action ID
+   * @returns {Object|null} Context overrides
+   */
+  getActionContextOverrides(pipelineId, phaseId, actionId) {
+    const action = this.getAction(pipelineId, phaseId, actionId);
+    if (!action) {
+      return null;
+    }
+    return action.contextOverrides || null;
+  },
+
+  /**
+   * Update context configuration for a phase
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @param {Object} contextConfig - Updated context configuration
+   * @returns {Object} Updated phase
+   */
+  updatePhaseContextConfig(pipelineId, phaseId, contextConfig) {
+    const phase = this.getPhase(pipelineId, phaseId);
+    if (!phase) {
+      throw new Error(`Phase "${phaseId}" not found in pipeline "${pipelineId}"`);
+    }
+
+    const updated = {
+      static: contextConfig.static || phase.context?.static || [],
+      global: contextConfig.global || phase.context?.global || [],
+      phase: contextConfig.phase || phase.context?.phase || [],
+      team: contextConfig.team || phase.context?.team || [],
+      stores: contextConfig.stores || phase.context?.stores || [],
+    };
+
+    return this.updatePhase(pipelineId, phaseId, { context: updated });
+  },
+
+  /**
+   * Update context overrides for an action
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @param {string} actionId - Action ID
+   * @param {Object} contextOverrides - Updated context overrides
+   * @returns {Object} Updated action
+   */
+  updateActionContextOverrides(pipelineId, phaseId, actionId, contextOverrides) {
+    const action = this.getAction(pipelineId, phaseId, actionId);
+    if (!action) {
+      throw new Error(`Action "${actionId}" not found`);
+    }
+
+    const updated = {
+      include: contextOverrides.include || action.contextOverrides?.include || [],
+      exclude: contextOverrides.exclude || action.contextOverrides?.exclude || [],
+      priority: contextOverrides.priority || action.contextOverrides?.priority || [],
+    };
+
+    return this.updateAction(pipelineId, phaseId, actionId, { contextOverrides: updated });
+  },
+
+  /**
+   * Validate context block definition
+   * @param {Object} block - Context block definition
+   * @returns {Object} Validation result
+   */
+  validateContextBlock(block) {
+    const errors = [];
+    const warnings = [];
+
+    if (!block.type) {
+      errors.push("Context block requires a type");
+    } else if (!Object.values(this.ContextBlockType).includes(block.type)) {
+      warnings.push(`Unknown context block type: ${block.type}`);
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    };
+  },
+
+  // =========================================================================
+  // VARIABLE I/O SCHEMAS
+  // =========================================================================
+
+  /**
+   * Variable scope types
+   * @type {Object}
+   */
+  VariableScope: {
+    ACTION: "action",
+    PHASE: "phase",
+    PIPELINE: "pipeline",
+  },
+
+  /**
+   * Variable source types
+   * @type {Object}
+   */
+  VariableSource: {
+    USER_INPUT: "userInput",
+    PREVIOUS_ACTION: "previousAction",
+    PREVIOUS_PHASE: "previousPhase",
+    GLOBAL: "global",
+    STORE: "store",
+    RAG: "rag",
+    CUSTOM: "custom",
+  },
+
+  /**
+   * Variable target types
+   * @type {Object}
+   */
+  VariableTarget: {
+    NEXT_ACTION: "nextAction",
+    PHASE_OUTPUT: "phaseOutput",
+    GLOBAL: "global",
+    STORE: "store",
+    CONTEXT: "context",
+  },
+
+  /**
+   * Get input/output configuration for an action
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @param {string} actionId - Action ID
+   * @returns {Object|null} I/O configuration
+   */
+  getActionIO(pipelineId, phaseId, actionId) {
+    const action = this.getAction(pipelineId, phaseId, actionId);
+    if (!action) {
+      return null;
+    }
+    return {
+      input: action.input || {},
+      output: action.output || {},
+    };
+  },
+
+  /**
+   * Update input configuration for an action
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @param {string} actionId - Action ID
+   * @param {Object} inputConfig - Updated input configuration
+   * @returns {Object} Updated action
+   */
+  updateActionInput(pipelineId, phaseId, actionId, inputConfig) {
+    const action = this.getAction(pipelineId, phaseId, actionId);
+    if (!action) {
+      throw new Error(`Action "${actionId}" not found`);
+    }
+
+    const updated = {
+      source: inputConfig.source || action.input?.source || "phaseInput",
+      sourceKey: inputConfig.sourceKey || action.input?.sourceKey || "",
+      transform: inputConfig.transform || action.input?.transform || "",
+    };
+
+    return this.updateAction(pipelineId, phaseId, actionId, { input: updated });
+  },
+
+  /**
+   * Update output configuration for an action
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @param {string} actionId - Action ID
+   * @param {Object} outputConfig - Updated output configuration
+   * @returns {Object} Updated action
+   */
+  updateActionOutput(pipelineId, phaseId, actionId, outputConfig) {
+    return this.updateAction(pipelineId, phaseId, actionId, {
+      output: this._normalizeOutputConfig(outputConfig),
+    });
+  },
+
+  /**
+   * Get global variables for a pipeline
+   * @param {string} pipelineId - Pipeline ID
+   * @returns {Object|null} Global variables
+   */
+  getGlobalVariables(pipelineId) {
+    const pipeline = this.getPipeline(pipelineId);
+    if (!pipeline) {
+      return null;
+    }
+    return pipeline.globals || {};
+  },
+
+  /**
+   * Update global variables for a pipeline
+   * @param {string} pipelineId - Pipeline ID
+   * @param {Object} updates - Updated variables
+   * @returns {Object} Updated pipeline
+   */
+  updateGlobalVariables(pipelineId, updates) {
+    const pipeline = this.getPipeline(pipelineId);
+    if (!pipeline) {
+      throw new Error(`Pipeline "${pipelineId}" not found`);
+    }
+
+    return this.updatePipeline(pipelineId, {
+      globals: {
+        ...pipeline.globals,
+        ...updates,
+      },
+    });
+  },
+
+  /**
+   * Set a global variable for a pipeline
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} key - Variable key
+   * @param {*} value - Variable value
+   * @returns {Object} Updated pipeline
+   */
+  setGlobalVariable(pipelineId, key, value) {
+    return this.updateGlobalVariables(pipelineId, { [key]: value });
+  },
+
+  /**
+   * Get phase variables
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @returns {Object|null} Phase variables
+   */
+  getPhaseVariables(pipelineId, phaseId) {
+    const phase = this.getPhase(pipelineId, phaseId);
+    if (!phase) {
+      return null;
+    }
+    return phase.variables || {};
+  },
+
+  /**
+   * Update phase variables
+   * @param {string} pipelineId - Pipeline ID
+   * @param {string} phaseId - Phase ID
+   * @param {Object} updates - Updated variables
+   * @returns {Object} Updated phase
+   */
+  updatePhaseVariables(pipelineId, phaseId, updates) {
+    const phase = this.getPhase(pipelineId, phaseId);
+    if (!phase) {
+      throw new Error(`Phase "${phaseId}" not found in pipeline "${pipelineId}"`);
+    }
+
+    return this.updatePhase(pipelineId, phaseId, {
+      variables: {
+        ...phase.variables,
+        ...updates,
+      },
+    });
+  },
+
+  /**
+   * Validate variable I/O configuration
+   * @param {Object} ioConfig - I/O configuration
+   * @returns {Object} Validation result
+   */
+  validateVariableIO(ioConfig) {
+    const errors = [];
+    const warnings = [];
+
+    if (ioConfig.input) {
+      if (ioConfig.input.source && !Object.values(this.VariableSource).includes(ioConfig.input.source)) {
+        warnings.push(`Unknown input source: ${ioConfig.input.source}`);
+      }
+    }
+
+    if (ioConfig.output) {
+      if (ioConfig.output.target && !Object.values(this.VariableTarget).includes(ioConfig.output.target)) {
+        warnings.push(`Unknown output target: ${ioConfig.output.target}`);
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
     };
   },
 

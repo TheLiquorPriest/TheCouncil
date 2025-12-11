@@ -1,6 +1,20 @@
 /**
  * TheCouncil - Thread Manager
  *
+ * *** DEPRECATED ***
+ * This file has been absorbed into PipelineBuilderSystem (core/pipeline-builder-system.js)
+ * as part of Task 4.2 implementation.
+ *
+ * Thread configuration functionality is now available via:
+ * - PipelineBuilderSystem.getPhaseThreadConfig()
+ * - PipelineBuilderSystem.getActionThreadConfig()
+ * - PipelineBuilderSystem.updatePhaseThreadConfig()
+ * - PipelineBuilderSystem.updateActionThreadConfig()
+ * - PipelineBuilderSystem.createTeamThreadConfig()
+ *
+ * This file is kept for reference only and will be removed in a future cleanup task.
+ *
+ * Original description:
  * Core module for managing conversation threads:
  * - Phase threads (global phase discussion)
  * - Team threads (team-specific discussion)
@@ -12,6 +26,7 @@
  * context during pipeline execution.
  *
  * @version 2.0.0
+ * @deprecated Use PipelineBuilderSystem instead
  */
 
 const ThreadManager = {
