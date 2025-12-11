@@ -1,11 +1,14 @@
 /**
  * TheCouncil - Multi-LLM Story Production Pipeline
- * Entry point and system orchestrator for SillyTavern extension
+ * Entry point - Thin bootstrap that initializes the Kernel
  *
- * Three-System Architecture:
- * - AGENTS SYSTEM: Define and staff a creative writing "company"
- * - CURATION SYSTEM: Data management with structured schemas
- * - RESPONSE PIPELINE SYSTEM: Editorial workflow producing final content
+ * Six-System Architecture (via Kernel):
+ * - THE COUNCIL KERNEL: Central hub, shared resources, event bus, hooks
+ * - CURATION SYSTEM: Knowledge base with CRUD/RAG pipelines
+ * - CHARACTER SYSTEM: Dynamic avatar agents from Curation data
+ * - PROMPT BUILDER SYSTEM: Token registry, prompt stacks, template resolution
+ * - RESPONSE PIPELINE BUILDER: Multi-step workflow definitions
+ * - RESPONSE ORCHESTRATION: Pipeline execution in 3 modes
  *
  * @version 2.0.0
  */
@@ -137,6 +140,9 @@
       "utils/token-resolver.js",
       "utils/api-client.js",
 
+      // Kernel (load before systems)
+      "core/kernel.js",
+
       // Schemas
       "schemas/systems.js",
 
@@ -243,54 +249,89 @@
   // ===== SYSTEM INITIALIZATION =====
 
   /**
-   * Initialize all core systems with proper dependency injection
+   * Initialize the Kernel and register all modules/systems
    */
-  async function initializeSystems() {
-    logger.log("Initializing core systems...");
+  async function initializeKernel() {
+    logger.log("Initializing Kernel...");
 
-    // Initialize Logger first
-    if (Systems.Logger) {
-      Systems.Logger.init({
-        prefix: EXTENSION_NAME,
-        level: DEBUG ? "debug" : "info",
-      });
-      logger = Systems.Logger;
-      logger.log("info", "Logger initialized");
+    // Get Kernel reference
+    const Kernel = window.TheCouncilKernel || window.TheCouncil;
+    if (!Kernel) {
+      throw new Error("Kernel not loaded!");
     }
 
-    // Initialize Token Resolver
+    // Initialize Kernel with options
+    await Kernel.init({
+      debug: DEBUG,
+    });
+
+    // Update logger reference to use Kernel's logger
+    logger = Kernel.getModule("logger") || logger;
+
+    logger.log("info", "Kernel initialized");
+    return Kernel;
+  }
+
+  /**
+   * Register shared modules with Kernel
+   */
+  function registerModules(Kernel) {
+    logger.log("info", "Registering shared modules...");
+
+    // Register Logger (already initialized by Kernel)
+    if (Systems.Logger) {
+      Kernel.registerModule("logger", Systems.Logger);
+    }
+
+    // Register Token Resolver
     if (Systems.TokenResolver) {
       Systems.TokenResolver.init({
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
-      logger.log("info", "TokenResolver initialized");
+      Kernel.registerModule("tokenResolver", Systems.TokenResolver);
+      logger.log("info", "TokenResolver registered");
     }
 
-    // Initialize API Client
+    // Register API Client
     if (Systems.ApiClient) {
       Systems.ApiClient.init({
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
-      const tokenResolver = Systems.TokenResolver;
-      const apiClient = Systems.ApiClient;
-      logger.log("info", "ApiClient initialized");
+      Kernel.registerModule("apiClient", Systems.ApiClient);
+      logger.log("info", "ApiClient registered");
     }
+
+    // Register Preset Manager as module
+    if (Systems.PresetManager) {
+      Kernel.registerModule("presetManager", Systems.PresetManager);
+    }
+
+    logger.log("info", "Shared modules registered");
+  }
+
+  /**
+   * Initialize and register all core systems
+   */
+  async function initializeSystems(Kernel) {
+    logger.log("info", "Initializing core systems...");
 
     // Initialize Agents System
     if (Systems.AgentsSystem) {
       Systems.AgentsSystem.init({
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
         agentsSystem: Systems.AgentsSystem,
-        apiClient: Systems.ApiClient,
+        apiClient: Kernel.getModule("apiClient"),
       });
+      Kernel.registerSystem("agentsSystem", Systems.AgentsSystem);
       logger.log("info", "AgentsSystem initialized");
     }
 
     // Initialize Curation System
     if (Systems.CurationSystem) {
       Systems.CurationSystem.init({
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
+      Kernel.registerSystem("curationSystem", Systems.CurationSystem);
       logger.log("info", "CurationSystem initialized");
     }
 
@@ -298,8 +339,9 @@
     if (Systems.CharacterSystem) {
       Systems.CharacterSystem.init({
         curationSystem: Systems.CurationSystem,
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
+      Kernel.registerSystem("characterSystem", Systems.CharacterSystem);
       logger.log("info", "CharacterSystem initialized");
     }
 
@@ -307,28 +349,31 @@
     if (Systems.ContextManager) {
       Systems.ContextManager.init({
         curationSystem: Systems.CurationSystem,
-        tokenResolver: Systems.TokenResolver,
+        tokenResolver: Kernel.getModule("tokenResolver"),
         stHelpers: getSillyTavernHelpers(),
       });
+      Kernel.registerSystem("contextManager", Systems.ContextManager);
       logger.log("info", "ContextManager initialized");
     }
 
     // Initialize Output Manager
     if (Systems.OutputManager) {
       Systems.OutputManager.init({
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
         curationSystem: Systems.CurationSystem,
         threadManager: Systems.ThreadManager,
-        tokenResolver: Systems.TokenResolver,
+        tokenResolver: Kernel.getModule("tokenResolver"),
       });
+      Kernel.registerSystem("outputManager", Systems.OutputManager);
       logger.log("info", "OutputManager initialized");
     }
 
     // Initialize Thread Manager
     if (Systems.ThreadManager) {
       Systems.ThreadManager.init({
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
+      Kernel.registerSystem("threadManager", Systems.ThreadManager);
       logger.log("info", "ThreadManager initialized");
     }
 
@@ -341,9 +386,10 @@
         contextManager: Systems.ContextManager,
         outputManager: Systems.OutputManager,
         threadManager: Systems.ThreadManager,
-        apiClient: Systems.ApiClient,
-        tokenResolver: Systems.TokenResolver,
+        apiClient: Kernel.getModule("apiClient"),
+        tokenResolver: Kernel.getModule("tokenResolver"),
       });
+      Kernel.registerSystem("pipelineSystem", Systems.PipelineSystem);
       logger.log("info", "PipelineSystem initialized");
     }
 
@@ -354,7 +400,7 @@
         pipelineSystem: Systems.PipelineSystem,
         curationSystem: Systems.CurationSystem,
         threadManager: Systems.ThreadManager,
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
         extensionPath: EXTENSION_PATH,
       });
       logger.log("info", "PresetManager initialized");
@@ -372,8 +418,8 @@
     // Initialize UI Components
     if (Systems.PromptBuilder) {
       Systems.PromptBuilder.init({
-        tokenResolver: Systems.TokenResolver,
-        logger: Systems.Logger,
+        tokenResolver: Kernel.getModule("tokenResolver"),
+        logger: Kernel.getModule("logger"),
       });
       logger.log("info", "PromptBuilder initialized");
     }
@@ -381,7 +427,7 @@
     if (Systems.ParticipantSelector) {
       Systems.ParticipantSelector.init({
         agentsSystem: Systems.AgentsSystem,
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
       logger.log("info", "ParticipantSelector initialized");
     }
@@ -390,7 +436,7 @@
       Systems.ContextConfig.init({
         curationSystem: Systems.CurationSystem,
         threadManager: Systems.ThreadManager,
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
       logger.log("info", "ContextConfig initialized");
     }
@@ -399,7 +445,7 @@
       Systems.CurationPipelineBuilder.init({
         curationSystem: Systems.CurationSystem,
         agentsSystem: Systems.AgentsSystem,
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
       logger.log("info", "CurationPipelineBuilder initialized");
     }
@@ -1051,7 +1097,7 @@
   async function initialize() {
     if (isInitialized) {
       logger.warn("TheCouncil already initialized");
-      return TheCouncil;
+      return window.TheCouncil;
     }
 
     if (initializationPromise) {
@@ -1065,11 +1111,17 @@
         // Load settings
         loadSettings();
 
-        // Load new architecture modules
+        // Load new architecture modules (including Kernel)
         await loadNewArchitecture();
 
-        // Initialize core systems
-        await initializeSystems();
+        // Initialize Kernel
+        const Kernel = await initializeKernel();
+
+        // Register shared modules with Kernel
+        registerModules(Kernel);
+
+        // Initialize and register all systems
+        await initializeSystems(Kernel);
 
         // Initialize UI
         initializeUI();
@@ -1100,7 +1152,8 @@
           }),
         );
 
-        return TheCouncil;
+        // Return Kernel as main API
+        return Kernel;
       } catch (e) {
         logger.error("Failed to initialize TheCouncil:", e);
         throw e;
@@ -1112,10 +1165,26 @@
 
   // ===== EXPORT & AUTO-INIT =====
 
-  // Expose to global scope
-  window.TheCouncil = TheCouncil;
+  // Note: window.TheCouncil is exposed by the Kernel
+  // We just keep a reference to the legacy TheCouncil object for backwards compatibility
+  const TheCouncil = {
+    VERSION,
+    EXTENSION_NAME,
+    isInitialized: () => isInitialized,
+    getSystem: (name) => window.TheCouncil?.getSystem?.(name) || Systems[name] || null,
+    getSystems: () => window.TheCouncil?.getAllSystems?.() || { ...Systems },
+    getSettings: () => window.TheCouncil?.getSettings?.() || extensionSettings,
+    updateSettings: (updates) => window.TheCouncil?.updateSettings?.(updates),
+    showNav: () => Systems.NavModal?.show(),
+    hideNav: () => Systems.NavModal?.hide(),
+    showAgents: () => Systems.AgentsModal?.show(),
+    showCuration: () => Systems.CurationModal?.show(),
+    showPipeline: (options) => Systems.PipelineModal?.show(options),
+    runPipeline: (pipelineId, options) => window.TheCouncil?.runPipeline?.(pipelineId, options),
+    getSummary: () => window.TheCouncil?.getSummary?.(),
+  };
 
-  // Also expose individual systems for convenience
+  // Expose individual systems for convenience (legacy)
   window.CouncilSystems = Systems;
 
   // Auto-initialize when DOM is ready, but wait for ST to be available
