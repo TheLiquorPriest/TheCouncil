@@ -54,10 +54,16 @@ const GavelModal = {
   _maxHistory: 50,
 
   /**
-   * Reference to PipelineSystem
+   * Reference to OrchestrationSystem
    * @type {Object|null}
    */
-  _pipelineSystem: null,
+  _orchestrationSystem: null,
+
+  /**
+   * Reference to Kernel
+   * @type {Object|null}
+   */
+  _kernel: null,
 
   /**
    * Reference to Logger
@@ -99,19 +105,28 @@ const GavelModal = {
 
   /**
    * Initialize the Gavel Modal
+   * @param {Object} kernel - Kernel reference
    * @param {Object} options - Configuration options
-   * @param {Object} options.pipelineSystem - Reference to PipelineSystem
-   * @param {Object} options.logger - Logger instance
    * @returns {GavelModal}
    */
-  init(options = {}) {
+  init(kernel, options = {}) {
     if (this._initialized) {
       this._log("warn", "GavelModal already initialized");
       return this;
     }
 
-    this._pipelineSystem = options.pipelineSystem;
-    this._logger = options.logger;
+    this._kernel = kernel;
+    this._logger = kernel?.getModule ? kernel.getModule("logger") : options.logger;
+
+    // Get OrchestrationSystem from kernel
+    if (kernel && kernel.getSystem) {
+      this._orchestrationSystem = kernel.getSystem("orchestration");
+    }
+
+    // Fallback to options
+    if (!this._orchestrationSystem && options.orchestrationSystem) {
+      this._orchestrationSystem = options.orchestrationSystem;
+    }
 
     this._log("info", "Initializing Gavel Modal...");
 
@@ -305,18 +320,23 @@ const GavelModal = {
   },
 
   /**
-   * Subscribe to PipelineSystem events
+   * Subscribe to OrchestrationSystem events
    */
   _subscribeToEvents() {
-    if (!this._pipelineSystem) return;
+    if (!this._kernel || !this._kernel.on) {
+      this._log("warn", "Cannot subscribe to events: kernel not available");
+      return;
+    }
 
+    // Listen for gavel requests from OrchestrationSystem
     const handler = (data) => {
-      this.show(data);
+      this._log("debug", "Gavel requested event received", data);
+      this.show(data.gavel);
     };
 
-    this._pipelineSystem.on("gavel:requested", handler);
+    this._kernel.on("orchestration:gavel:requested", handler);
     this._cleanupFns.push(() =>
-      this._pipelineSystem.off("gavel:requested", handler),
+      this._kernel.off("orchestration:gavel:requested", handler),
     );
   },
 
@@ -325,10 +345,11 @@ const GavelModal = {
   /**
    * Show the gavel modal with request data
    * @param {Object} data - Gavel request data
+   * @param {string} data.id - Gavel ID
    * @param {string} data.phaseId - Phase ID
-   * @param {string} data.phaseName - Phase name
+   * @param {string} data.actionId - Action ID (optional)
    * @param {string} data.prompt - Review prompt/instructions
-   * @param {*} data.output - Output to review
+   * @param {*} data.currentOutput - Output to review
    * @param {string[]} data.editableFields - Fields that can be edited
    * @param {boolean} data.canSkip - Whether skip is allowed
    * @returns {Promise<Object>} Resolves with user decision
@@ -367,7 +388,7 @@ const GavelModal = {
         }
       }, 100);
 
-      this._log("info", "Gavel Modal shown for phase:", data.phaseName);
+      this._log("info", "Gavel Modal shown", { gavelId: data.id, phaseId: data.phaseId });
     });
   },
 
@@ -399,12 +420,24 @@ const GavelModal = {
     const data = this._currentRequest;
     if (!data) return;
 
+    // Get phase name from phaseId if needed
+    let phaseName = data.phaseId || "Unknown Phase";
+    if (this._kernel && this._kernel.getSystem && data.phaseId) {
+      const pipelineBuilder = this._kernel.getSystem("pipelineBuilder");
+      if (pipelineBuilder && pipelineBuilder.getPhase) {
+        const phase = pipelineBuilder.getPhase(data.phaseId);
+        if (phase) {
+          phaseName = phase.name || data.phaseId;
+        }
+      }
+    }
+
     // Update header
-    const phaseName = this._elements.modal.querySelector(
+    const phaseNameEl = this._elements.modal.querySelector(
       ".council-gavel-phase-name",
     );
-    if (phaseName) {
-      phaseName.textContent = data.phaseName || data.phaseId || "Unknown Phase";
+    if (phaseNameEl) {
+      phaseNameEl.textContent = phaseName;
     }
 
     // Update prompt
@@ -449,7 +482,7 @@ const GavelModal = {
    * Render the output content for review
    */
   _renderOutputContent() {
-    const output = this._currentRequest?.output;
+    const output = this._currentRequest?.currentOutput;
     const content = this._elements.content;
 
     if (!content) return;
@@ -522,11 +555,35 @@ const GavelModal = {
    * Render editable fields
    */
   _renderEditableFields() {
-    const output = this._currentRequest?.output;
+    const output = this._currentRequest?.currentOutput;
     const editableFields = this._currentRequest?.editableFields || [];
     const editor = this._elements.editor;
 
     if (!editor) return;
+
+    // Special handling for output field if it's a string
+    if (editableFields.includes("output") && typeof output === "string") {
+      editor.style.display = "block";
+      editor.innerHTML = `
+        <div class="council-gavel-editor-header">
+          <h4>✏️ Editable Output</h4>
+          <p>You can modify the output before approving:</p>
+        </div>
+        <div class="council-gavel-editor-fields">
+          <div class="council-gavel-editor-field">
+            <label>Output</label>
+            <textarea class="council-gavel-editor-input" data-field="output" rows="8">${this._escapeHtml(output)}</textarea>
+          </div>
+        </div>
+      `;
+
+      // Bind input handler
+      editor.querySelector(".council-gavel-editor-input").addEventListener("input", (e) => {
+        this._editedValues.output = e.target.value;
+      });
+
+      return;
+    }
 
     if (!editableFields.length || !output || typeof output !== "object") {
       editor.innerHTML = "";
@@ -624,43 +681,64 @@ const GavelModal = {
     const data = this._currentRequest;
     if (!data) return;
 
-    // Build result
-    const result = {
+    const gavelId = data.id;
+
+    // Build result for history
+    const historyResult = {
       decision,
+      gavelId,
       phaseId: data.phaseId,
-      phaseName: data.phaseName,
-      originalOutput: data.output,
+      originalOutput: data.currentOutput,
       editedValues: { ...this._editedValues },
       commentary: this._commentary.trim(),
       timestamp: new Date().toISOString(),
     };
 
-    // Compute final output with edits
-    if (decision === "approved" && Object.keys(this._editedValues).length > 0) {
-      if (typeof data.output === "object") {
-        result.finalOutput = { ...data.output, ...this._parseEditedValues() };
-      } else {
-        result.finalOutput = data.output;
-      }
-    } else {
-      result.finalOutput = data.output;
-    }
-
     // Add to history
-    this._addToHistory(result);
+    this._addToHistory(historyResult);
 
-    // Submit to pipeline system
-    if (this._pipelineSystem) {
+    // Submit to orchestration system
+    if (this._orchestrationSystem) {
       try {
-        this._pipelineSystem.submitGavelResponse(result);
+        const parsedEdits = this._parseEditedValues();
+
+        switch (decision) {
+          case "approved": {
+            // Build modifications object
+            const modifications = {
+              editedValues: Object.keys(parsedEdits).length > 0 ? parsedEdits : null,
+              commentary: this._commentary.trim(),
+            };
+
+            // If user edited "output" field directly (string output)
+            if (parsedEdits.output !== undefined) {
+              modifications.output = parsedEdits.output;
+            }
+
+            this._orchestrationSystem.approveGavel(gavelId, modifications);
+            break;
+          }
+
+          case "rejected": {
+            this._orchestrationSystem.rejectGavel(gavelId, this._commentary.trim());
+            break;
+          }
+
+          case "skipped": {
+            this._orchestrationSystem.skipGavel(gavelId);
+            break;
+          }
+        }
       } catch (error) {
         this._log("error", "Failed to submit gavel response:", error);
       }
+    } else {
+      this._log("warn", "OrchestrationSystem not available, cannot submit gavel decision");
     }
 
-    // Resolve promise
+    // Resolve promise (for UI)
     if (this._resolvePromise) {
-      this._resolvePromise(result);
+      this._resolvePromise(historyResult);
       this._resolvePromise = null;
     }
 
@@ -672,10 +750,7 @@ const GavelModal = {
     this._editedValues = {};
     this._commentary = "";
 
-    this._log(
-      "info",
-      `Gavel decision: ${decision} for phase ${data.phaseName}`,
-    );
+    this._log("info", `Gavel decision: ${decision} for gavel ${gavelId}`);
   },
 
   /**

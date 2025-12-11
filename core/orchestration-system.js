@@ -736,68 +736,229 @@ const OrchestrationSystem = {
   // ===== GAVEL (USER INTERVENTION) =====
 
   /**
+   * Request a gavel review (pause execution for user review)
+   * @param {Object} gavelConfig - Gavel configuration
+   * @param {string} gavelConfig.prompt - Review prompt/instructions
+   * @param {*} gavelConfig.currentOutput - Output to review
+   * @param {string[]} gavelConfig.editableFields - Fields that can be edited
+   * @param {boolean} gavelConfig.canSkip - Whether skip is allowed
+   * @param {number} gavelConfig.timeout - Optional timeout in milliseconds
+   * @param {string} gavelConfig.phaseId - Phase ID (optional)
+   * @param {string} gavelConfig.actionId - Action ID (optional)
+   * @returns {Promise<Object>} Gavel response with { output, approved, modifications, commentary }
+   */
+  async requestGavel(gavelConfig) {
+    if (this._activeGavel) {
+      this._log("warn", "Gavel already active, rejecting new request");
+      throw new Error("A gavel request is already pending");
+    }
+
+    const gavelId = `gavel_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    this._activeGavel = {
+      id: gavelId,
+      phaseId: gavelConfig.phaseId || this._runState?.currentPhaseId || null,
+      actionId: gavelConfig.actionId || this._runState?.currentActionId || null,
+      prompt: gavelConfig.prompt || "Review and approve or edit the output:",
+      currentOutput: gavelConfig.currentOutput,
+      editableFields: gavelConfig.editableFields || ["output"],
+      canSkip: gavelConfig.canSkip !== false,
+      timeout: gavelConfig.timeout || 0,
+      requestedAt: Date.now(),
+    };
+
+    this._log("info", `Gavel requested: ${gavelId}`);
+    this._emit("orchestration:gavel:requested", { gavel: this._activeGavel });
+
+    // Pause the run if it's currently running
+    if (this._runState && this._runState.status === this.RunStatus.RUNNING) {
+      this.pauseRun();
+    }
+
+    // Wait for user response
+    return new Promise((resolve, reject) => {
+      this._gavelResolver = resolve;
+
+      // Handle timeout if set
+      if (gavelConfig.timeout > 0) {
+        setTimeout(() => {
+          if (this._activeGavel?.id === gavelId) {
+            if (gavelConfig.canSkip) {
+              this._log("info", `Gavel timed out, auto-skipping: ${gavelId}`);
+              resolve({
+                approved: true,
+                skipped: true,
+                output: gavelConfig.currentOutput,
+                modifications: null,
+                commentary: "",
+              });
+            } else {
+              this._log("error", `Gavel timed out and skip not allowed: ${gavelId}`);
+              reject(new Error("Gavel request timed out"));
+            }
+            this._activeGavel = null;
+            this._gavelResolver = null;
+
+            // Resume if paused
+            if (this._runState && this._runState.status === this.RunStatus.PAUSED) {
+              this.resumeRun();
+            }
+          }
+        }, gavelConfig.timeout);
+      }
+    });
+  },
+
+  /**
    * Get the active gavel request
    * @returns {Object|null}
    */
   getActiveGavel() {
-    return this._activeGavel;
+    return this._activeGavel ? { ...this._activeGavel } : null;
   },
 
   /**
    * Approve the active gavel with optional modifications
-   * @param {string} gavelId - Gavel ID
-   * @param {Object} modifications - Optional modifications to output
+   * @param {string} gavelId - Gavel ID (optional, uses active if not provided)
+   * @param {Object} modifications - Optional modifications
+   * @param {*} modifications.output - Modified output
+   * @param {Object} modifications.editedValues - Edited field values
+   * @param {string} modifications.commentary - User commentary/feedback
    * @returns {boolean} Success
    */
-  approveGavel(gavelId, modifications = null) {
-    if (!this._activeGavel || this._activeGavel.id !== gavelId) {
-      this._log("warn", `No active gavel with ID: ${gavelId}`);
+  approveGavel(gavelId = null, modifications = null) {
+    // If no gavelId provided, use the active gavel
+    const targetId = gavelId || this._activeGavel?.id;
+
+    if (!this._activeGavel || this._activeGavel.id !== targetId) {
+      this._log("warn", `No active gavel with ID: ${targetId}`);
       return false;
+    }
+
+    // Determine final output
+    let finalOutput = this._activeGavel.currentOutput;
+    if (modifications?.output !== undefined) {
+      finalOutput = modifications.output;
+    } else if (modifications?.editedValues && typeof this._activeGavel.currentOutput === "object") {
+      finalOutput = { ...this._activeGavel.currentOutput, ...modifications.editedValues };
     }
 
     const response = {
       approved: true,
       skipped: false,
-      modifications,
-      output: modifications?.output || this._activeGavel.currentOutput,
+      output: finalOutput,
+      modifications: modifications || null,
+      editedValues: modifications?.editedValues || null,
+      commentary: modifications?.commentary || "",
     };
 
     if (this._gavelResolver) {
       this._gavelResolver(response);
+      this._gavelResolver = null;
     }
 
-    this._emit("orchestration:gavel:approved", { gavelId, modifications });
+    this._emit("orchestration:gavel:approved", {
+      gavelId: targetId,
+      modifications,
+      hasEdits: !!modifications?.editedValues,
+    });
+
     this._activeGavel = null;
-    this._gavelResolver = null;
+
+    // Resume execution if paused
+    if (this._runState && this._runState.status === this.RunStatus.PAUSED) {
+      this.resumeRun();
+    }
+
+    this._log("info", `Gavel approved: ${targetId}`);
 
     return true;
   },
 
   /**
    * Reject the active gavel
-   * @param {string} gavelId - Gavel ID
+   * @param {string} gavelId - Gavel ID (optional, uses active if not provided)
+   * @param {string} reason - Rejection reason (optional)
    * @returns {boolean} Success
    */
-  rejectGavel(gavelId) {
-    if (!this._activeGavel || this._activeGavel.id !== gavelId) {
-      this._log("warn", `No active gavel with ID: ${gavelId}`);
+  rejectGavel(gavelId = null, reason = "") {
+    // If no gavelId provided, use the active gavel
+    const targetId = gavelId || this._activeGavel?.id;
+
+    if (!this._activeGavel || this._activeGavel.id !== targetId) {
+      this._log("warn", `No active gavel with ID: ${targetId}`);
       return false;
     }
 
     const response = {
       approved: false,
-      skipped: true,
-      modifications: null,
+      skipped: false,
+      rejected: true,
       output: this._activeGavel.currentOutput,
+      modifications: null,
+      reason,
     };
 
     if (this._gavelResolver) {
       this._gavelResolver(response);
+      this._gavelResolver = null;
     }
 
-    this._emit("orchestration:gavel:rejected", { gavelId });
+    this._emit("orchestration:gavel:rejected", { gavelId: targetId, reason });
+
     this._activeGavel = null;
-    this._gavelResolver = null;
+
+    // Abort the run on rejection
+    if (this._runState) {
+      this.abortRun();
+    }
+
+    this._log("info", `Gavel rejected: ${targetId}`);
+
+    return true;
+  },
+
+  /**
+   * Skip the active gavel (only if canSkip is true)
+   * @param {string} gavelId - Gavel ID (optional, uses active if not provided)
+   * @returns {boolean} Success
+   */
+  skipGavel(gavelId = null) {
+    // If no gavelId provided, use the active gavel
+    const targetId = gavelId || this._activeGavel?.id;
+
+    if (!this._activeGavel || this._activeGavel.id !== targetId) {
+      this._log("warn", `No active gavel with ID: ${targetId}`);
+      return false;
+    }
+
+    if (!this._activeGavel.canSkip) {
+      this._log("warn", `Gavel ${targetId} does not allow skipping`);
+      return false;
+    }
+
+    const response = {
+      approved: true,
+      skipped: true,
+      output: this._activeGavel.currentOutput,
+      modifications: null,
+    };
+
+    if (this._gavelResolver) {
+      this._gavelResolver(response);
+      this._gavelResolver = null;
+    }
+
+    this._emit("orchestration:gavel:skipped", { gavelId: targetId });
+
+    this._activeGavel = null;
+
+    // Resume execution if paused
+    if (this._runState && this._runState.status === this.RunStatus.PAUSED) {
+      this.resumeRun();
+    }
+
+    this._log("info", `Gavel skipped: ${targetId}`);
 
     return true;
   },
