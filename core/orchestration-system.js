@@ -90,9 +90,28 @@ const OrchestrationSystem = {
 
   /**
    * Injection token mappings (for Mode 3)
-   * @type {Map<string, string>}
+   * Maps ST token name to injection configuration
+   * @type {Map<string, Object>}
    */
   _injectionMappings: new Map(),
+
+  /**
+   * Injection mode enabled flag
+   * @type {boolean}
+   */
+  _injectionEnabled: false,
+
+  /**
+   * Cached RAG results for injection
+   * @type {Map<string, string>}
+   */
+  _injectionCache: new Map(),
+
+  /**
+   * Last injection execution timestamp
+   * @type {number}
+   */
+  _lastInjectionTime: 0,
 
   /**
    * Abort controller for current run
@@ -181,6 +200,12 @@ const OrchestrationSystem = {
     this._activeGavel = null;
     this._gavelResolver = null;
     this._injectionMappings.clear();
+    this._injectionCache.clear();
+    this._injectionEnabled = false;
+    this._lastInjectionTime = 0;
+
+    // Register the ST generate interceptor
+    this._registerSTInterceptor();
 
     // Register with kernel
     if (kernel && kernel.registerSystem) {
@@ -252,15 +277,62 @@ const OrchestrationSystem = {
 
   /**
    * Configure injection mappings (for Mode 3)
-   * @param {Object} mappings - Map of ST token to RAG pipeline ID
+   * @param {Object} mappings - Map of ST token to RAG pipeline ID or config object
+   * @example
+   * // Simple mapping
+   * configureInjectionMappings({ 'chat': 'relevant_history_rag' })
+   * // Advanced mapping with config
+   * configureInjectionMappings({
+   *   'chat': { ragPipelineId: 'relevant_history_rag', maxResults: 10, format: 'compact' }
+   * })
    */
   configureInjectionMappings(mappings) {
     this._injectionMappings.clear();
-    for (const [token, pipelineId] of Object.entries(mappings)) {
-      this._injectionMappings.set(token, pipelineId);
+    for (const [token, config] of Object.entries(mappings)) {
+      // Normalize to config object
+      const normalizedConfig = typeof config === 'string'
+        ? { ragPipelineId: config, maxResults: 5, format: 'default', enabled: true }
+        : { maxResults: 5, format: 'default', enabled: true, ...config };
+
+      this._injectionMappings.set(token, normalizedConfig);
     }
     this._log("info", `Injection mappings configured: ${Object.keys(mappings).length} mappings`);
-    this._emit("orchestration:injection:configured", { mappings });
+    this._emit("orchestration:injection:configured", { mappings: this.getInjectionMappings() });
+
+    // Save to persistent storage via kernel
+    this._saveInjectionMappings();
+  },
+
+  /**
+   * Map a single ST token to a RAG pipeline
+   * @param {string} stToken - The ST token name (without braces, e.g., 'chat' not '{{chat}}')
+   * @param {string|Object} ragPipelineIdOrConfig - RAG pipeline ID or config object
+   */
+  mapToken(stToken, ragPipelineIdOrConfig) {
+    const config = typeof ragPipelineIdOrConfig === 'string'
+      ? { ragPipelineId: ragPipelineIdOrConfig, maxResults: 5, format: 'default', enabled: true }
+      : { maxResults: 5, format: 'default', enabled: true, ...ragPipelineIdOrConfig };
+
+    this._injectionMappings.set(stToken, config);
+    this._log("info", `Token mapping added: {{${stToken}}} -> ${config.ragPipelineId}`);
+    this._emit("orchestration:injection:token_mapped", { token: stToken, config });
+
+    this._saveInjectionMappings();
+  },
+
+  /**
+   * Remove a token mapping
+   * @param {string} stToken - The ST token name
+   * @returns {boolean} True if mapping was removed
+   */
+  unmapToken(stToken) {
+    const removed = this._injectionMappings.delete(stToken);
+    if (removed) {
+      this._log("info", `Token mapping removed: {{${stToken}}}`);
+      this._emit("orchestration:injection:token_unmapped", { token: stToken });
+      this._saveInjectionMappings();
+    }
+    return removed;
   },
 
   /**
@@ -268,7 +340,76 @@ const OrchestrationSystem = {
    * @returns {Object}
    */
   getInjectionMappings() {
-    return Object.fromEntries(this._injectionMappings);
+    const result = {};
+    for (const [token, config] of this._injectionMappings) {
+      result[token] = { ...config };
+    }
+    return result;
+  },
+
+  /**
+   * Get a single token mapping
+   * @param {string} stToken - The ST token name
+   * @returns {Object|null} Mapping config or null
+   */
+  getTokenMapping(stToken) {
+    const config = this._injectionMappings.get(stToken);
+    return config ? { ...config } : null;
+  },
+
+  /**
+   * Enable or disable injection mode
+   * @param {boolean} enabled - Whether injection is enabled
+   */
+  setInjectionEnabled(enabled) {
+    this._injectionEnabled = !!enabled;
+    this._log("info", `Injection mode ${this._injectionEnabled ? 'enabled' : 'disabled'}`);
+    this._emit("orchestration:injection:enabled_changed", { enabled: this._injectionEnabled });
+
+    // If enabling, also set the mode
+    if (this._injectionEnabled && this._mode !== this.Mode.INJECTION) {
+      this.setMode(this.Mode.INJECTION);
+    }
+  },
+
+  /**
+   * Check if injection is enabled
+   * @returns {boolean}
+   */
+  isInjectionEnabled() {
+    return this._injectionEnabled && this._mode === this.Mode.INJECTION;
+  },
+
+  /**
+   * Save injection mappings to persistent storage
+   * @private
+   */
+  _saveInjectionMappings() {
+    if (this._kernel && this._kernel.saveData) {
+      this._kernel.saveData('orchestration_injection_mappings', {
+        mappings: this.getInjectionMappings(),
+        enabled: this._injectionEnabled,
+      });
+    }
+  },
+
+  /**
+   * Load injection mappings from persistent storage
+   * @returns {boolean} True if mappings were loaded
+   */
+  loadInjectionMappings() {
+    if (!this._kernel || !this._kernel.loadData) {
+      return false;
+    }
+
+    const data = this._kernel.loadData('orchestration_injection_mappings');
+    if (data && data.mappings) {
+      this.configureInjectionMappings(data.mappings);
+      this._injectionEnabled = !!data.enabled;
+      this._log("info", "Injection mappings loaded from storage");
+      return true;
+    }
+    return false;
   },
 
   // ===== PUBLIC ST INTEGRATION API =====
@@ -2130,6 +2271,262 @@ const OrchestrationSystem = {
     }
   },
 
+  // ===== ST GENERATE INTERCEPTOR =====
+
+  /**
+   * Register the SillyTavern generate_interceptor function
+   * This function is called by ST before generating a response
+   * @private
+   */
+  _registerSTInterceptor() {
+    // Store reference to this for the global function
+    const orchestration = this;
+
+    /**
+     * SillyTavern generate_interceptor function
+     * Called before each generation request
+     *
+     * @param {Array} chat - Array of message objects (mutable)
+     * @param {number} contextSize - Current context size in tokens
+     * @param {Function} abort - Function to abort generation
+     * @param {string} type - Generation trigger type ('quiet', 'regenerate', 'impersonate', 'swipe', etc.)
+     * @returns {Promise<void>}
+     */
+    globalThis.theCouncilGenerateInterceptor = async function(chat, contextSize, abort, type) {
+      // Only process if injection mode is enabled
+      if (!orchestration.isInjectionEnabled()) {
+        orchestration._log("debug", "Interceptor called but injection not enabled, skipping");
+        return;
+      }
+
+      // Skip quiet generations unless explicitly configured
+      if (type === 'quiet') {
+        orchestration._log("debug", "Skipping quiet generation");
+        return;
+      }
+
+      orchestration._log("info", `ST Generate Interceptor called (type: ${type})`);
+      orchestration._emit("orchestration:interceptor:called", { type, chatLength: chat.length });
+
+      try {
+        // Get current ST context
+        const stContext = window.SillyTavern?.getContext?.() || {};
+
+        // Build context for RAG queries
+        const ragContext = {
+          type,
+          chatLength: chat.length,
+          contextSize,
+          userInput: orchestration._extractUserInput(chat),
+          characterName: stContext.name2 || "Character",
+          userName: stContext.name1 || "User",
+          lastMessages: chat.slice(-5), // Last 5 messages for context
+        };
+
+        // Execute RAG pipelines for all mapped tokens
+        await orchestration._executeInjectionForInterceptor(chat, ragContext);
+
+        orchestration._log("info", "Interceptor processing complete");
+        orchestration._emit("orchestration:interceptor:complete", { type });
+
+      } catch (error) {
+        orchestration._log("error", `Interceptor error: ${error.message}`);
+        orchestration._emit("orchestration:interceptor:error", { error: error.message });
+        // Don't abort generation on error - let ST proceed normally
+      }
+    };
+
+    this._log("info", "ST generate_interceptor registered as 'theCouncilGenerateInterceptor'");
+  },
+
+  /**
+   * Extract the last user input from chat array
+   * @param {Array} chat - Chat message array
+   * @returns {string} Last user message or empty string
+   * @private
+   */
+  _extractUserInput(chat) {
+    if (!chat || chat.length === 0) return "";
+
+    // Find the last user message
+    for (let i = chat.length - 1; i >= 0; i--) {
+      if (chat[i].is_user) {
+        return chat[i].mes || "";
+      }
+    }
+    return "";
+  },
+
+  /**
+   * Execute injection RAG and modify chat for interceptor
+   * @param {Array} chat - Mutable chat array
+   * @param {Object} context - Context for RAG queries
+   * @private
+   */
+  async _executeInjectionForInterceptor(chat, context) {
+    const curationSystem = this._getSystem("curation");
+    if (!curationSystem) {
+      this._log("warn", "CurationSystem not available for injection");
+      return;
+    }
+
+    // Track injection results
+    const injectionResults = {};
+
+    // Process each token mapping
+    for (const [token, config] of this._injectionMappings) {
+      if (!config.enabled) continue;
+
+      this._log("debug", `Processing injection for token: {{${token}}}`);
+
+      try {
+        // Execute RAG pipeline
+        const ragResult = await curationSystem.executeRAG(config.ragPipelineId, {
+          query: context.userInput || "",
+          context: context,
+          limit: config.maxResults || 5,
+        });
+
+        if (ragResult?.results && ragResult.results.length > 0) {
+          // Format the results
+          const formattedResult = this._formatRAGResults(ragResult.results, config.format);
+
+          // Cache the result
+          this._injectionCache.set(token, formattedResult);
+          injectionResults[token] = formattedResult;
+
+          this._log("debug", `Injection for {{${token}}}: ${ragResult.results.length} results`);
+
+          // Inject as a system message if configured
+          if (config.injectAsMessage !== false) {
+            const injectionMessage = {
+              is_user: false,
+              is_system: true,
+              name: "Council Injection",
+              mes: `[Context for {{${token}}}]\n${formattedResult}`,
+              send_date: Date.now(),
+              extra: {
+                type: "council_injection",
+                token: token,
+                ragPipelineId: config.ragPipelineId,
+              }
+            };
+
+            // Insert before the last message (which is typically the user's latest input)
+            const insertIndex = Math.max(0, chat.length - 1);
+            chat.splice(insertIndex, 0, injectionMessage);
+
+            this._log("debug", `Injected message for {{${token}}} at index ${insertIndex}`);
+          }
+
+          this._emit("orchestration:injection:token_injected", {
+            token,
+            resultCount: ragResult.results.length,
+          });
+        } else {
+          this._log("debug", `No results for {{${token}}}`);
+          this._injectionCache.set(token, "");
+        }
+
+      } catch (error) {
+        this._log("error", `RAG execution failed for {{${token}}}: ${error.message}`);
+        this._injectionCache.set(token, "");
+      }
+    }
+
+    this._lastInjectionTime = Date.now();
+
+    // Store in run state for potential later use
+    if (!this._runState) {
+      this._runState = { globals: { ragResults: injectionResults } };
+    } else {
+      if (!this._runState.globals) this._runState.globals = {};
+      this._runState.globals.ragResults = injectionResults;
+    }
+
+    return injectionResults;
+  },
+
+  /**
+   * Format RAG results based on format type
+   * @param {Array} results - RAG results array
+   * @param {string} format - Format type ('default', 'compact', 'detailed', 'json')
+   * @returns {string} Formatted results
+   * @private
+   */
+  _formatRAGResults(results, format = 'default') {
+    if (!results || results.length === 0) return "";
+
+    switch (format) {
+      case 'compact':
+        return results.map(r => {
+          const entry = r.entry || {};
+          const key = entry.name || entry.id || entry.title || 'Entry';
+          const summary = entry.summary || entry.description || JSON.stringify(entry).substring(0, 100);
+          return `- ${key}: ${summary}`;
+        }).join('\n');
+
+      case 'detailed':
+        return results.map(r => {
+          const entry = r.entry || {};
+          return `### ${entry.name || entry.id || 'Entry'}\n${JSON.stringify(entry, null, 2)}`;
+        }).join('\n\n---\n\n');
+
+      case 'json':
+        return JSON.stringify(results.map(r => r.entry), null, 2);
+
+      case 'default':
+      default:
+        return results.map(r => {
+          const storeName = r.storeName || 'Unknown';
+          const entry = r.entry || {};
+          return `[${storeName}] ${JSON.stringify(entry)}`;
+        }).join('\n\n');
+    }
+  },
+
+  /**
+   * Get available RAG pipelines for injection mapping
+   * @returns {Array} Array of { id, name, description } objects
+   */
+  getAvailableRAGPipelines() {
+    const curationSystem = this._getSystem("curation");
+    if (!curationSystem) return [];
+
+    try {
+      const pipelines = curationSystem.getAllRAGPipelines?.() || [];
+      return pipelines.map(p => ({
+        id: p.id,
+        name: p.name || p.id,
+        description: p.description || "",
+      }));
+    } catch (error) {
+      this._log("error", `Failed to get RAG pipelines: ${error.message}`);
+      return [];
+    }
+  },
+
+  /**
+   * Get common ST tokens that can be mapped
+   * @returns {Array} Array of { token, description } objects
+   */
+  getCommonSTTokens() {
+    return [
+      { token: 'chat', description: 'Chat history / conversation context' },
+      { token: 'persona', description: 'User persona / character description' },
+      { token: 'scenario', description: 'Current scenario / situation' },
+      { token: 'char', description: 'AI character name' },
+      { token: 'user', description: 'User name' },
+      { token: 'personality', description: 'AI personality description' },
+      { token: 'description', description: 'AI description field' },
+      { token: 'world_info', description: 'World info / lorebook entries' },
+      { token: 'system', description: 'System prompt content' },
+      { token: 'jailbreak', description: 'Jailbreak prompt content' },
+      { token: 'example_dialogue', description: 'Example dialogue entries' },
+      { token: 'first_message', description: 'First message / greeting' },
+    ];
+  },
+
   // ===== SUMMARY =====
 
   /**
@@ -2137,6 +2534,7 @@ const OrchestrationSystem = {
    * @returns {Object}
    */
   getSummary() {
+    const injectionMappings = this.getInjectionMappings();
     return {
       version: this.VERSION,
       initialized: this._initialized,
@@ -2149,7 +2547,13 @@ const OrchestrationSystem = {
         progress: this.getProgress(),
       } : null,
       runHistoryCount: this._runHistory.length,
-      injectionMappings: Object.keys(this.getInjectionMappings()),
+      injection: {
+        enabled: this._injectionEnabled,
+        mappingCount: Object.keys(injectionMappings).length,
+        mappedTokens: Object.keys(injectionMappings),
+        lastInjectionTime: this._lastInjectionTime,
+        cacheSize: this._injectionCache.size,
+      },
       hasActiveGavel: this._activeGavel !== null,
     };
   },

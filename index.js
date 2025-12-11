@@ -27,6 +27,7 @@
     // Core Systems
     PromptBuilderSystem: null,
     PipelineBuilderSystem: null, // New consolidated system (Task 4.1)
+    OrchestrationSystem: null, // Response Orchestration (Task 5.x)
     AgentsSystem: null, // DEPRECATED - use PipelineBuilderSystem
     CurationSystem: null,
     CharacterSystem: null,
@@ -50,6 +51,7 @@
     PipelineModal: null,
     GavelModal: null,
     NavModal: null,
+    InjectionModal: null,
 
     // Schemas
     SystemSchemas: null,
@@ -151,6 +153,7 @@
       // Core Systems
       "core/prompt-builder-system.js",
       "core/pipeline-builder-system.js", // New consolidated system (Task 4.1)
+      "core/orchestration-system.js", // Response Orchestration (Task 5.x)
       "core/agents-system.js", // DEPRECATED - functionality moved to pipeline-builder-system.js
       "core/curation-system.js",
       "core/character-system.js",
@@ -174,6 +177,7 @@
       "ui/character-modal.js",
       "ui/pipeline-modal.js",
       "ui/gavel-modal.js",
+      "ui/injection-modal.js",
       "ui/nav-modal.js",
     ];
 
@@ -198,6 +202,7 @@
 
     Systems.PromptBuilderSystem = window.PromptBuilderSystem || null;
     Systems.PipelineBuilderSystem = window.PipelineBuilderSystem || null;
+    Systems.OrchestrationSystem = window.OrchestrationSystem || null;
     Systems.AgentsSystem = window.AgentsSystem || null;
     Systems.CurationSystem = window.CurationSystem || null;
     Systems.CharacterSystem = window.CharacterSystem || null;
@@ -212,6 +217,7 @@
     Systems.CharacterModal = window.CharacterModal || null;
     Systems.PipelineModal = window.PipelineModal || null;
     Systems.GavelModal = window.GavelModal || null;
+    Systems.InjectionModal = window.InjectionModal || null;
     Systems.NavModal = window.NavModal || null;
 
     // UI Components
@@ -412,6 +418,18 @@
       logger.log("info", "PipelineSystem initialized");
     }
 
+    // Initialize Orchestration System (Task 5.x - Response Orchestration with 3 modes)
+    if (Systems.OrchestrationSystem) {
+      Systems.OrchestrationSystem.init(Kernel, {
+        apiClient: Kernel.getModule("apiClient"),
+        logger: Kernel.getModule("logger"),
+      });
+      // OrchestrationSystem registers itself with Kernel in init()
+      // Load any persisted injection mappings
+      Systems.OrchestrationSystem.loadInjectionMappings();
+      logger.log("info", "OrchestrationSystem initialized");
+    }
+
     // Initialize Preset Manager (depends on all core systems)
     if (Systems.PresetManager) {
       Systems.PresetManager.init({
@@ -528,6 +546,16 @@
       });
     }
 
+    // Initialize Injection Modal (Task 5.3 - Mode 3 Injection UI)
+    if (Systems.InjectionModal) {
+      Systems.InjectionModal.init({
+        kernel: window.TheCouncilKernel || window.TheCouncil,
+        orchestrationSystem: Systems.OrchestrationSystem,
+        curationSystem: Systems.CurationSystem,
+        logger: Systems.Logger,
+      });
+    }
+
     // Initialize Nav Modal
     if (Systems.NavModal) {
       Systems.NavModal.init({
@@ -536,7 +564,9 @@
         characterModal: Systems.CharacterModal,
         pipelineModal: Systems.PipelineModal,
         gavelModal: Systems.GavelModal,
+        injectionModal: Systems.InjectionModal,
         pipelineSystem: Systems.PipelineSystem,
+        orchestrationSystem: Systems.OrchestrationSystem,
         logger: Systems.Logger,
       });
     }
@@ -1103,6 +1133,7 @@
           CurationModal: !!Systems.CurationModal,
           PipelineModal: !!Systems.PipelineModal,
           GavelModal: Systems.GavelModal?.getSummary?.() || null,
+          InjectionModal: Systems.InjectionModal?.getSummary?.() || null,
         },
       };
     },

@@ -57,6 +57,7 @@ const NavModal = {
     character: null,
     pipeline: null,
     gavel: null,
+    injection: null,
   },
 
   /**
@@ -64,6 +65,12 @@ const NavModal = {
    * @type {Object|null}
    */
   _pipelineSystem: null,
+
+  /**
+   * Reference to OrchestrationSystem
+   * @type {Object|null}
+   */
+  _orchestrationSystem: null,
 
   /**
    * Reference to Logger
@@ -117,7 +124,9 @@ const NavModal = {
    * @param {Object} options.characterModal - Reference to CharacterModal
    * @param {Object} options.pipelineModal - Reference to PipelineModal
    * @param {Object} options.gavelModal - Reference to GavelModal
+   * @param {Object} options.injectionModal - Reference to InjectionModal
    * @param {Object} options.pipelineSystem - Reference to PipelineSystem
+   * @param {Object} options.orchestrationSystem - Reference to OrchestrationSystem
    * @param {Object} options.logger - Logger instance
    * @returns {NavModal}
    */
@@ -142,7 +151,9 @@ const NavModal = {
     this._modals.character = options.characterModal;
     this._modals.pipeline = options.pipelineModal;
     this._modals.gavel = options.gavelModal;
+    this._modals.injection = options.injectionModal;
     this._pipelineSystem = options.pipelineSystem;
+    this._orchestrationSystem = options.orchestrationSystem;
 
     this._log("info", "Initializing Navigation Modal...");
 
@@ -279,6 +290,10 @@ const NavModal = {
         <button class="council-nav-btn" data-action="open-pipeline" title="Pipeline System">
           <span class="council-nav-btn-icon">🔄</span>
           <span class="council-nav-btn-label">Pipeline</span>
+        </button>
+        <button class="council-nav-btn" data-action="open-injection" title="Context Injection (Mode 3)">
+          <span class="council-nav-btn-icon">💉</span>
+          <span class="council-nav-btn-label">Injection</span>
         </button>
 
         <div class="council-nav-divider"></div>
@@ -584,6 +599,9 @@ const NavModal = {
         break;
       case "open-pipeline":
         this._openModal("pipeline");
+        break;
+      case "open-injection":
+        this._openModal("injection");
         break;
       case "run-pipeline":
         this._runPipeline();
