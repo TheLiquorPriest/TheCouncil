@@ -143,10 +143,10 @@ const ContextConfig = {
   _curationSystem: null,
 
   /**
-   * Reference to ThreadManager
+   * Reference to PipelineBuilderSystem
    * @type {Object|null}
    */
-  _threadManager: null,
+  _pipelineBuilderSystem: null,
 
   /**
    * Reference to logger
@@ -169,7 +169,7 @@ const ContextConfig = {
    */
   init(options = {}) {
     this._curationSystem = options.curationSystem || window.CurationSystem;
-    this._threadManager = options.threadManager || window.ThreadManager;
+    this._pipelineBuilderSystem = options.pipelineBuilderSystem || window.PipelineBuilderSystem;
     this._logger = options.logger || window.Logger;
 
     this._initialized = true;
@@ -260,9 +260,9 @@ const ContextConfig = {
    * @returns {Array}
    */
   _getThreads() {
-    if (!this._threadManager) return [];
+    if (!this._pipelineBuilderSystem) return [];
     try {
-      return this._threadManager.listThreads?.() || [];
+      return this._pipelineBuilderSystem.listThreads?.() || [];
     } catch (e) {
       this._log("error", "Failed to get threads:", e);
       return [];

@@ -166,10 +166,10 @@ const CurationPipelineBuilder = {
   _curationSystem: null,
 
   /**
-   * Reference to AgentsSystem
+   * Reference to PipelineBuilderSystem
    * @type {Object|null}
    */
-  _agentsSystem: null,
+  _pipelineBuilderSystem: null,
 
   /**
    * Current pipeline being edited
@@ -216,7 +216,7 @@ const CurationPipelineBuilder = {
    */
   init(options = {}) {
     this._curationSystem = options.curationSystem || window.CurationSystem;
-    this._agentsSystem = options.agentsSystem || window.AgentsSystem;
+    this._pipelineBuilderSystem = options.pipelineBuilderSystem || window.PipelineBuilderSystem;
     this._logger = options.logger || console;
 
     this._log("info", "CurationPipelineBuilder initialized", {

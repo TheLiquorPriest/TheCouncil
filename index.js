@@ -26,22 +26,15 @@
   const Systems = {
     // Core Systems
     PromptBuilderSystem: null,
-    PipelineBuilderSystem: null, // New consolidated system (Task 4.1)
-    OrchestrationSystem: null, // Response Orchestration (Task 5.x)
-    AgentsSystem: null, // DEPRECATED - use PipelineBuilderSystem
+    PipelineBuilderSystem: null,
+    OrchestrationSystem: null,
     CurationSystem: null,
     CharacterSystem: null,
     PipelineSystem: null,
-    PresetManager: null,
-
-    // Support Modules
-    ContextManager: null,
     OutputManager: null,
-    ThreadManager: null,
 
     // Utilities
     Logger: null,
-    TokenResolver: null,
     ApiClient: null,
 
     // UI Modals
@@ -52,6 +45,14 @@
     GavelModal: null,
     NavModal: null,
     InjectionModal: null,
+
+    // UI Components
+    PromptBuilder: null,
+    ParticipantSelector: null,
+    ContextConfig: null,
+    CurationPipelineBuilder: null,
+    TokenPicker: null,
+    ExecutionMonitor: null,
 
     // Schemas
     SystemSchemas: null,
@@ -141,7 +142,6 @@
     const moduleFiles = [
       // Utilities (load first)
       "utils/logger.js",
-      "utils/token-resolver.js",
       "utils/api-client.js",
 
       // Kernel (load before systems)
@@ -152,16 +152,12 @@
 
       // Core Systems
       "core/prompt-builder-system.js",
-      "core/pipeline-builder-system.js", // New consolidated system (Task 4.1)
-      "core/orchestration-system.js", // Response Orchestration (Task 5.x)
-      "core/agents-system.js", // DEPRECATED - functionality moved to pipeline-builder-system.js
+      "core/pipeline-builder-system.js", // Consolidated system with agent/team/pipeline management
+      "core/orchestration-system.js", // Response Orchestration
       "core/curation-system.js",
       "core/character-system.js",
-      "core/context-manager.js",
       "core/output-manager.js",
-      "core/thread-manager.js",
       "core/pipeline-system.js",
-      "core/preset-manager.js",
 
       // UI Components
       "ui/components/prompt-builder.js",
@@ -201,21 +197,16 @@
 
     // Get module references from window (browser global)
     Systems.Logger = window.Logger || null;
-    Systems.TokenResolver = window.TokenResolver || null;
     Systems.ApiClient = window.ApiClient || null;
     Systems.SystemSchemas = window.SystemSchemas || null;
 
     Systems.PromptBuilderSystem = window.PromptBuilderSystem || null;
     Systems.PipelineBuilderSystem = window.PipelineBuilderSystem || null;
     Systems.OrchestrationSystem = window.OrchestrationSystem || null;
-    Systems.AgentsSystem = window.AgentsSystem || null;
     Systems.CurationSystem = window.CurationSystem || null;
     Systems.CharacterSystem = window.CharacterSystem || null;
     Systems.PipelineSystem = window.PipelineSystem || null;
-    Systems.ContextManager = window.ContextManager || null;
     Systems.OutputManager = window.OutputManager || null;
-    Systems.ThreadManager = window.ThreadManager || null;
-    Systems.PresetManager = window.TheCouncilPresetManager || null;
 
     Systems.AgentsModal = window.AgentsModal || null;
     Systems.CurationModal = window.CurationModal || null;
@@ -235,24 +226,21 @@
 
     logger.debug("Module references obtained:", {
       Logger: !!Systems.Logger,
-      TokenResolver: !!Systems.TokenResolver,
       ApiClient: !!Systems.ApiClient,
       SystemSchemas: !!Systems.SystemSchemas,
       PromptBuilderSystem: !!Systems.PromptBuilderSystem,
       PipelineBuilderSystem: !!Systems.PipelineBuilderSystem,
-      AgentsSystem: !!Systems.AgentsSystem,
+      OrchestrationSystem: !!Systems.OrchestrationSystem,
       CurationSystem: !!Systems.CurationSystem,
       CharacterSystem: !!Systems.CharacterSystem,
       PipelineSystem: !!Systems.PipelineSystem,
-      PresetManager: !!Systems.PresetManager,
-      ContextManager: !!Systems.ContextManager,
       OutputManager: !!Systems.OutputManager,
-      ThreadManager: !!Systems.ThreadManager,
       AgentsModal: !!Systems.AgentsModal,
       CurationModal: !!Systems.CurationModal,
       CharacterModal: !!Systems.CharacterModal,
       PipelineModal: !!Systems.PipelineModal,
       GavelModal: !!Systems.GavelModal,
+      InjectionModal: !!Systems.InjectionModal,
       NavModal: !!Systems.NavModal,
       PromptBuilder: !!Systems.PromptBuilder,
       ParticipantSelector: !!Systems.ParticipantSelector,
@@ -346,17 +334,6 @@
       logger.log("info", "PipelineBuilderSystem initialized");
     }
 
-    // Initialize Agents System (DEPRECATED - kept for backwards compatibility)
-    if (Systems.AgentsSystem) {
-      Systems.AgentsSystem.init({
-        logger: Kernel.getModule("logger"),
-        agentsSystem: Systems.AgentsSystem,
-        apiClient: Kernel.getModule("apiClient"),
-      });
-      Kernel.registerSystem("agentsSystem", Systems.AgentsSystem);
-      logger.log("info", "AgentsSystem initialized");
-    }
-
     // Initialize Curation System (with Kernel pattern)
     if (Systems.CurationSystem) {
       Systems.CurationSystem.init(Kernel, {
@@ -375,49 +352,26 @@
       logger.log("info", "CharacterSystem initialized");
     }
 
-    // Initialize Context Manager
-    if (Systems.ContextManager) {
-      Systems.ContextManager.init({
-        curationSystem: Systems.CurationSystem,
-        tokenResolver: Kernel.getModule("tokenResolver"),
-        stHelpers: getSillyTavernHelpers(),
-      });
-      Kernel.registerSystem("contextManager", Systems.ContextManager);
-      logger.log("info", "ContextManager initialized");
-    }
-
     // Initialize Output Manager
     if (Systems.OutputManager) {
       Systems.OutputManager.init({
         logger: Kernel.getModule("logger"),
         curationSystem: Systems.CurationSystem,
-        threadManager: Systems.ThreadManager,
-        tokenResolver: Kernel.getModule("tokenResolver"),
+        promptBuilder: Kernel.getSystem("promptBuilder"),
       });
       Kernel.registerSystem("outputManager", Systems.OutputManager);
       logger.log("info", "OutputManager initialized");
     }
 
-    // Initialize Thread Manager
-    if (Systems.ThreadManager) {
-      Systems.ThreadManager.init({
-        logger: Kernel.getModule("logger"),
-      });
-      Kernel.registerSystem("threadManager", Systems.ThreadManager);
-      logger.log("info", "ThreadManager initialized");
-    }
-
     // Initialize Pipeline System (depends on all others)
     if (Systems.PipelineSystem) {
       Systems.PipelineSystem.init({
-        agentsSystem: Systems.AgentsSystem,
+        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
         curationSystem: Systems.CurationSystem,
         characterSystem: Systems.CharacterSystem,
-        contextManager: Systems.ContextManager,
         outputManager: Systems.OutputManager,
-        threadManager: Systems.ThreadManager,
         apiClient: Kernel.getModule("apiClient"),
-        tokenResolver: Kernel.getModule("tokenResolver"),
+        promptBuilder: Kernel.getSystem("promptBuilder"),
       });
       Kernel.registerSystem("pipelineSystem", Systems.PipelineSystem);
       logger.log("info", "PipelineSystem initialized");
@@ -435,32 +389,11 @@
       logger.log("info", "OrchestrationSystem initialized");
     }
 
-    // Initialize Preset Manager (depends on all core systems)
-    if (Systems.PresetManager) {
-      Systems.PresetManager.init({
-        agentsSystem: Systems.AgentsSystem,
-        pipelineSystem: Systems.PipelineSystem,
-        curationSystem: Systems.CurationSystem,
-        threadManager: Systems.ThreadManager,
-        logger: Kernel.getModule("logger"),
-        extensionPath: EXTENSION_PATH,
-      });
-      logger.log("info", "PresetManager initialized");
-
-      // Discover available presets (non-blocking)
-      Systems.PresetManager.discoverPresets()
-        .then((presets) => {
-          logger.log("info", `Discovered ${presets.length} preset(s)`);
-        })
-        .catch((err) => {
-          logger.log("warn", `Preset discovery failed: ${err.message}`);
-        });
-    }
 
     // Initialize UI Components
     if (Systems.PromptBuilder) {
       Systems.PromptBuilder.init({
-        tokenResolver: Kernel.getModule("tokenResolver"),
+        promptBuilderSystem: Systems.PromptBuilderSystem,
         logger: Kernel.getModule("logger"),
       });
       logger.log("info", "PromptBuilder initialized");
@@ -468,7 +401,7 @@
 
     if (Systems.ParticipantSelector) {
       Systems.ParticipantSelector.init({
-        agentsSystem: Systems.AgentsSystem,
+        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
         logger: Kernel.getModule("logger"),
       });
       logger.log("info", "ParticipantSelector initialized");
@@ -477,7 +410,7 @@
     if (Systems.ContextConfig) {
       Systems.ContextConfig.init({
         curationSystem: Systems.CurationSystem,
-        threadManager: Systems.ThreadManager,
+        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
         logger: Kernel.getModule("logger"),
       });
       logger.log("info", "ContextConfig initialized");
@@ -486,7 +419,7 @@
     if (Systems.CurationPipelineBuilder) {
       Systems.CurationPipelineBuilder.init({
         curationSystem: Systems.CurationSystem,
-        agentsSystem: Systems.AgentsSystem,
+        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
         logger: Kernel.getModule("logger"),
       });
       logger.log("info", "CurationPipelineBuilder initialized");
@@ -504,7 +437,7 @@
     // Initialize Agents Modal
     if (Systems.AgentsModal) {
       Systems.AgentsModal.init({
-        agentsSystem: Systems.AgentsSystem,
+        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
         logger: Systems.Logger,
       });
     }
@@ -530,11 +463,8 @@
     if (Systems.PipelineModal) {
       Systems.PipelineModal.init({
         pipelineSystem: Systems.PipelineSystem,
-        presetManager: Systems.PresetManager,
-        agentsSystem: Systems.AgentsSystem,
-        contextManager: Systems.ContextManager,
+        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
         outputManager: Systems.OutputManager,
-        threadManager: Systems.ThreadManager,
         logger: Systems.Logger,
       });
     }
@@ -543,10 +473,8 @@
     if (Systems.GavelModal) {
       Systems.GavelModal.init({
         pipelineSystem: Systems.PipelineSystem,
-        agentsSystem: Systems.AgentsSystem,
-        contextManager: Systems.ContextManager,
+        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
         outputManager: Systems.OutputManager,
-        threadManager: Systems.ThreadManager,
         logger: Systems.Logger,
       });
     }

@@ -92,10 +92,10 @@ const ParticipantSelector = {
   // ===== STATE =====
 
   /**
-   * Reference to AgentsSystem
+   * Reference to PipelineBuilderSystem
    * @type {Object|null}
    */
-  _agentsSystem: null,
+  _pipelineBuilderSystem: null,
 
   /**
    * Reference to logger
@@ -114,12 +114,12 @@ const ParticipantSelector = {
   /**
    * Initialize the Participant Selector
    * @param {Object} options - Configuration options
-   * @param {Object} options.agentsSystem - Reference to AgentsSystem
+   * @param {Object} options.pipelineBuilderSystem - Reference to PipelineBuilderSystem
    * @param {Object} options.logger - Logger instance
    * @returns {ParticipantSelector}
    */
   init(options = {}) {
-    this._agentsSystem = options.agentsSystem || window.AgentsSystem;
+    this._pipelineBuilderSystem = options.pipelineBuilderSystem || window.PipelineBuilderSystem;
     this._logger = options.logger || window.Logger;
 
     this._initialized = true;
@@ -197,19 +197,17 @@ const ParticipantSelector = {
   // ===== DATA ACCESS =====
 
   /**
-   * Get all positions from AgentsSystem
+   * Get all positions from PipelineBuilderSystem
    * @returns {Array}
    */
   _getPositions() {
-    if (!this._agentsSystem) return [];
+    if (!this._pipelineBuilderSystem) return [];
     try {
-      // Use getAllPositions() directly - getSummary() only returns counts
-      if (typeof this._agentsSystem.getAllPositions === "function") {
-        return this._agentsSystem.getAllPositions() || [];
+      // Use getAllPositions() directly
+      if (typeof this._pipelineBuilderSystem.getAllPositions === "function") {
+        return this._pipelineBuilderSystem.getAllPositions() || [];
       }
-      // Fallback: try to get from summary if it has positions array
-      const summary = this._agentsSystem.getSummary?.();
-      return summary?.positions || [];
+      return [];
     } catch (e) {
       this._log("error", "Failed to get positions:", e);
       return [];
@@ -217,19 +215,17 @@ const ParticipantSelector = {
   },
 
   /**
-   * Get all teams from AgentsSystem
+   * Get all teams from PipelineBuilderSystem
    * @returns {Array}
    */
   _getTeams() {
-    if (!this._agentsSystem) return [];
+    if (!this._pipelineBuilderSystem) return [];
     try {
-      // Use getAllTeams() directly - getSummary() only returns counts
-      if (typeof this._agentsSystem.getAllTeams === "function") {
-        return this._agentsSystem.getAllTeams() || [];
+      // Use getAllTeams() directly
+      if (typeof this._pipelineBuilderSystem.getAllTeams === "function") {
+        return this._pipelineBuilderSystem.getAllTeams() || [];
       }
-      // Fallback: try to get from summary if it has teams array
-      const summary = this._agentsSystem.getSummary?.();
-      return summary?.teams || [];
+      return [];
     } catch (e) {
       this._log("error", "Failed to get teams:", e);
       return [];
@@ -242,8 +238,8 @@ const ParticipantSelector = {
    * @returns {Object|null}
    */
   _getPosition(id) {
-    if (!this._agentsSystem) return null;
-    return this._agentsSystem.getPosition?.(id) || null;
+    if (!this._pipelineBuilderSystem) return null;
+    return this._pipelineBuilderSystem.getPosition?.(id) || null;
   },
 
   /**
@@ -252,8 +248,8 @@ const ParticipantSelector = {
    * @returns {Object|null}
    */
   _getTeam(id) {
-    if (!this._agentsSystem) return null;
-    return this._agentsSystem.getTeam?.(id) || null;
+    if (!this._pipelineBuilderSystem) return null;
+    return this._pipelineBuilderSystem.getTeam?.(id) || null;
   },
 
   // ===== INSTANCE RENDERING =====
@@ -853,7 +849,7 @@ const ParticipantSelector = {
           const pos = this._getPosition(config.selectedPosition);
           if (pos) {
             const agent = pos.assignedAgentId
-              ? this._agentsSystem?.getAgent?.(pos.assignedAgentId)
+              ? this._pipelineBuilderSystem?.getAgent?.(pos.assignedAgentId)
               : null;
             participants.push({
               positionId: pos.id,
@@ -874,7 +870,7 @@ const ParticipantSelector = {
           const pos = this._getPosition(posId);
           if (pos) {
             const agent = pos.assignedAgentId
-              ? this._agentsSystem?.getAgent?.(pos.assignedAgentId)
+              ? this._pipelineBuilderSystem?.getAgent?.(pos.assignedAgentId)
               : null;
             participants.push({
               positionId: pos.id,
@@ -905,7 +901,7 @@ const ParticipantSelector = {
             if (!isLeader && !config.teamOptions.includeMembers) continue;
 
             const agent = pos.assignedAgentId
-              ? this._agentsSystem?.getAgent?.(pos.assignedAgentId)
+              ? this._pipelineBuilderSystem?.getAgent?.(pos.assignedAgentId)
               : null;
             participants.push({
               positionId: pos.id,

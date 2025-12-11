@@ -196,12 +196,6 @@ const PromptBuilder = {
   _onChangeCallback: null,
 
   /**
-   * Reference to token resolver
-   * @type {Object|null}
-   */
-  _tokenResolver: null,
-
-  /**
    * Reference to logger
    * @type {Object|null}
    */
@@ -252,7 +246,6 @@ const PromptBuilder = {
       this._promptBuilderSystem = window.TheCouncil.getSystem('promptBuilder');
     }
 
-    this._tokenResolver = options.tokenResolver || window.TokenResolver;
     this._logger = options.logger || window.Logger;
 
     // Try to load ST presets (may fail if ST not ready yet)
@@ -1797,16 +1790,7 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
       }
     }
 
-    // Fallback to TokenResolver if available
-    if (this._tokenResolver?.resolve) {
-      try {
-        return this._tokenResolver.resolve(prompt);
-      } catch (e) {
-        this._log("debug", "Token resolution failed:", e);
-      }
-    }
-
-    // Last fallback: show tokens as placeholders
+    // Fallback: show tokens as placeholders
     return prompt.replace(/\{\{(\w+)\}\}/g, (match, name) => {
       return `[${name}]`;
     });
