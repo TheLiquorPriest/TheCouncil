@@ -3024,8 +3024,9 @@ const PipelineModal = {
                 <option value="deliberative_rag" ${action?.actionType === "deliberative_rag" ? "selected" : ""}>Deliberative RAG</option>
                 <option value="user_gavel" ${action?.actionType === "user_gavel" ? "selected" : ""}>User Gavel (Review Point)</option>
                 <option value="system" ${action?.actionType === "system" ? "selected" : ""}>System (No LLM)</option>
+                <option value="character_workshop" ${action?.actionType === "character_workshop" ? "selected" : ""}>Character Workshop</option>
               </select>
-              <p class="council-pipeline-form-hint">Select action type to configure Curation integrations in the Curation tab.</p>
+              <p class="council-pipeline-form-hint">Select action type to configure settings in the Curation tab. Character Workshop enables character refinement workflows.</p>
             </div>
 
             <h4 class="council-pipeline-section-title">Execution Settings</h4>
@@ -3207,12 +3208,202 @@ const PipelineModal = {
                   </div>
                 </div>
               </div>
+
+              <!-- Character Workshop Configuration -->
+              <div class="council-pipeline-curation-section" data-curation-type="character_workshop">
+                <h4 class="council-pipeline-section-title">🎭 Character Workshop Configuration</h4>
+                <p class="council-pipeline-form-hint">Configure character refinement workflows with the Character System.</p>
+
+                <div class="council-pipeline-form-group">
+                  <label>Workshop Mode</label>
+                  <select class="council-pipeline-input" data-field="workshopMode">
+                    <option value="refinement" ${(action?.characterWorkshopConfig?.mode || "refinement") === "refinement" ? "selected" : ""}>Refinement - Refine character voices</option>
+                    <option value="consistency" ${action?.characterWorkshopConfig?.mode === "consistency" ? "selected" : ""}>Consistency - Check character consistency</option>
+                    <option value="collaboration" ${action?.characterWorkshopConfig?.mode === "collaboration" ? "selected" : ""}>Collaboration - Cross-team character work</option>
+                  </select>
+                  <p class="council-pipeline-form-hint">
+                    <strong>Refinement:</strong> Director guides characters in refining their voices<br>
+                    <strong>Consistency:</strong> Analyze characters for internal consistency<br>
+                    <strong>Collaboration:</strong> Characters work with editorial positions
+                  </p>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label>Character IDs</label>
+                  <input type="text" class="council-pipeline-input" data-field="workshopCharacterIds"
+                         value="${this._escapeHtml((action?.characterWorkshopConfig?.characterIds || []).join(", "))}"
+                         placeholder="char_1, char_2 (comma-separated, or leave empty for all active)">
+                  <p class="council-pipeline-form-hint">Specific character IDs to include. Leave empty to use all active character agents.</p>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label class="council-pipeline-checkbox">
+                    <input type="checkbox" data-field="workshopIncludeDirector" ${action?.characterWorkshopConfig?.includeDirector !== false ? "checked" : ""}>
+                    Include Character Director
+                  </label>
+                  <p class="council-pipeline-form-hint">The Character Director guides the workshop and synthesizes outputs.</p>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label>Editorial Positions (for Collaboration mode)</label>
+                  <input type="text" class="council-pipeline-input" data-field="workshopEditorialPositions"
+                         value="${this._escapeHtml((action?.characterWorkshopConfig?.editorialPositions || []).join(", "))}"
+                         placeholder="editor, publisher (comma-separated position IDs)">
+                  <p class="council-pipeline-form-hint">Editorial positions to include in collaboration workshops.</p>
+                </div>
+
+                <h5 class="council-pipeline-subsection-title">RAG Context</h5>
+                <div class="council-pipeline-form-group">
+                  <label class="council-pipeline-checkbox">
+                    <input type="checkbox" data-field="workshopRagEnabled" ${action?.characterWorkshopConfig?.ragConfig?.enabled ? "checked" : ""}>
+                    Enable RAG Context for Workshop
+                  </label>
+                  <p class="council-pipeline-form-hint">Fetch relevant character context from Curation before workshop.</p>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label>RAG Pipeline</label>
+                  <select class="council-pipeline-input" data-field="workshopRagPipelineId">
+                    <option value="">-- Default character_context --</option>
+                    ${this._getRAGPipelineOptions(action?.characterWorkshopConfig?.ragConfig?.pipelineId)}
+                  </select>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label>Target Stores</label>
+                  <input type="text" class="council-pipeline-input" data-field="workshopRagStoreIds"
+                         value="${this._escapeHtml((action?.characterWorkshopConfig?.ragConfig?.storeIds || []).join(", "))}"
+                         placeholder="characterSheets, characterDevelopment (comma-separated)">
+                </div>
+
+                <h5 class="council-pipeline-subsection-title">Custom Prompts (Optional)</h5>
+                <div class="council-pipeline-form-group">
+                  <label>Director Prompt Override</label>
+                  <textarea class="council-pipeline-input" data-field="workshopDirectorPrompt" rows="2"
+                            placeholder="Override the default director prompt...">${this._escapeHtml(action?.characterWorkshopConfig?.prompts?.director || "")}</textarea>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label>Refinement Prompt Override</label>
+                  <textarea class="council-pipeline-input" data-field="workshopRefinementPrompt" rows="2"
+                            placeholder="Override the default refinement prompt...">${this._escapeHtml(action?.characterWorkshopConfig?.prompts?.refinement || "")}</textarea>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label>Consistency Prompt Override</label>
+                  <textarea class="council-pipeline-input" data-field="workshopConsistencyPrompt" rows="2"
+                            placeholder="Override the default consistency check prompt...">${this._escapeHtml(action?.characterWorkshopConfig?.prompts?.consistency || "")}</textarea>
+                </div>
+
+                <h5 class="council-pipeline-subsection-title">Output</h5>
+                <div class="council-pipeline-form-group">
+                  <label>Consolidation Mode</label>
+                  <select class="council-pipeline-input" data-field="workshopConsolidation">
+                    <option value="synthesize" ${(action?.characterWorkshopConfig?.consolidation || "synthesize") === "synthesize" ? "selected" : ""}>Synthesize - Director synthesizes all outputs</option>
+                    <option value="merge" ${action?.characterWorkshopConfig?.consolidation === "merge" ? "selected" : ""}>Merge - Combine all character outputs</option>
+                    <option value="last" ${action?.characterWorkshopConfig?.consolidation === "last" ? "selected" : ""}>Last - Use final response only</option>
+                  </select>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label class="council-pipeline-checkbox">
+                    <input type="checkbox" data-field="workshopThreadEnabled" ${action?.characterWorkshopConfig?.workshopThread?.enabled !== false ? "checked" : ""}>
+                    Enable Workshop Thread
+                  </label>
+                  <p class="council-pipeline-form-hint">Create a dedicated thread to track workshop conversation.</p>
+                </div>
+              </div>
             </div>
           </div>
 
           <div class="council-pipeline-dialog-tab-content" data-tab-content="participants" style="display: none;">
             <div class="council-pipeline-participant-selector-container" data-component="participants">
               <!-- ParticipantSelector will be rendered here -->
+            </div>
+
+            <div class="council-pipeline-character-participants">
+              <h4 class="council-pipeline-section-title">🎭 Character Participation</h4>
+              <p class="council-pipeline-form-hint">Configure character agents to participate in this action alongside editorial positions.</p>
+
+              <div class="council-pipeline-form-group">
+                <label class="council-pipeline-checkbox">
+                  <input type="checkbox" data-field="characterParticipantsEnabled" ${action?.participants?.characters?.enabled ? "checked" : ""}>
+                  Enable Character Participants
+                </label>
+                <p class="council-pipeline-form-hint">When enabled, character agents from the Character System can participate in this action.</p>
+              </div>
+
+              <div class="council-pipeline-character-options" style="${action?.participants?.characters?.enabled ? "" : "display: none;"}">
+                <div class="council-pipeline-form-group">
+                  <label>Character Selection Mode</label>
+                  <select class="council-pipeline-input" data-field="characterMode">
+                    <option value="explicit" ${(action?.participants?.characters?.mode || "explicit") === "explicit" ? "selected" : ""}>Explicit - Specify character IDs</option>
+                    <option value="spawned" ${action?.participants?.characters?.mode === "spawned" ? "selected" : ""}>Spawned - Use currently spawned characters</option>
+                    <option value="dynamic" ${action?.participants?.characters?.mode === "dynamic" ? "selected" : ""}>Dynamic - Director selects based on context</option>
+                  </select>
+                  <p class="council-pipeline-form-hint">
+                    <strong>Explicit:</strong> You specify which characters participate<br>
+                    <strong>Spawned:</strong> Uses characters currently spawned for the scene<br>
+                    <strong>Dynamic:</strong> Character Director analyzes context and spawns appropriate characters
+                  </p>
+                </div>
+
+                <div class="council-pipeline-form-group council-pipeline-explicit-chars" style="${(action?.participants?.characters?.mode || "explicit") === "explicit" ? "" : "display: none;"}">
+                  <label>Character IDs</label>
+                  <input type="text" class="council-pipeline-input" data-field="characterIds"
+                         value="${this._escapeHtml((action?.participants?.characters?.characterIds || []).join(", "))}"
+                         placeholder="char_protagonist, char_mentor (comma-separated)">
+                  <p class="council-pipeline-form-hint">Specific character agent IDs to include.</p>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label>Filter by Character Type</label>
+                  <input type="text" class="council-pipeline-input" data-field="characterTypes"
+                         value="${this._escapeHtml((action?.participants?.characters?.characterTypes || []).join(", "))}"
+                         placeholder="main_cast, recurring_cast (comma-separated, or leave empty for all)">
+                  <p class="council-pipeline-form-hint">Only include characters of these types: main_cast, recurring_cast, supporting_cast, background</p>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label class="council-pipeline-checkbox">
+                    <input type="checkbox" data-field="characterIncludeDirector" ${action?.participants?.characters?.includeDirector !== false ? "checked" : ""}>
+                    Include Character Director
+                  </label>
+                  <p class="council-pipeline-form-hint">The Character Director can coordinate and guide character responses.</p>
+                </div>
+
+                <h5 class="council-pipeline-subsection-title">Voicing & Context</h5>
+                <div class="council-pipeline-form-group">
+                  <label class="council-pipeline-checkbox">
+                    <input type="checkbox" data-field="characterVoicingGuidance" ${action?.participants?.characters?.voicingGuidance !== false ? "checked" : ""}>
+                    Include Voicing Guidance
+                  </label>
+                  <p class="council-pipeline-form-hint">Prepend character voicing guidance to their prompts for consistent voice.</p>
+                </div>
+
+                <div class="council-pipeline-form-group">
+                  <label class="council-pipeline-checkbox">
+                    <input type="checkbox" data-field="characterRagEnabled" ${action?.participants?.characters?.ragContext?.enabled ? "checked" : ""}>
+                    Fetch Character RAG Context
+                  </label>
+                  <p class="council-pipeline-form-hint">Retrieve relevant character context from Curation before the action.</p>
+                </div>
+
+                <div class="council-pipeline-form-group council-pipeline-char-rag-options" style="${action?.participants?.characters?.ragContext?.enabled ? "" : "display: none;"}">
+                  <label>Character RAG Pipeline</label>
+                  <select class="council-pipeline-input" data-field="characterRagPipelineId">
+                    <option value="">-- Default character_context --</option>
+                    ${this._getRAGPipelineOptions(action?.participants?.characters?.ragContext?.pipelineId)}
+                  </select>
+                </div>
+
+                <div class="council-pipeline-form-group council-pipeline-char-rag-options" style="${action?.participants?.characters?.ragContext?.enabled ? "" : "display: none;"}">
+                  <label>RAG Query Template</label>
+                  <input type="text" class="council-pipeline-input" data-field="characterRagQueryTemplate"
+                         value="${this._escapeHtml(action?.participants?.characters?.ragContext?.queryTemplate || "{{characterName}} {{input}}")}"
+                         placeholder="{{characterName}} {{input}}">
+                </div>
+              </div>
             </div>
           </div>
 
@@ -3409,6 +3600,8 @@ const PipelineModal = {
             (type === "rag_pipeline" && sectionType === "rag") ||
             (type === "deliberative_rag" && sectionType === "deliberative") ||
             (type === "user_gavel" && sectionType === "gavel") ||
+            (type === "character_workshop" &&
+              sectionType === "character_workshop") ||
             type === "standard"; // Show all for standard to allow RAG integration
           section.style.display = shouldShow ? "" : "none";
         });
@@ -3419,13 +3612,57 @@ const PipelineModal = {
     }
 
     // Cleanup function
+    // Handle character participants toggle
+    const charEnabledCheckbox = dialog.querySelector(
+      '[data-field="characterParticipantsEnabled"]',
+    );
+    const charOptionsDiv = dialog.querySelector(
+      ".council-pipeline-character-options",
+    );
+    if (charEnabledCheckbox && charOptionsDiv) {
+      charEnabledCheckbox.addEventListener("change", () => {
+        charOptionsDiv.style.display = charEnabledCheckbox.checked
+          ? ""
+          : "none";
+      });
+    }
+
+    // Handle character mode toggle for explicit chars
+    const charModeSelect = dialog.querySelector('[data-field="characterMode"]');
+    const explicitCharsDiv = dialog.querySelector(
+      ".council-pipeline-explicit-chars",
+    );
+    if (charModeSelect && explicitCharsDiv) {
+      charModeSelect.addEventListener("change", () => {
+        explicitCharsDiv.style.display =
+          charModeSelect.value === "explicit" ? "" : "none";
+      });
+    }
+
+    // Handle character RAG toggle
+    const charRagCheckbox = dialog.querySelector(
+      '[data-field="characterRagEnabled"]',
+    );
+    const charRagOptions = dialog.querySelectorAll(
+      ".council-pipeline-char-rag-options",
+    );
+    if (charRagCheckbox && charRagOptions.length) {
+      charRagCheckbox.addEventListener("change", () => {
+        charRagOptions.forEach((el) => {
+          el.style.display = charRagCheckbox.checked ? "" : "none";
+        });
+      });
+    }
+
     const cleanup = () => {
+      // Clean up ParticipantSelector
       if (this._participantSelectorInstance) {
-        this._participantSelectorInstance.destroy();
+        this._participantSelectorInstance.destroy?.();
         this._participantSelectorInstance = null;
       }
+      // Clean up ContextConfig
       if (this._contextConfigInstance) {
-        this._contextConfigInstance.destroy();
+        this._contextConfigInstance.destroy?.();
         this._contextConfigInstance = null;
       }
       dialog.remove();
@@ -3612,6 +3849,112 @@ const PipelineModal = {
           teamTaskThreads: teamTaskThreadsEnabled ? {} : null,
         };
 
+        // Get Character Participants config
+        const characterParticipantsEnabled =
+          dialog.querySelector('[data-field="characterParticipantsEnabled"]')
+            ?.checked || false;
+
+        const characterParticipantsConfig = characterParticipantsEnabled
+          ? {
+              enabled: true,
+              mode:
+                dialog.querySelector('[data-field="characterMode"]')?.value ||
+                "explicit",
+              characterIds: (
+                dialog.querySelector('[data-field="characterIds"]')?.value || ""
+              )
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+              characterTypes: (
+                dialog.querySelector('[data-field="characterTypes"]')?.value ||
+                ""
+              )
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+              includeDirector:
+                dialog.querySelector('[data-field="characterIncludeDirector"]')
+                  ?.checked !== false,
+              voicingGuidance:
+                dialog.querySelector('[data-field="characterVoicingGuidance"]')
+                  ?.checked !== false,
+              ragContext: {
+                enabled:
+                  dialog.querySelector('[data-field="characterRagEnabled"]')
+                    ?.checked || false,
+                pipelineId:
+                  dialog.querySelector('[data-field="characterRagPipelineId"]')
+                    ?.value || null,
+                queryTemplate:
+                  dialog.querySelector(
+                    '[data-field="characterRagQueryTemplate"]',
+                  )?.value || "{{characterName}} {{input}}",
+              },
+            }
+          : { enabled: false };
+
+        // Get Character Workshop config
+        const characterWorkshopConfig = {
+          mode:
+            dialog.querySelector('[data-field="workshopMode"]')?.value ||
+            "refinement",
+          characterIds: (
+            dialog.querySelector('[data-field="workshopCharacterIds"]')
+              ?.value || ""
+          )
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          includeDirector:
+            dialog.querySelector('[data-field="workshopIncludeDirector"]')
+              ?.checked !== false,
+          editorialPositions: (
+            dialog.querySelector('[data-field="workshopEditorialPositions"]')
+              ?.value || ""
+          )
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          ragConfig: {
+            enabled:
+              dialog.querySelector('[data-field="workshopRagEnabled"]')
+                ?.checked || false,
+            pipelineId:
+              dialog.querySelector('[data-field="workshopRagPipelineId"]')
+                ?.value || null,
+            storeIds: (
+              dialog.querySelector('[data-field="workshopRagStoreIds"]')
+                ?.value || ""
+            )
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          },
+          prompts: {
+            director:
+              dialog
+                .querySelector('[data-field="workshopDirectorPrompt"]')
+                ?.value.trim() || null,
+            refinement:
+              dialog
+                .querySelector('[data-field="workshopRefinementPrompt"]')
+                ?.value.trim() || null,
+            consistency:
+              dialog
+                .querySelector('[data-field="workshopConsistencyPrompt"]')
+                ?.value.trim() || null,
+          },
+          consolidation:
+            dialog.querySelector('[data-field="workshopConsolidation"]')
+              ?.value || "synthesize",
+          workshopThread: {
+            enabled:
+              dialog.querySelector('[data-field="workshopThreadEnabled"]')
+                ?.checked !== false,
+          },
+        };
+
         const data = {
           name,
           actionType,
@@ -3634,7 +3977,10 @@ const PipelineModal = {
                 10,
               ) || 0,
           },
-          participants: participantsData,
+          participants: {
+            ...participantsData,
+            characters: characterParticipantsConfig,
+          },
           context: contextData,
           input: this._contextConfigInstance?.getValue()?.input || {
             useActionInput: true,
@@ -3662,6 +4008,10 @@ const PipelineModal = {
           deliberativeConfig:
             actionType === "deliberative_rag" ? deliberativeConfig : null,
           gavelConfig: actionType === "user_gavel" ? gavelConfig : null,
+          characterWorkshopConfig:
+            actionType === "character_workshop"
+              ? characterWorkshopConfig
+              : null,
         };
 
         try {
@@ -5258,6 +5608,51 @@ const PipelineModal = {
       }
       .council-pipeline-tag-system {
         background: rgba(96, 125, 139, 0.3);
+      }
+      .council-pipeline-tag-character_workshop {
+        background: rgba(139, 92, 246, 0.3);
+      }
+
+      /* Character Participation Styles */
+      .council-pipeline-character-participants {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid var(--SmartThemeBorderColor, #333);
+      }
+
+      .council-pipeline-character-options {
+        margin-top: 12px;
+        padding: 16px;
+        background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.2));
+        border-radius: 8px;
+        border: 1px solid var(--SmartThemeBorderColor, #333);
+      }
+
+      .council-pipeline-explicit-chars,
+      .council-pipeline-char-rag-options {
+        margin-top: 8px;
+      }
+
+      .council-pipeline-subsection-title {
+        font-size: 0.9em;
+        font-weight: 600;
+        color: var(--SmartThemeBodyColor, #ccc);
+        margin: 16px 0 12px 0;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--SmartThemeBorderColor, #333);
+      }
+
+      /* Character Workshop Styles */
+      .council-pipeline-curation-section[data-curation-type="character_workshop"] {
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(59, 130, 246, 0.1));
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+
+      .council-pipeline-curation-section[data-curation-type="character_workshop"] .council-pipeline-section-title {
+        color: rgb(167, 139, 250);
       }
 
       .council-pipeline-detail-meta {

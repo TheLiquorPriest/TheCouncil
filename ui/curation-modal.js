@@ -248,6 +248,9 @@ const CurationModal = {
           <button class="council-curation-tab" data-tab="search">
             🔍 Search
           </button>
+          <button class="council-curation-tab" data-tab="team">
+            🤖 Team
+          </button>
           <button class="council-curation-tab" data-tab="pipelines">
             ⚡ Pipelines
           </button>
@@ -416,8 +419,6 @@ const CurationModal = {
    * Refresh current tab content
    */
   _refreshCurrentTab() {
-    if (!this._isVisible) return;
-
     switch (this._activeTab) {
       case "overview":
         this._renderOverviewTab();
@@ -427,6 +428,9 @@ const CurationModal = {
         break;
       case "search":
         this._renderSearchTab();
+        break;
+      case "team":
+        this._renderTeamTab();
         break;
       case "pipelines":
         this._renderPipelinesTab();
@@ -1080,29 +1084,547 @@ const CurationModal = {
   /**
    * Render pipelines tab - now uses CurationPipelineBuilder component
    */
+  // ===== TEAM TAB =====
+
+  /**
+   * Render the Team tab - shows curation agents and positions
+   */
+  _renderTeamTab() {
+    const positions = this._curationSystem.getCurationPositions();
+    const agents = this._curationSystem.getAllCurationAgents();
+    const teamSummary = this._curationSystem.getCurationTeamSummary();
+
+    this._elements.content.innerHTML = `
+      <div class="council-team-view">
+        <div class="council-team-header">
+          <div class="council-team-stats">
+            <div class="council-stat">
+              <span class="council-stat-value">${teamSummary.positionCount}</span>
+              <span class="council-stat-label">Positions</span>
+            </div>
+            <div class="council-stat">
+              <span class="council-stat-value">${teamSummary.agentCount}</span>
+              <span class="council-stat-label">Agents</span>
+            </div>
+            <div class="council-stat ${teamSummary.assignedPositions === teamSummary.positionCount ? "success" : "warning"}">
+              <span class="council-stat-value">${teamSummary.assignedPositions}/${teamSummary.positionCount}</span>
+              <span class="council-stat-label">Assigned</span>
+            </div>
+          </div>
+          <div class="council-team-actions">
+            <button class="council-curation-btn council-curation-btn-primary" data-action="create-agent">
+              ➕ Create Agent
+            </button>
+          </div>
+        </div>
+
+        <div class="council-team-section">
+          <h3 class="council-section-title">📋 Curation Positions</h3>
+          <p class="council-section-description">
+            Positions define roles in the curation workflow. Each position can have an agent assigned.
+          </p>
+          <div class="council-positions-list">
+            ${positions.map((p) => this._renderPositionCard(p, teamSummary)).join("")}
+          </div>
+        </div>
+
+        <div class="council-team-section">
+          <h3 class="council-section-title">🤖 Curation Agents</h3>
+          <p class="council-section-description">
+            Agents are the AI personas that fulfill curation positions. Edit their prompts and settings.
+          </p>
+          <div class="council-agents-list">
+            ${
+              agents.length > 0
+                ? agents.map((a) => this._renderAgentCard(a)).join("")
+                : '<div class="council-empty-state">No curation agents configured</div>'
+            }
+          </div>
+        </div>
+      </div>
+    `;
+
+    this._bindContentEvents();
+  },
+
+  /**
+   * Render a position card
+   * @param {Object} position - Position data
+   * @param {Object} teamSummary - Team summary data
+   * @returns {string} HTML
+   */
+  _renderPositionCard(position, teamSummary) {
+    const positionInfo = teamSummary.positions?.find(
+      (p) => p.id === position.id,
+    );
+    const hasAgent = positionInfo?.assignedAgentId;
+    const agentName = positionInfo?.assignedAgentName || "Unassigned";
+
+    return `
+      <div class="council-position-card ${hasAgent ? "assigned" : "unassigned"}">
+        <div class="council-position-header">
+          <div class="council-position-info">
+            <span class="council-position-name">${this._escapeHtml(position.name)}</span>
+            <span class="council-position-tier council-tier-${position.tier}">${position.tier}</span>
+          </div>
+          <div class="council-position-status">
+            ${
+              hasAgent
+                ? `<span class="council-status-badge success">✓ Assigned</span>`
+                : `<span class="council-status-badge warning">⚠ Unassigned</span>`
+            }
+          </div>
+        </div>
+        <div class="council-position-body">
+          <div class="council-position-role">
+            ${this._escapeHtml(position.promptModifiers?.roleDescription || "No role description")}
+          </div>
+          <div class="council-position-agent">
+            <span class="council-agent-label">Agent:</span>
+            <span class="council-agent-name">${this._escapeHtml(agentName)}</span>
+          </div>
+        </div>
+        <div class="council-position-actions">
+          <button class="council-curation-btn council-curation-btn-sm"
+                  data-action="assign-agent"
+                  data-position-id="${position.id}">
+            ${hasAgent ? "🔄 Reassign" : "➕ Assign"}
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  /**
+   * Render an agent card
+   * @param {Object} agent - Agent data
+   * @returns {string} HTML
+   */
+  _renderAgentCard(agent) {
+    const isDefault = agent.metadata?.isDefault;
+    const positionName = agent.positionId
+      ? this._curationSystem.getCurationPosition(agent.positionId)?.name ||
+        agent.positionId
+      : "Unassigned";
+
+    return `
+      <div class="council-agent-card ${isDefault ? "default" : "custom"}">
+        <div class="council-agent-header">
+          <div class="council-agent-info">
+            <span class="council-agent-icon">${isDefault ? "🤖" : "👤"}</span>
+            <span class="council-agent-name">${this._escapeHtml(agent.name)}</span>
+            ${isDefault ? '<span class="council-badge default">Default</span>' : ""}
+          </div>
+          <div class="council-agent-position">
+            <span class="council-position-label">Position:</span>
+            <span class="council-position-value">${this._escapeHtml(positionName)}</span>
+          </div>
+        </div>
+        <div class="council-agent-body">
+          <div class="council-agent-description">
+            ${this._escapeHtml(agent.description || "No description")}
+          </div>
+          <div class="council-agent-prompt-preview">
+            <span class="council-prompt-label">System Prompt:</span>
+            <div class="council-prompt-text">${this._escapeHtml(this._truncate(agent.systemPrompt?.customText || "Using default prompt", 150))}</div>
+          </div>
+          <div class="council-agent-config">
+            <span class="council-config-item">
+              <span class="council-config-label">Temp:</span>
+              <span class="council-config-value">${agent.apiConfig?.temperature ?? 0.7}</span>
+            </span>
+            <span class="council-config-item">
+              <span class="council-config-label">Max Tokens:</span>
+              <span class="council-config-value">${agent.apiConfig?.maxTokens ?? 2048}</span>
+            </span>
+            <span class="council-config-item">
+              <span class="council-config-label">Connection:</span>
+              <span class="council-config-value">${agent.apiConfig?.useCurrentConnection ? "Current" : "Custom"}</span>
+            </span>
+          </div>
+        </div>
+        <div class="council-agent-actions">
+          <button class="council-curation-btn council-curation-btn-sm"
+                  data-action="edit-agent"
+                  data-agent-id="${agent.id}">
+            ✏️ Edit
+          </button>
+          <button class="council-curation-btn council-curation-btn-sm"
+                  data-action="duplicate-agent"
+                  data-agent-id="${agent.id}">
+            📋 Duplicate
+          </button>
+          ${
+            !isDefault
+              ? `
+            <button class="council-curation-btn council-curation-btn-sm council-curation-btn-danger"
+                    data-action="delete-agent"
+                    data-agent-id="${agent.id}">
+              🗑️ Delete
+            </button>
+          `
+              : ""
+          }
+        </div>
+      </div>
+    `;
+  },
+
+  /**
+   * Show agent editor dialog
+   * @param {string|null} agentId - Agent ID to edit, or null for new
+   */
+  _showAgentEditor(agentId = null) {
+    const agent = agentId
+      ? this._curationSystem.getCurationAgent(agentId)
+      : null;
+    const isEdit = !!agent;
+    const positions = this._curationSystem.getCurationPositions();
+
+    const dialog = document.createElement("div");
+    dialog.className = "council-curation-dialog-overlay";
+    dialog.innerHTML = `
+      <div class="council-curation-dialog council-curation-dialog-lg">
+        <div class="council-curation-dialog-header">
+          <h3>${isEdit ? "Edit Curation Agent" : "Create Curation Agent"}</h3>
+          <button class="council-curation-dialog-close" data-dialog="cancel">✕</button>
+        </div>
+        <div class="council-curation-dialog-content">
+          <div class="council-curation-form-group">
+            <label>Agent Name *</label>
+            <input type="text" class="council-form-input" data-field="name"
+                   value="${this._escapeHtml(agent?.name || "")}"
+                   placeholder="e.g., Expert Archivist">
+          </div>
+
+          <div class="council-curation-form-group">
+            <label>Description</label>
+            <textarea class="council-form-textarea" data-field="description" rows="2"
+                      placeholder="Brief description of this agent's expertise...">${this._escapeHtml(agent?.description || "")}</textarea>
+          </div>
+
+          <div class="council-curation-form-group">
+            <label>Position</label>
+            <select class="council-form-input" data-field="positionId">
+              <option value="">-- No Position --</option>
+              ${positions
+                .map(
+                  (p) => `
+                <option value="${p.id}" ${agent?.positionId === p.id ? "selected" : ""}>
+                  ${this._escapeHtml(p.name)} (${p.tier})
+                </option>
+              `,
+                )
+                .join("")}
+            </select>
+            <p class="council-form-hint">Assign this agent to a curation position.</p>
+          </div>
+
+          <h4 class="council-section-title">System Prompt</h4>
+          <div class="council-curation-form-group">
+            <label>Prompt Source</label>
+            <select class="council-form-input" data-field="promptSource">
+              <option value="custom" ${(agent?.systemPrompt?.source || "custom") === "custom" ? "selected" : ""}>Custom Text</option>
+              <option value="position" ${agent?.systemPrompt?.source === "position" ? "selected" : ""}>From Position</option>
+            </select>
+          </div>
+
+          <div class="council-curation-form-group">
+            <label>System Prompt Text</label>
+            <textarea class="council-form-textarea council-form-textarea-large" data-field="systemPrompt" rows="6"
+                      placeholder="You are a specialized curation agent...">${this._escapeHtml(agent?.systemPrompt?.customText || "")}</textarea>
+            <p class="council-form-hint">The system prompt that defines this agent's behavior and expertise.</p>
+          </div>
+
+          <h4 class="council-section-title">API Configuration</h4>
+          <div class="council-curation-form-group">
+            <label class="council-checkbox">
+              <input type="checkbox" data-field="useCurrentConnection"
+                     ${agent?.apiConfig?.useCurrentConnection !== false ? "checked" : ""}>
+              Use Current SillyTavern Connection
+            </label>
+            <p class="council-form-hint">When enabled, uses your active API connection settings.</p>
+          </div>
+
+          <div class="council-form-row">
+            <div class="council-curation-form-group">
+              <label>Temperature</label>
+              <input type="number" class="council-form-input" data-field="temperature"
+                     value="${agent?.apiConfig?.temperature ?? 0.7}"
+                     min="0" max="2" step="0.1">
+            </div>
+            <div class="council-curation-form-group">
+              <label>Max Tokens</label>
+              <input type="number" class="council-form-input" data-field="maxTokens"
+                     value="${agent?.apiConfig?.maxTokens ?? 2048}"
+                     min="100" max="16000">
+            </div>
+          </div>
+
+          <div class="council-form-row">
+            <div class="council-curation-form-group">
+              <label>Top P</label>
+              <input type="number" class="council-form-input" data-field="topP"
+                     value="${agent?.apiConfig?.topP ?? 1}"
+                     min="0" max="1" step="0.1">
+            </div>
+            <div class="council-curation-form-group">
+              <label>Frequency Penalty</label>
+              <input type="number" class="council-form-input" data-field="frequencyPenalty"
+                     value="${agent?.apiConfig?.frequencyPenalty ?? 0}"
+                     min="-2" max="2" step="0.1">
+            </div>
+          </div>
+        </div>
+        <div class="council-curation-dialog-footer">
+          <button class="council-curation-btn council-curation-btn-secondary" data-dialog="cancel">Cancel</button>
+          <button class="council-curation-btn council-curation-btn-primary" data-dialog="save">
+            ${isEdit ? "Save Changes" : "Create Agent"}
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(dialog);
+
+    // Handle dialog actions
+    const cleanup = () => dialog.remove();
+
+    dialog.querySelectorAll("[data-dialog]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const action = e.currentTarget.dataset.dialog;
+
+        if (action === "cancel") {
+          cleanup();
+          return;
+        }
+
+        if (action === "save") {
+          const name = dialog.querySelector('[data-field="name"]').value.trim();
+          if (!name) {
+            this._showToast("Agent name is required", "error");
+            return;
+          }
+
+          const agentData = {
+            name,
+            description: dialog
+              .querySelector('[data-field="description"]')
+              .value.trim(),
+            positionId:
+              dialog.querySelector('[data-field="positionId"]').value || null,
+            apiConfig: {
+              useCurrentConnection: dialog.querySelector(
+                '[data-field="useCurrentConnection"]',
+              ).checked,
+              temperature:
+                parseFloat(
+                  dialog.querySelector('[data-field="temperature"]').value,
+                ) || 0.7,
+              maxTokens:
+                parseInt(
+                  dialog.querySelector('[data-field="maxTokens"]').value,
+                ) || 2048,
+              topP:
+                parseFloat(dialog.querySelector('[data-field="topP"]').value) ||
+                1,
+              frequencyPenalty:
+                parseFloat(
+                  dialog.querySelector('[data-field="frequencyPenalty"]').value,
+                ) || 0,
+            },
+            systemPrompt: {
+              source: dialog.querySelector('[data-field="promptSource"]').value,
+              customText: dialog
+                .querySelector('[data-field="systemPrompt"]')
+                .value.trim(),
+            },
+          };
+
+          try {
+            if (isEdit) {
+              this._curationSystem.updateCurationAgent(agentId, agentData);
+              this._showToast("Agent updated successfully", "success");
+            } else {
+              agentData.id = `agent_${Date.now()}`;
+              this._curationSystem.registerCurationAgent(agentData);
+              this._showToast("Agent created successfully", "success");
+            }
+
+            // Also assign to position if specified
+            if (agentData.positionId) {
+              this._curationSystem.assignAgentToPosition(
+                agentData.positionId,
+                agentData.id || agentId,
+              );
+            }
+
+            cleanup();
+            this._renderTeamTab();
+          } catch (err) {
+            this._showToast(`Failed to save agent: ${err.message}`, "error");
+          }
+        }
+      });
+    });
+
+    // Close on overlay click
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) cleanup();
+    });
+  },
+
+  /**
+   * Show assign agent dialog for a position
+   * @param {string} positionId - Position ID
+   */
+  _showAssignAgentDialog(positionId) {
+    const position = this._curationSystem.getCurationPosition(positionId);
+    if (!position) return;
+
+    const agents = this._curationSystem.getAllCurationAgents();
+    const currentAgentId =
+      this._curationSystem.getAgentForPosition(positionId)?.id;
+
+    const dialog = document.createElement("div");
+    dialog.className = "council-curation-dialog-overlay";
+    dialog.innerHTML = `
+      <div class="council-curation-dialog">
+        <div class="council-curation-dialog-header">
+          <h3>Assign Agent to ${this._escapeHtml(position.name)}</h3>
+          <button class="council-curation-dialog-close" data-dialog="cancel">✕</button>
+        </div>
+        <div class="council-curation-dialog-content">
+          <p>Select an agent to assign to this position:</p>
+          <div class="council-curation-form-group">
+            <select class="council-form-input" data-field="agentId">
+              <option value="">-- No Agent --</option>
+              ${agents
+                .map(
+                  (a) => `
+                <option value="${a.id}" ${a.id === currentAgentId ? "selected" : ""}>
+                  ${this._escapeHtml(a.name)} ${a.metadata?.isDefault ? "(Default)" : ""}
+                </option>
+              `,
+                )
+                .join("")}
+            </select>
+          </div>
+        </div>
+        <div class="council-curation-dialog-footer">
+          <button class="council-curation-btn council-curation-btn-secondary" data-dialog="cancel">Cancel</button>
+          <button class="council-curation-btn council-curation-btn-primary" data-dialog="assign">Assign</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(dialog);
+
+    const cleanup = () => dialog.remove();
+
+    dialog.querySelectorAll("[data-dialog]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const action = e.currentTarget.dataset.dialog;
+
+        if (action === "cancel") {
+          cleanup();
+          return;
+        }
+
+        if (action === "assign") {
+          const agentId = dialog.querySelector('[data-field="agentId"]').value;
+
+          try {
+            this._curationSystem.assignAgentToPosition(
+              positionId,
+              agentId || null,
+            );
+            this._showToast(
+              agentId ? "Agent assigned successfully" : "Agent unassigned",
+              "success",
+            );
+            cleanup();
+            this._renderTeamTab();
+          } catch (err) {
+            this._showToast(`Failed to assign agent: ${err.message}`, "error");
+          }
+        }
+      });
+    });
+
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) cleanup();
+    });
+  },
+
+  /**
+   * Duplicate an agent
+   * @param {string} agentId - Agent ID to duplicate
+   */
+  _duplicateAgent(agentId) {
+    const agent = this._curationSystem.getCurationAgent(agentId);
+    if (!agent) return;
+
+    const newAgent = {
+      ...agent,
+      id: `agent_${Date.now()}`,
+      name: `${agent.name} (Copy)`,
+      positionId: null, // Don't copy position assignment
+      metadata: {
+        ...agent.metadata,
+        isDefault: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    try {
+      this._curationSystem.registerCurationAgent(newAgent);
+      this._showToast("Agent duplicated successfully", "success");
+      this._renderTeamTab();
+    } catch (err) {
+      this._showToast(`Failed to duplicate agent: ${err.message}`, "error");
+    }
+  },
+
+  /**
+   * Delete an agent
+   * @param {string} agentId - Agent ID to delete
+   */
+  _confirmDeleteAgent(agentId) {
+    const agent = this._curationSystem.getCurationAgent(agentId);
+    if (!agent) return;
+
+    if (agent.metadata?.isDefault) {
+      this._showToast("Cannot delete default agents", "error");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to delete agent "${agent.name}"?`)) {
+      return;
+    }
+
+    try {
+      this._curationSystem.deleteCurationAgent(agentId);
+      this._showToast("Agent deleted successfully", "success");
+      this._renderTeamTab();
+    } catch (err) {
+      this._showToast(`Failed to delete agent: ${err.message}`, "error");
+    }
+  },
+
+  // ===== PIPELINES TAB =====
+
   _renderPipelinesTab() {
     const positions = this._curationSystem.getCurationPositions();
 
     this._elements.content.innerHTML = `
       <div class="council-pipelines-view">
-        <div class="council-pipelines-section council-pipelines-team">
-          <h3 class="council-section-title">🤖 Curation Team</h3>
-          <div class="council-positions-grid">
-            ${positions
-              .map(
-                (p) => `
-              <div class="council-position-card">
-                <div class="council-position-name">${this._escapeHtml(p.name)}</div>
-                <div class="council-position-tier">${p.tier}</div>
-              </div>
-            `,
-              )
-              .join("")}
-          </div>
-        </div>
-
         <div class="council-pipelines-section council-pipeline-builder-section">
           <h3 class="council-section-title">📊 Pipeline Builder</h3>
+          <p class="council-section-description">
+            Create and manage CRUD and RAG pipelines for data operations.
+          </p>
           <div id="council-pipeline-builder-container" class="council-pipeline-builder-container">
             <!-- CurationPipelineBuilder will be mounted here -->
           </div>
@@ -1199,6 +1721,33 @@ const CurationModal = {
    * @param {Object} params - Additional parameters
    */
   _handleAction(action, event, params = {}) {
+    // Team tab actions
+    if (action === "create-agent") {
+      this._showAgentEditor(null);
+      return;
+    }
+    if (action === "edit-agent") {
+      const agentId = event.currentTarget?.dataset?.agentId || params.agentId;
+      this._showAgentEditor(agentId);
+      return;
+    }
+    if (action === "duplicate-agent") {
+      const agentId = event.currentTarget?.dataset?.agentId || params.agentId;
+      this._duplicateAgent(agentId);
+      return;
+    }
+    if (action === "delete-agent") {
+      const agentId = event.currentTarget?.dataset?.agentId || params.agentId;
+      this._confirmDeleteAgent(agentId);
+      return;
+    }
+    if (action === "assign-agent") {
+      const positionId =
+        event.currentTarget?.dataset?.positionId || params.positionId;
+      this._showAssignAgentDialog(positionId);
+      return;
+    }
+
     this._log("debug", `Action: ${action}`, params);
 
     switch (action) {
@@ -2002,6 +2551,362 @@ const CurationModal = {
       .council-form-hint { font-size: 0.75rem; color: var(--council-text-muted); margin-top: 4px; }
 
       .muted { color: var(--council-text-muted); }
+
+      /* Team Tab Styles */
+      .council-team-view {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+
+      .council-team-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        background: var(--council-surface);
+        border-radius: var(--council-radius-lg);
+      }
+
+      .council-team-stats {
+        display: flex;
+        gap: 24px;
+      }
+
+      .council-team-section {
+        background: var(--council-surface);
+        border-radius: var(--council-radius-lg);
+        padding: 16px;
+      }
+
+      .council-section-description {
+        color: var(--council-text-muted);
+        font-size: 0.875rem;
+        margin-bottom: 16px;
+      }
+
+      .council-positions-list,
+      .council-agents-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .council-position-card {
+        background: var(--council-bg);
+        border: 1px solid var(--council-border);
+        border-radius: var(--council-radius-md);
+        padding: 12px 16px;
+      }
+
+      .council-position-card.assigned {
+        border-left: 3px solid var(--council-success);
+      }
+
+      .council-position-card.unassigned {
+        border-left: 3px solid var(--council-warning);
+      }
+
+      .council-position-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+
+      .council-position-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .council-position-name {
+        font-weight: 600;
+        color: var(--council-text);
+      }
+
+      .council-position-tier {
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border-radius: 12px;
+        background: var(--council-surface);
+        color: var(--council-text-muted);
+      }
+
+      .council-tier-core { background: var(--council-primary); color: white; }
+      .council-tier-specialized { background: var(--council-secondary); color: white; }
+      .council-tier-support { background: var(--council-surface); }
+
+      .council-status-badge {
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border-radius: 12px;
+      }
+
+      .council-status-badge.success {
+        background: rgba(34, 197, 94, 0.2);
+        color: var(--council-success);
+      }
+
+      .council-status-badge.warning {
+        background: rgba(234, 179, 8, 0.2);
+        color: var(--council-warning);
+      }
+
+      .council-position-body {
+        margin-bottom: 12px;
+      }
+
+      .council-position-role {
+        font-size: 0.875rem;
+        color: var(--council-text-muted);
+        margin-bottom: 8px;
+      }
+
+      .council-position-agent {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.875rem;
+      }
+
+      .council-agent-label,
+      .council-position-label {
+        color: var(--council-text-muted);
+      }
+
+      .council-position-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      /* Agent Card Styles */
+      .council-agent-card {
+        background: var(--council-bg);
+        border: 1px solid var(--council-border);
+        border-radius: var(--council-radius-md);
+        padding: 16px;
+      }
+
+      .council-agent-card.default {
+        border-left: 3px solid var(--council-primary);
+      }
+
+      .council-agent-card.custom {
+        border-left: 3px solid var(--council-secondary);
+      }
+
+      .council-agent-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .council-agent-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .council-agent-icon {
+        font-size: 1.25rem;
+      }
+
+      .council-agent-name {
+        font-weight: 600;
+        color: var(--council-text);
+      }
+
+      .council-badge {
+        font-size: 0.625rem;
+        padding: 2px 6px;
+        border-radius: 8px;
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+
+      .council-badge.default {
+        background: var(--council-primary);
+        color: white;
+      }
+
+      .council-agent-position {
+        font-size: 0.875rem;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .council-agent-body {
+        margin-bottom: 12px;
+      }
+
+      .council-agent-description {
+        font-size: 0.875rem;
+        color: var(--council-text-muted);
+        margin-bottom: 12px;
+      }
+
+      .council-agent-prompt-preview {
+        background: var(--council-surface);
+        border-radius: var(--council-radius-sm);
+        padding: 8px 12px;
+        margin-bottom: 12px;
+      }
+
+      .council-prompt-label {
+        font-size: 0.75rem;
+        color: var(--council-text-muted);
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .council-prompt-text {
+        font-size: 0.8125rem;
+        color: var(--council-text);
+        font-family: monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .council-agent-config {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .council-config-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.75rem;
+      }
+
+      .council-config-label {
+        color: var(--council-text-muted);
+      }
+
+      .council-config-value {
+        font-weight: 500;
+        color: var(--council-text);
+      }
+
+      .council-agent-actions {
+        display: flex;
+        gap: 8px;
+        padding-top: 12px;
+        border-top: 1px solid var(--council-border);
+      }
+
+      /* Dialog Styles */
+      .council-curation-dialog-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10002;
+      }
+
+      .council-curation-dialog {
+        background: var(--council-bg);
+        border-radius: var(--council-radius-lg);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .council-curation-dialog-lg {
+        max-width: 700px;
+      }
+
+      .council-curation-dialog-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--council-border);
+      }
+
+      .council-curation-dialog-header h3 {
+        margin: 0;
+        font-size: 1.125rem;
+        color: var(--council-text);
+      }
+
+      .council-curation-dialog-close {
+        background: none;
+        border: none;
+        font-size: 1.25rem;
+        cursor: pointer;
+        color: var(--council-text-muted);
+        padding: 4px;
+      }
+
+      .council-curation-dialog-close:hover {
+        color: var(--council-text);
+      }
+
+      .council-curation-dialog-content {
+        padding: 20px;
+        overflow-y: auto;
+        flex: 1;
+      }
+
+      .council-curation-dialog-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 16px 20px;
+        border-top: 1px solid var(--council-border);
+      }
+
+      .council-curation-form-group {
+        margin-bottom: 16px;
+      }
+
+      .council-curation-form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--council-text);
+      }
+
+      .council-form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .council-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+      }
+
+      .council-checkbox input {
+        width: 16px;
+        height: 16px;
+      }
+
+      .council-curation-btn-danger {
+        background: var(--council-error, #ef4444);
+        color: white;
+      }
+
+      .council-curation-btn-danger:hover {
+        background: #dc2626;
+      }
     `;
 
     document.head.appendChild(style);

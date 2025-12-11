@@ -20,7 +20,7 @@
 
 const CurationSystem = {
   // ===== VERSION =====
-  VERSION: "2.0.0",
+  VERSION: "2.1.0",
 
   // ===== STATE =====
 
@@ -114,6 +114,40 @@ const CurationSystem = {
    */
   _autoSaveInterval: null,
 
+  /**
+   * Index cache for fast lookups on indexed fields
+   * @type {Map<string, Map<string, Map<string, Set>>>}
+   */
+  _indexCache: new Map(),
+
+  // ===== VALIDATION ERROR MESSAGES =====
+
+  /**
+   * Standardized validation error messages
+   */
+  ValidationErrors: {
+    STORE_NOT_FOUND: (storeId) => `Store "${storeId}" not found`,
+    ENTRY_NOT_FOUND: (key, storeId) =>
+      `Entry "${key}" not found in store "${storeId}"`,
+    SINGLETON_CREATE: (storeId) =>
+      `Cannot create in singleton store "${storeId}" - use update instead`,
+    SINGLETON_DELETE: (storeId) =>
+      `Cannot delete from singleton store "${storeId}" - use update to clear fields`,
+    PRIMARY_KEY_REQUIRED: (keyField) => `Primary key "${keyField}" is required`,
+    DUPLICATE_ENTRY: (key, keyField) =>
+      `Entry with ${keyField}="${key}" already exists`,
+    FIELD_REQUIRED: (fieldName) => `Field "${fieldName}" is required`,
+    INVALID_TYPE: (fieldName, expected, actual) =>
+      `Field "${fieldName}" expected ${expected}, got ${actual}`,
+    ENUM_INVALID: (fieldName, value, allowed) =>
+      `Field "${fieldName}" value "${value}" not in allowed values: ${allowed.join(", ")}`,
+    NUMBER_RANGE: (fieldName, min, max) =>
+      `Field "${fieldName}" must be between ${min} and ${max}`,
+    PIPELINE_NOT_FOUND: (pipelineId) => `Pipeline "${pipelineId}" not found`,
+    AGENT_NOT_FOUND: (agentId) => `Curation agent "${agentId}" not found`,
+    POSITION_NOT_FOUND: (positionId) => `Position "${positionId}" not found`,
+  },
+
   // ===== INITIALIZATION =====
 
   /**
@@ -193,6 +227,10 @@ const CurationSystem = {
 
     try {
       await Promise.all([this.loadAllStores(), this.loadPipelines()]);
+
+      // Initialize index caches after loading data
+      this._initializeIndexCaches();
+
       this._log("info", "Persisted curation data loaded");
     } catch (error) {
       this._log("error", `Error loading persisted data: ${error.message}`);
@@ -209,11 +247,210 @@ const CurationSystem = {
   },
 
   /**
-   * Clear all data
+   * Initialize index caches for all stores
+   */
+  _initializeIndexCaches() {
+    for (const [storeId, schema] of this._storeSchemas.entries()) {
+      if (!schema.isSingleton && schema.indexFields?.length > 0) {
+        this._rebuildIndex(storeId);
+      }
+    }
+    this._log(
+      "debug",
+      `Initialized index caches for ${this._indexCache.size} stores`,
+    );
+  },
+
+  /**
+   * Rebuild index cache for a store
+   * @param {string} storeId - Store ID to rebuild index for
+   */
+  _rebuildIndex(storeId) {
+    const schema = this._storeSchemas.get(storeId);
+    if (!schema || schema.isSingleton || !schema.indexFields?.length) {
+      return;
+    }
+
+    const store = this._stores.get(storeId);
+    if (!store) return;
+
+    // Create index maps for each indexed field
+    const storeIndex = new Map();
+    for (const field of schema.indexFields) {
+      storeIndex.set(field, new Map());
+    }
+
+    // Build indexes
+    for (const [key, entry] of store.entries()) {
+      for (const field of schema.indexFields) {
+        const value = entry[field];
+        if (value !== undefined && value !== null) {
+          const fieldIndex = storeIndex.get(field);
+          const normalizedValue = String(value).toLowerCase();
+          if (!fieldIndex.has(normalizedValue)) {
+            fieldIndex.set(normalizedValue, new Set());
+          }
+          fieldIndex.get(normalizedValue).add(key);
+        }
+      }
+    }
+
+    this._indexCache.set(storeId, storeIndex);
+    this._log("debug", `Rebuilt index for store ${storeId}`);
+  },
+
+  /**
+   * Rebuild all indexes
+   */
+  rebuildAllIndexes() {
+    for (const storeId of this._storeSchemas.keys()) {
+      this._rebuildIndex(storeId);
+    }
+    this._log("info", "Rebuilt all store indexes");
+  },
+
+  /**
+   * Query using index (faster for indexed fields)
+   * @param {string} storeId - Store ID
+   * @param {string} field - Field to query
+   * @param {string} value - Value to match
+   * @returns {Array} Matching entries
+   */
+  queryByIndex(storeId, field, value) {
+    const storeIndex = this._indexCache.get(storeId);
+    if (!storeIndex) {
+      // Fallback to regular query
+      return this.read(storeId, { [field]: value });
+    }
+
+    const fieldIndex = storeIndex.get(field);
+    if (!fieldIndex) {
+      return this.read(storeId, { [field]: value });
+    }
+
+    const normalizedValue = String(value).toLowerCase();
+    const keys = fieldIndex.get(normalizedValue);
+    if (!keys || keys.size === 0) {
+      return [];
+    }
+
+    const store = this._stores.get(storeId);
+    return Array.from(keys)
+      .map((key) => store.get(key))
+      .filter(Boolean);
+  },
+
+  /**
+   * Validate entry data against schema with detailed errors
+   * @param {Object} schema - Store schema
+   * @param {Object} data - Entry data
+   * @returns {Object} { valid: boolean, errors: string[], warnings: string[] }
+   */
+  validateEntry(schema, data) {
+    const result = {
+      valid: true,
+      errors: [],
+      warnings: [],
+    };
+
+    if (!schema || !schema.fields) {
+      result.errors.push("Invalid schema - no fields defined");
+      result.valid = false;
+      return result;
+    }
+
+    // Check required fields
+    for (const [fieldName, fieldDef] of Object.entries(schema.fields)) {
+      const value = data[fieldName];
+
+      if (
+        fieldDef.required &&
+        (value === undefined || value === null || value === "")
+      ) {
+        result.errors.push(this.ValidationErrors.FIELD_REQUIRED(fieldName));
+        result.valid = false;
+        continue;
+      }
+
+      if (value === undefined || value === null) {
+        continue;
+      }
+
+      // Type validation
+      const actualType = Array.isArray(value) ? "array" : typeof value;
+      const expectedType = fieldDef.type;
+
+      if (expectedType === "enum") {
+        if (!fieldDef.enumValues?.includes(value)) {
+          result.errors.push(
+            this.ValidationErrors.ENUM_INVALID(
+              fieldName,
+              value,
+              fieldDef.enumValues || [],
+            ),
+          );
+          result.valid = false;
+        }
+      } else if (expectedType === "number") {
+        if (actualType !== "number" && isNaN(Number(value))) {
+          result.errors.push(
+            this.ValidationErrors.INVALID_TYPE(fieldName, "number", actualType),
+          );
+          result.valid = false;
+        } else {
+          const numValue = Number(value);
+          if (fieldDef.min !== undefined && numValue < fieldDef.min) {
+            result.errors.push(
+              this.ValidationErrors.NUMBER_RANGE(
+                fieldName,
+                fieldDef.min,
+                fieldDef.max ?? "∞",
+              ),
+            );
+            result.valid = false;
+          }
+          if (fieldDef.max !== undefined && numValue > fieldDef.max) {
+            result.errors.push(
+              this.ValidationErrors.NUMBER_RANGE(
+                fieldName,
+                fieldDef.min ?? "-∞",
+                fieldDef.max,
+              ),
+            );
+            result.valid = false;
+          }
+        }
+      } else if (expectedType === "array" && actualType !== "array") {
+        result.warnings.push(
+          `Field "${fieldName}" expected array, got ${actualType} - will coerce`,
+        );
+      } else if (expectedType === "boolean" && actualType !== "boolean") {
+        result.warnings.push(
+          `Field "${fieldName}" expected boolean, got ${actualType} - will coerce`,
+        );
+      }
+    }
+
+    // Check for unknown fields
+    for (const fieldName of Object.keys(data)) {
+      if (
+        !schema.fields[fieldName] &&
+        !["createdAt", "updatedAt"].includes(fieldName)
+      ) {
+        result.warnings.push(`Unknown field "${fieldName}" will be ignored`);
+      }
+    }
+
+    return result;
+  },
+
+  /**
+   * Clear all state
    */
   clear() {
     this._storeSchemas.clear();
     this._stores.clear();
+    this._indexCache.clear();
     this._crudPipelines.clear();
     this._ragPipelines.clear();
     this._positions.clear();
@@ -1455,13 +1692,27 @@ Return list of character IDs/names with relevance reasoning.`,
   create(storeId, data) {
     const schema = this._storeSchemas.get(storeId);
     if (!schema) {
-      throw new Error(`Store "${storeId}" not found`);
+      throw new Error(this.ValidationErrors.STORE_NOT_FOUND(storeId));
     }
 
     if (schema.isSingleton) {
-      throw new Error(
-        `Cannot create in singleton store "${storeId}" - use update instead`,
+      throw new Error(this.ValidationErrors.SINGLETON_CREATE(storeId));
+    }
+
+    // Validate before processing
+    const validation = this.validateEntry(schema, data);
+    if (!validation.valid) {
+      const error = new Error(
+        `Validation failed: ${validation.errors.join("; ")}`,
       );
+      error.validationErrors = validation.errors;
+      error.validationWarnings = validation.warnings;
+      throw error;
+    }
+
+    // Log warnings
+    if (validation.warnings.length > 0) {
+      this._log("warn", `Create warnings for ${storeId}:`, validation.warnings);
     }
 
     // Validate and normalize data
@@ -1472,12 +1723,14 @@ Return list of character IDs/names with relevance reasoning.`,
     const key = entry[schema.primaryKey];
 
     if (!key) {
-      throw new Error(`Primary key "${schema.primaryKey}" is required`);
+      throw new Error(
+        this.ValidationErrors.PRIMARY_KEY_REQUIRED(schema.primaryKey),
+      );
     }
 
     if (store.has(key)) {
       throw new Error(
-        `Entry with ${schema.primaryKey}="${key}" already exists`,
+        this.ValidationErrors.DUPLICATE_ENTRY(key, schema.primaryKey),
       );
     }
 
@@ -1489,10 +1742,53 @@ Return list of character IDs/names with relevance reasoning.`,
     store.set(key, entry);
     this._markDirty(storeId);
 
+    // Update index cache
+    this._updateIndexForEntry(storeId, key, entry, "add");
+
     this._log("debug", `Created entry in ${storeId}:`, key);
     this._emit("store:created", { storeId, key, entry });
 
     return entry;
+  },
+
+  /**
+   * Update index cache for a single entry
+   * @param {string} storeId - Store ID
+   * @param {string} key - Entry key
+   * @param {Object} entry - Entry data
+   * @param {string} operation - "add" or "remove"
+   */
+  _updateIndexForEntry(storeId, key, entry, operation) {
+    const schema = this._storeSchemas.get(storeId);
+    if (!schema || !schema.indexFields?.length) return;
+
+    const storeIndex = this._indexCache.get(storeId);
+    if (!storeIndex) return;
+
+    for (const field of schema.indexFields) {
+      const value = entry[field];
+      if (value === undefined || value === null) continue;
+
+      const fieldIndex = storeIndex.get(field);
+      if (!fieldIndex) continue;
+
+      const normalizedValue = String(value).toLowerCase();
+
+      if (operation === "add") {
+        if (!fieldIndex.has(normalizedValue)) {
+          fieldIndex.set(normalizedValue, new Set());
+        }
+        fieldIndex.get(normalizedValue).add(key);
+      } else if (operation === "remove") {
+        const keys = fieldIndex.get(normalizedValue);
+        if (keys) {
+          keys.delete(key);
+          if (keys.size === 0) {
+            fieldIndex.delete(normalizedValue);
+          }
+        }
+      }
+    }
   },
 
   /**
@@ -1542,7 +1838,7 @@ Return list of character IDs/names with relevance reasoning.`,
   update(storeId, keyOrData, updates = null) {
     const schema = this._storeSchemas.get(storeId);
     if (!schema) {
-      throw new Error(`Store "${storeId}" not found`);
+      throw new Error(this.ValidationErrors.STORE_NOT_FOUND(storeId));
     }
 
     const store = this._stores.get(storeId);
@@ -1550,10 +1846,19 @@ Return list of character IDs/names with relevance reasoning.`,
     // Singleton store
     if (schema.isSingleton) {
       const data = typeof keyOrData === "object" ? keyOrData : updates || {};
-      const validated = this._validateAndNormalizeEntry(schema, {
-        ...store,
-        ...data,
-      });
+      const mergedData = { ...store, ...data };
+
+      // Validate before processing
+      const validation = this.validateEntry(schema, mergedData);
+      if (!validation.valid) {
+        const error = new Error(
+          `Validation failed: ${validation.errors.join("; ")}`,
+        );
+        error.validationErrors = validation.errors;
+        throw error;
+      }
+
+      const validated = this._validateAndNormalizeEntry(schema, mergedData);
       validated.updatedAt = Date.now();
 
       // Update in place
@@ -1569,19 +1874,37 @@ Return list of character IDs/names with relevance reasoning.`,
     // Collection store
     const key = keyOrData;
     if (!store.has(key)) {
-      throw new Error(`Entry "${key}" not found in store "${storeId}"`);
+      throw new Error(this.ValidationErrors.ENTRY_NOT_FOUND(key, storeId));
     }
 
     const existing = store.get(key);
-    const updated = this._validateAndNormalizeEntry(schema, {
+    const mergedData = {
       ...existing,
       ...updates,
       [schema.primaryKey]: key, // Prevent key changes
-    });
+    };
+
+    // Validate before processing
+    const validation = this.validateEntry(schema, mergedData);
+    if (!validation.valid) {
+      const error = new Error(
+        `Validation failed: ${validation.errors.join("; ")}`,
+      );
+      error.validationErrors = validation.errors;
+      throw error;
+    }
+
+    // Remove old entry from index before update
+    this._updateIndexForEntry(storeId, key, existing, "remove");
+
+    const updated = this._validateAndNormalizeEntry(schema, mergedData);
     updated.updatedAt = Date.now();
 
     store.set(key, updated);
     this._markDirty(storeId);
+
+    // Add updated entry to index
+    this._updateIndexForEntry(storeId, key, updated, "add");
 
     this._log("debug", `Updated entry in ${storeId}:`, key);
     this._emit("store:updated", { storeId, key, entry: updated });
@@ -1598,22 +1921,28 @@ Return list of character IDs/names with relevance reasoning.`,
   delete(storeId, key) {
     const schema = this._storeSchemas.get(storeId);
     if (!schema) {
-      throw new Error(`Store "${storeId}" not found`);
+      throw new Error(this.ValidationErrors.STORE_NOT_FOUND(storeId));
     }
 
     if (schema.isSingleton) {
-      throw new Error(
-        `Cannot delete from singleton store "${storeId}" - use update to clear fields`,
-      );
+      throw new Error(this.ValidationErrors.SINGLETON_DELETE(storeId));
     }
 
     const store = this._stores.get(storeId);
 
     if (!store.has(key)) {
+      this._log(
+        "warn",
+        `Attempted to delete non-existent entry ${key} from ${storeId}`,
+      );
       return false;
     }
 
     const entry = store.get(key);
+
+    // Remove from index before deleting
+    this._updateIndexForEntry(storeId, key, entry, "remove");
+
     store.delete(key);
     this._markDirty(storeId);
 
@@ -1621,6 +1950,123 @@ Return list of character IDs/names with relevance reasoning.`,
     this._emit("store:deleted", { storeId, key, entry });
 
     return true;
+  },
+
+  /**
+   * Batch create multiple entries (optimized)
+   * @param {string} storeId - Store ID
+   * @param {Array} entries - Array of entry data objects
+   * @returns {Object} { created: Array, errors: Array }
+   */
+  batchCreate(storeId, entries) {
+    const schema = this._storeSchemas.get(storeId);
+    if (!schema) {
+      throw new Error(this.ValidationErrors.STORE_NOT_FOUND(storeId));
+    }
+
+    if (schema.isSingleton) {
+      throw new Error(this.ValidationErrors.SINGLETON_CREATE(storeId));
+    }
+
+    const results = { created: [], errors: [] };
+    const store = this._stores.get(storeId);
+
+    for (let i = 0; i < entries.length; i++) {
+      const data = entries[i];
+      try {
+        const validation = this.validateEntry(schema, data);
+        if (!validation.valid) {
+          results.errors.push({ index: i, data, errors: validation.errors });
+          continue;
+        }
+
+        const entry = this._validateAndNormalizeEntry(schema, data);
+        const key = entry[schema.primaryKey];
+
+        if (!key) {
+          results.errors.push({
+            index: i,
+            data,
+            errors: ["Missing primary key"],
+          });
+          continue;
+        }
+
+        if (store.has(key)) {
+          results.errors.push({
+            index: i,
+            data,
+            errors: [`Duplicate key: ${key}`],
+          });
+          continue;
+        }
+
+        entry.createdAt = Date.now();
+        entry.updatedAt = Date.now();
+        store.set(key, entry);
+        this._updateIndexForEntry(storeId, key, entry, "add");
+        results.created.push(entry);
+      } catch (error) {
+        results.errors.push({ index: i, data, errors: [error.message] });
+      }
+    }
+
+    if (results.created.length > 0) {
+      this._markDirty(storeId);
+      this._emit("store:batchCreated", {
+        storeId,
+        count: results.created.length,
+      });
+    }
+
+    this._log(
+      "info",
+      `Batch create in ${storeId}: ${results.created.length} created, ${results.errors.length} errors`,
+    );
+    return results;
+  },
+
+  /**
+   * Batch delete multiple entries
+   * @param {string} storeId - Store ID
+   * @param {Array} keys - Array of primary keys to delete
+   * @returns {Object} { deleted: number, notFound: Array }
+   */
+  batchDelete(storeId, keys) {
+    const schema = this._storeSchemas.get(storeId);
+    if (!schema) {
+      throw new Error(this.ValidationErrors.STORE_NOT_FOUND(storeId));
+    }
+
+    if (schema.isSingleton) {
+      throw new Error(this.ValidationErrors.SINGLETON_DELETE(storeId));
+    }
+
+    const results = { deleted: 0, notFound: [] };
+    const store = this._stores.get(storeId);
+
+    for (const key of keys) {
+      if (!store.has(key)) {
+        results.notFound.push(key);
+        continue;
+      }
+
+      const entry = store.get(key);
+      this._updateIndexForEntry(storeId, key, entry, "remove");
+      store.delete(key);
+      results.deleted++;
+    }
+
+    if (results.deleted > 0) {
+      this._markDirty(storeId);
+      this._emit("store:batchDeleted", { storeId, count: results.deleted });
+    }
+
+    this._log(
+      "info",
+      `Batch delete in ${storeId}: ${results.deleted} deleted, ${results.notFound.length} not found`,
+    );
+    return results;
   },
 
   /**
@@ -2237,18 +2683,46 @@ Return list of character IDs/names with relevance reasoning.`,
 
     const pipeline = this._ragPipelines.get(pipelineId);
     if (!pipeline) {
-      throw new Error(`RAG pipeline "${pipelineId}" not found`);
+      throw new Error(this.ValidationErrors.PIPELINE_NOT_FOUND(pipelineId));
+    }
+
+    // Validate input against pipeline's inputSchema
+    if (pipeline.inputSchema) {
+      const missingRequired = Object.entries(pipeline.inputSchema)
+        .filter(
+          ([key, def]) =>
+            def.required && (input[key] === undefined || input[key] === null),
+        )
+        .map(([key]) => key);
+
+      if (missingRequired.length > 0) {
+        throw new Error(
+          `RAG pipeline ${pipelineId} missing required inputs: ${missingRequired.join(", ")}`,
+        );
+      }
     }
 
     this._log("debug", `Executing RAG pipeline: ${pipelineId}`, input);
     this._emit("rag:started", { pipelineId, input });
 
+    const startTime = Date.now();
     try {
       const result = await this._executeRAGPipeline(pipeline, input);
-      this._emit("rag:completed", { pipelineId, input, result });
+      const duration = Date.now() - startTime;
+      this._emit("rag:completed", { pipelineId, input, result, duration });
+      this._log(
+        "info",
+        `RAG pipeline ${pipelineId} completed in ${duration}ms with ${result.count} results`,
+      );
       return result;
     } catch (error) {
-      this._emit("rag:error", { pipelineId, input, error });
+      const duration = Date.now() - startTime;
+      this._emit("rag:error", { pipelineId, input, error, duration });
+      this._log(
+        "error",
+        `RAG pipeline ${pipelineId} failed after ${duration}ms:`,
+        error.message,
+      );
       throw error;
     }
   },
@@ -2499,33 +2973,87 @@ Return list of character IDs/names with relevance reasoning.`,
    */
   getSummary() {
     const storeSummary = {};
+    let totalEntries = 0;
 
-    for (const [storeId, schema] of this._storeSchemas.entries()) {
-      storeSummary[storeId] = {
+    for (const [id, schema] of this._storeSchemas.entries()) {
+      const count = schema.isSingleton ? 1 : this._stores.get(id)?.size || 0;
+      totalEntries += count;
+
+      storeSummary[id] = {
         name: schema.name,
         icon: schema.icon,
         isSingleton: schema.isSingleton,
-        count: this.count(storeId),
-        isDirty: this._dirtyStores.has(storeId),
+        count,
+        isDirty: this._dirtyStores?.has(id) || false,
+        hasIndex: this._indexCache.has(id),
+        indexFields: schema.indexFields || [],
       };
     }
 
-    // Build curation team summary
+    // Get curation team summary
     const curationTeam = this.getCurationTeamSummary();
 
     return {
       version: this.VERSION,
       initialized: this._initialized,
       storeCount: this._storeSchemas.size,
+      totalEntries,
       stores: storeSummary,
       crudPipelineCount: this._crudPipelines.size,
       ragPipelineCount: this._ragPipelines.size,
       positionCount: this._positions.size,
-      dirtyStoreCount: this._dirtyStores.size,
-      // Curation agent information (isolated from AgentsSystem)
+      dirtyStoreCount: this._dirtyStores?.size || 0,
+      indexedStoreCount: this._indexCache.size,
       curationAgentCount: this._curationAgents.size,
-      curationTeam: curationTeam,
+      curationTeam,
     };
+  },
+
+  /**
+   * Get store statistics
+   * @param {string} storeId - Store ID
+   * @returns {Object} Store statistics
+   */
+  getStoreStats(storeId) {
+    const schema = this._storeSchemas.get(storeId);
+    if (!schema) {
+      throw new Error(this.ValidationErrors.STORE_NOT_FOUND(storeId));
+    }
+
+    const store = this._stores.get(storeId);
+    const entries = schema.isSingleton ? [store] : Array.from(store.values());
+
+    const stats = {
+      storeId,
+      name: schema.name,
+      isSingleton: schema.isSingleton,
+      entryCount: entries.length,
+      fields: Object.keys(schema.fields),
+      indexedFields: schema.indexFields || [],
+      hasIndex: this._indexCache.has(storeId),
+      isDirty: this._dirtyStores?.has(storeId) || false,
+    };
+
+    // Calculate field fill rates for collections
+    if (!schema.isSingleton && entries.length > 0) {
+      stats.fieldFillRates = {};
+      for (const field of Object.keys(schema.fields)) {
+        const filledCount = entries.filter((e) => {
+          const val = e[field];
+          return (
+            val !== undefined &&
+            val !== null &&
+            val !== "" &&
+            (!Array.isArray(val) || val.length > 0)
+          );
+        }).length;
+        stats.fieldFillRates[field] = Math.round(
+          (filledCount / entries.length) * 100,
+        );
+      }
+    }
+
+    return stats;
   },
 
   // ===== EVENT SYSTEM =====

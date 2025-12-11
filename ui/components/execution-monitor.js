@@ -14,7 +14,7 @@
 
 const ExecutionMonitor = {
   // ===== VERSION =====
-  VERSION: "2.0.0",
+  VERSION: "1.1.0",
 
   // ===== CONSTANTS =====
 
@@ -132,6 +132,7 @@ const ExecutionMonitor = {
       },
       _timerInterval: null,
       _eventUnsubscribers: [],
+      _expandedActions: new Set(),
 
       // Public methods bound to this instance
       render: (container) => this._renderInstance(instance, container),
@@ -145,6 +146,8 @@ const ExecutionMonitor = {
       getState: () => instance._state,
       getExecutionData: () => ({ ...instance._executionData }),
       destroy: () => this._destroyInstance(instance),
+      toggleActionDetail: (phaseIndex, actionIndex) =>
+        this._toggleActionDetail(instance, phaseIndex, actionIndex),
     };
 
     this._instances.set(id, instance);
@@ -417,44 +420,180 @@ const ExecutionMonitor = {
               isCurrent && actionIndex === data.currentActionIndex;
             const isCompleted = action.status === "completed";
             const isFailed = action.status === "failed";
+            const isPending = action.status === "pending";
+            const isRunning = action.status === "running";
+            const isExpanded = instance._expandedActions?.has(
+              `${phaseIndex}-${actionIndex}`,
+            );
+
+            // Calculate status icon and color
+            const statusInfo = this._getActionStatusInfo(
+              action.status,
+              isCurrentAction,
+            );
 
             return `
-            <div class="exec-monitor-action ${isCurrentAction ? "current" : ""} ${action.status}">
-              <span class="exec-monitor-action-status">
-                ${isCompleted ? "✓" : isFailed ? "✗" : isCurrentAction ? "●" : "○"}
-              </span>
-              <span class="exec-monitor-action-name">${this._escapeHtml(action.name)}</span>
-              ${
-                action.participant
-                  ? `
-                <span class="exec-monitor-action-participant">
-                  🤖 ${this._escapeHtml(action.participant)}
+            <div class="exec-monitor-action ${isCurrentAction ? "current" : ""} ${action.status}"
+                 data-phase="${phaseIndex}"
+                 data-action="${actionIndex}">
+              <div class="exec-monitor-action-header" data-toggle="action-detail">
+                <span class="exec-monitor-action-status ${statusInfo.colorClass}">
+                  ${statusInfo.icon}
                 </span>
-              `
-                  : ""
-              }
+                <span class="exec-monitor-action-name">${this._escapeHtml(action.name)}</span>
+                ${
+                  action.actionType
+                    ? `
+                  <span class="exec-monitor-action-type">${this._escapeHtml(action.actionType)}</span>
+                `
+                    : ""
+                }
+                ${
+                  action.participant
+                    ? `
+                  <span class="exec-monitor-action-participant">
+                    🤖 ${this._escapeHtml(action.participant)}
+                  </span>
+                `
+                    : ""
+                }
+                <span class="exec-monitor-action-meta">
+                  ${
+                    action.attempts && action.attempts > 1
+                      ? `
+                    <span class="exec-monitor-retry-badge" title="Retry attempts">🔄 ${action.attempts}</span>
+                  `
+                      : ""
+                  }
+                  ${
+                    action.duration
+                      ? `
+                    <span class="exec-monitor-action-duration">${this._formatDuration(action.duration)}</span>
+                  `
+                      : isRunning
+                        ? `
+                    <span class="exec-monitor-action-spinner">⟳</span>
+                  `
+                        : ""
+                  }
+                </span>
+                <span class="exec-monitor-action-expand">${isExpanded ? "▼" : "▶"}</span>
+              </div>
+
               ${
-                action.duration
+                isExpanded || (isCompleted && action.output) || isFailed
                   ? `
-                <span class="exec-monitor-action-duration">${this._formatDuration(action.duration)}</span>
+                <div class="exec-monitor-action-details ${isExpanded ? "expanded" : ""}">
+                  ${this._renderActionDetails(action, isCurrentAction)}
+                </div>
               `
                   : ""
               }
             </div>
-            ${
-              action.output && isCompleted
-                ? `
-              <div class="exec-monitor-action-output">
-                <pre>${this._escapeHtml(this._truncateOutput(action.output))}</pre>
-              </div>
-            `
-                : ""
-            }
           `;
           })
           .join("")}
       </div>
     `;
+  },
+
+  /**
+   * Get action status info (icon and color class)
+   * @param {string} status - Action status
+   * @param {boolean} isCurrent - Is current action
+   * @returns {Object} { icon, colorClass }
+   */
+  _getActionStatusInfo(status, isCurrent) {
+    const statusMap = {
+      completed: { icon: "✓", colorClass: "status-success" },
+      failed: { icon: "✗", colorClass: "status-error" },
+      running: { icon: "●", colorClass: "status-running" },
+      pending: { icon: "○", colorClass: "status-pending" },
+      skipped: { icon: "⊘", colorClass: "status-skipped" },
+      cancelled: { icon: "⊗", colorClass: "status-cancelled" },
+    };
+
+    if (isCurrent && status === "pending") {
+      return { icon: "●", colorClass: "status-running" };
+    }
+
+    return statusMap[status] || { icon: "○", colorClass: "status-pending" };
+  },
+
+  /**
+   * Render action details panel
+   * @param {Object} action - Action data
+   * @param {boolean} isCurrent - Is current action
+   * @returns {string} HTML
+   */
+  _renderActionDetails(action, isCurrent) {
+    let html = `<div class="exec-monitor-action-detail-content">`;
+
+    // Timing info
+    if (action.startTime || action.endTime || action.duration) {
+      html += `
+        <div class="exec-monitor-detail-section">
+          <div class="exec-monitor-detail-label">Timing</div>
+          <div class="exec-monitor-detail-value">
+            ${action.startTime ? `Started: ${this._formatTime(action.startTime)}` : ""}
+            ${action.endTime ? ` • Ended: ${this._formatTime(action.endTime)}` : ""}
+            ${action.duration ? ` • Duration: ${this._formatDuration(action.duration)}` : ""}
+          </div>
+        </div>
+      `;
+    }
+
+    // Input info
+    if (action.input) {
+      html += `
+        <div class="exec-monitor-detail-section">
+          <div class="exec-monitor-detail-label">Input</div>
+          <div class="exec-monitor-detail-value">
+            <pre class="exec-monitor-detail-pre">${this._escapeHtml(this._truncateOutput(action.input, 500))}</pre>
+          </div>
+        </div>
+      `;
+    }
+
+    // Output info
+    if (action.output) {
+      html += `
+        <div class="exec-monitor-detail-section">
+          <div class="exec-monitor-detail-label">Output</div>
+          <div class="exec-monitor-detail-value">
+            <pre class="exec-monitor-detail-pre">${this._escapeHtml(this._truncateOutput(action.output, 1000))}</pre>
+          </div>
+        </div>
+      `;
+    }
+
+    // Error info
+    if (action.error) {
+      html += `
+        <div class="exec-monitor-detail-section exec-monitor-detail-error">
+          <div class="exec-monitor-detail-label">⚠️ Error</div>
+          <div class="exec-monitor-detail-value">
+            <pre class="exec-monitor-detail-pre">${this._escapeHtml(action.error)}</pre>
+          </div>
+        </div>
+      `;
+    }
+
+    // Retry info
+    if (action.attempts && action.attempts > 1) {
+      html += `
+        <div class="exec-monitor-detail-section">
+          <div class="exec-monitor-detail-label">Retry Info</div>
+          <div class="exec-monitor-detail-value">
+            Attempts: ${action.attempts}
+            ${action.errorDetails ? ` • Last error: ${this._escapeHtml(action.errorDetails)}` : ""}
+          </div>
+        </div>
+      `;
+    }
+
+    html += `</div>`;
+    return html;
   },
 
   /**
@@ -575,6 +714,22 @@ const ExecutionMonitor = {
             instance._executionData.phases[phaseIndex].expanded =
               !instance._executionData.phases[phaseIndex].expanded;
             this._renderMonitor(instance);
+          }
+        });
+      });
+
+    // Action detail toggles
+    container
+      .querySelectorAll('[data-toggle="action-detail"]')
+      .forEach((header) => {
+        header.addEventListener("click", () => {
+          const actionEl = header.closest(".exec-monitor-action");
+          if (actionEl) {
+            const phaseIndex = parseInt(actionEl.dataset.phase, 10);
+            const actionIndex = parseInt(actionEl.dataset.action, 10);
+            if (!isNaN(phaseIndex) && !isNaN(actionIndex)) {
+              this._toggleActionDetail(instance, phaseIndex, actionIndex);
+            }
           }
         });
       });
@@ -1019,8 +1174,6 @@ const ExecutionMonitor = {
    * @param {Object} instance - Instance state
    */
   _clearInstance(instance) {
-    this._stopMonitoring(instance);
-    instance._state = this.State.IDLE;
     instance._executionData = {
       pipelineId: null,
       pipelineName: "",
@@ -1033,6 +1186,7 @@ const ExecutionMonitor = {
       errors: [],
       outputs: {},
     };
+    instance._expandedActions = new Set();
     this._renderMonitor(instance);
   },
 
@@ -1043,12 +1197,28 @@ const ExecutionMonitor = {
    * @param {Object} instance - Instance state
    * @param {string} state - New state
    */
-  _setState(instance, state) {
+  /**
+   * Toggle action detail expansion
+   * @param {Object} instance - Instance state
+   * @param {number} phaseIndex - Phase index
+   * @param {number} actionIndex - Action index
+   */
+  _toggleActionDetail(instance, phaseIndex, actionIndex) {
+    const key = `${phaseIndex}-${actionIndex}`;
+    if (instance._expandedActions.has(key)) {
+      instance._expandedActions.delete(key);
+    } else {
+      instance._expandedActions.add(key);
+    }
+    this._renderMonitor(instance);
+  },
+
+  _setState(instance, newState) {
     const oldState = instance._state;
-    instance._state = state;
+    instance._state = newState;
 
     if (instance._config.onStateChange) {
-      instance._config.onStateChange(state, oldState);
+      instance._config.onStateChange(newState, oldState);
     }
   },
 
@@ -1255,7 +1425,124 @@ const ExecutionMonitor = {
 
     const style = document.createElement("style");
     style.id = "council-exec-monitor-styles";
-    style.textContent = `
+
+    // Additional styles for enhanced action details
+    const enhancedStyles = `
+      .exec-monitor-action-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+        transition: background-color 0.15s ease;
+      }
+
+      .exec-monitor-action-header:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+      .exec-monitor-action-type {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: rgba(59, 130, 246, 0.2);
+        color: rgb(147, 197, 253);
+        text-transform: uppercase;
+      }
+
+      .exec-monitor-action-meta {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .exec-monitor-action-expand {
+        font-size: 0.7rem;
+        opacity: 0.6;
+        transition: transform 0.2s ease;
+      }
+
+      .exec-monitor-action-spinner {
+        animation: spin 1s linear infinite;
+        font-size: 1rem;
+      }
+
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+
+      .exec-monitor-retry-badge {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: rgba(234, 179, 8, 0.2);
+        color: rgb(250, 204, 21);
+      }
+
+      .exec-monitor-action-details {
+        padding: 12px 16px;
+        background: rgba(0, 0, 0, 0.2);
+        border-top: 1px solid var(--SmartThemeBorderColor, #333);
+      }
+
+      .exec-monitor-action-detail-content {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .exec-monitor-detail-section {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .exec-monitor-detail-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--SmartThemeBodyColor, #888);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .exec-monitor-detail-value {
+        font-size: 0.85rem;
+        color: var(--SmartThemeBodyColor, #ccc);
+      }
+
+      .exec-monitor-detail-pre {
+        margin: 0;
+        padding: 8px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-family: monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      .exec-monitor-detail-error {
+        background: rgba(239, 68, 68, 0.1);
+        padding: 8px;
+        border-radius: 4px;
+        border-left: 3px solid rgb(239, 68, 68);
+      }
+
+      .status-success { color: rgb(34, 197, 94); }
+      .status-error { color: rgb(239, 68, 68); }
+      .status-running { color: rgb(59, 130, 246); }
+      .status-pending { color: rgb(156, 163, 175); }
+      .status-skipped { color: rgb(156, 163, 175); opacity: 0.6; }
+      .status-cancelled { color: rgb(234, 179, 8); }
+    `;
+
+    style.textContent =
+      enhancedStyles +
+      `
       /* Execution Monitor Container */
       .exec-monitor {
         font-family: var(--council-font-family, sans-serif);

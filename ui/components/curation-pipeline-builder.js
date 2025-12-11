@@ -950,15 +950,21 @@ const CurationPipelineBuilder = {
               <label>Agent/Role</label>
               <select class="cpb-select cpb-step-agent" data-index="${index}">
                 <option value="">-- Select Agent --</option>
-                ${agents
-                  .map(
-                    (a) => `
+                ${
+                  agents.length > 0
+                    ? agents
+                        .map(
+                          (a) => `
                   <option value="${a.id}" ${step.agentId === a.id || step.agentRole === a.id ? "selected" : ""}>
-                    ${this._escapeHtml(a.name)}
+                    ${a.type === "curation" ? "🤖 " : "📋 "}${this._escapeHtml(a.name)}${a.type ? ` (${a.type})` : ""}
                   </option>
                 `,
-                  )
-                  .join("")}
+                        )
+                        .join("")
+                    : `
+                  <option value="" disabled>No agents available</option>
+                `
+                }
               </select>
             </div>
             <div class="cpb-form-group">
@@ -1748,16 +1754,50 @@ const CurationPipelineBuilder = {
    * @returns {Array} Available agents
    */
   _getAvailableAgents() {
-    if (this._agentsSystem?.getAllAgents) {
-      return this._agentsSystem.getAllAgents();
+    const agents = [];
+
+    // First, get curation agents from CurationSystem (preferred for curation pipelines)
+    if (this._curationSystem?.getAllCurationAgents) {
+      const curationAgents = this._curationSystem.getAllCurationAgents();
+      for (const agent of curationAgents) {
+        agents.push({
+          id: agent.id,
+          name: agent.name,
+          description: agent.description || "",
+          type: "curation",
+        });
+      }
     }
+
+    // Also add curation positions as agent roles (fallback)
+    if (this._curationSystem?.getCurationPositions) {
+      const positions = this._curationSystem.getCurationPositions();
+      for (const position of positions) {
+        // Only add if not already represented by an agent
+        if (!agents.some((a) => a.id === position.id)) {
+          agents.push({
+            id: position.id,
+            name: position.name,
+            description: position.promptModifiers?.roleDescription || "",
+            type: "position",
+          });
+        }
+      }
+    }
+
+    // If we found agents, return them
+    if (agents.length > 0) {
+      return agents;
+    }
+
     // Return default agent roles if no system available
     return [
-      { id: "data_extractor", name: "Data Extractor" },
-      { id: "data_validator", name: "Data Validator" },
-      { id: "analyst", name: "Analyst" },
-      { id: "summarizer", name: "Summarizer" },
-      { id: "narrator", name: "Narrator" },
+      { id: "archivist", name: "Archivist" },
+      { id: "story_topologist", name: "Story Topologist" },
+      { id: "character_topologist", name: "Character Topologist" },
+      { id: "lore_topologist", name: "Lore Topologist" },
+      { id: "location_topologist", name: "Location Topologist" },
+      { id: "scene_topologist", name: "Scene Topologist" },
     ];
   },
 

@@ -208,8 +208,10 @@ const PipelineSystem = {
    * @returns {Object} Normalized pipeline
    */
   registerPipeline(pipeline) {
-    if (!pipeline.id) {
-      throw new Error("Pipeline requires an id");
+    // Validate pipeline
+    const validation = this._validatePipeline(pipeline);
+    if (!validation.valid) {
+      throw new Error(`Invalid pipeline: ${validation.errors.join(", ")}`);
     }
 
     const normalized = this._normalizePipeline(pipeline);
@@ -222,6 +224,98 @@ const PipelineSystem = {
     this._emit("pipeline:registered", { pipeline: normalized });
 
     return normalized;
+  },
+
+  /**
+   * Validate a pipeline configuration
+   * @param {Object} pipeline - Pipeline to validate
+   * @returns {Object} Validation result { valid: boolean, errors: string[], warnings: string[] }
+   */
+  _validatePipeline(pipeline) {
+    const errors = [];
+    const warnings = [];
+
+    // Required fields
+    if (!pipeline.id) {
+      errors.push("Pipeline requires an id");
+    } else if (typeof pipeline.id !== "string") {
+      errors.push("Pipeline id must be a string");
+    } else if (!/^[a-zA-Z0-9_-]+$/.test(pipeline.id)) {
+      errors.push(
+        "Pipeline id must contain only alphanumeric characters, underscores, and hyphens",
+      );
+    }
+
+    if (!pipeline.name) {
+      warnings.push("Pipeline should have a name (using id as fallback)");
+    }
+
+    // Phases validation
+    if (pipeline.phases) {
+      if (!Array.isArray(pipeline.phases)) {
+        errors.push("Pipeline phases must be an array");
+      } else {
+        const phaseIds = new Set();
+        pipeline.phases.forEach((phase, index) => {
+          if (!phase.id) {
+            errors.push(`Phase at index ${index} requires an id`);
+          } else if (phaseIds.has(phase.id)) {
+            errors.push(`Duplicate phase id: ${phase.id}`);
+          } else {
+            phaseIds.add(phase.id);
+          }
+
+          // Validate actions within phase
+          if (phase.actions && Array.isArray(phase.actions)) {
+            const actionIds = new Set();
+            phase.actions.forEach((action, actionIndex) => {
+              if (!action.id) {
+                errors.push(
+                  `Action at index ${actionIndex} in phase ${phase.id || index} requires an id`,
+                );
+              } else if (actionIds.has(action.id)) {
+                errors.push(
+                  `Duplicate action id in phase ${phase.id}: ${action.id}`,
+                );
+              } else {
+                actionIds.add(action.id);
+              }
+
+              // Validate action type
+              if (action.actionType) {
+                const validTypes = Object.values(this.ActionType);
+                if (!validTypes.includes(action.actionType)) {
+                  warnings.push(
+                    `Unknown action type "${action.actionType}" in action ${action.id}`,
+                  );
+                }
+              }
+
+              // Validate participants
+              if (
+                action.participants?.positionIds?.length === 0 &&
+                action.participants?.teamIds?.length === 0 &&
+                !action.participants?.characters?.enabled &&
+                action.actionType !== this.ActionType.SYSTEM &&
+                action.actionType !== this.ActionType.USER_GAVEL
+              ) {
+                warnings.push(
+                  `Action ${action.id} has no participants configured`,
+                );
+              }
+            });
+          }
+        });
+      }
+    } else {
+      warnings.push("Pipeline has no phases defined");
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    };
   },
 
   /**
@@ -1095,122 +1189,205 @@ const PipelineSystem = {
       lifecycle: this.ActionLifecycle.CALLED,
     });
 
-    try {
-      // Handle async trigger if needed
-      if (action.execution.mode === "async") {
-        await this._waitForTrigger(action, phaseState);
+    // Retry configuration
+    const maxRetries = action.execution?.retryCount || 0;
+    let lastError = null;
+    let attemptCount = 0;
+
+    while (attemptCount <= maxRetries) {
+      try {
+        attemptCount++;
+
+        if (attemptCount > 1) {
+          this._log(
+            "info",
+            `Retrying action ${action.name} (attempt ${attemptCount}/${maxRetries + 1})`,
+          );
+          this._emit("action:retry", {
+            phaseId: phase.id,
+            actionId: action.id,
+            attempt: attemptCount,
+            maxRetries: maxRetries + 1,
+            previousError: lastError?.message,
+          });
+          // Brief delay before retry
+          await this._sleep(1000 * attemptCount);
+        }
+
+        // Handle async trigger if needed
+        if (action.execution.mode === "async") {
+          await this._waitForTrigger(action, phaseState);
+        }
+
+        // START lifecycle
+        actionState.lifecycle = this.ActionLifecycle.START;
+        this._emit("action:lifecycle", {
+          phaseId: phase.id,
+          actionId: action.id,
+          lifecycle: this.ActionLifecycle.START,
+        });
+
+        // Resolve input
+        actionState.input = await this._resolveActionInput(action, phaseState);
+
+        // IN_PROGRESS lifecycle
+        actionState.lifecycle = this.ActionLifecycle.IN_PROGRESS;
+        this._emit("action:lifecycle", {
+          phaseId: phase.id,
+          actionId: action.id,
+          lifecycle: this.ActionLifecycle.IN_PROGRESS,
+        });
+
+        // Execute based on action type with timeout wrapper
+        let output;
+        const actionType = action.actionType || this.ActionType.STANDARD;
+        const timeout = action.execution?.timeout || 60000;
+
+        output = await this._executeActionWithTimeout(
+          action,
+          actionType,
+          actionState,
+          phaseState,
+          timeout,
+        );
+
+        // Store output
+        actionState.output = output;
+
+        // Route output
+        await this._routeActionOutput(action, actionState, phaseState);
+
+        // COMPLETE lifecycle
+        actionState.lifecycle = this.ActionLifecycle.COMPLETE;
+        actionState.endedAt = Date.now();
+        actionState.attempts = attemptCount;
+        this._emit("action:lifecycle", {
+          phaseId: phase.id,
+          actionId: action.id,
+          lifecycle: this.ActionLifecycle.COMPLETE,
+        });
+
+        // Success - exit retry loop
+        return;
+      } catch (error) {
+        lastError = error;
+
+        // Check if this is an abort - don't retry aborts
+        if (
+          this._abortController?.signal?.aborted ||
+          error.message === "Pipeline run aborted"
+        ) {
+          actionState.error = "Aborted";
+          actionState.endedAt = Date.now();
+          throw error;
+        }
+
+        // Log the error
+        this._log(
+          "warn",
+          `Action ${action.name} failed (attempt ${attemptCount}): ${error.message}`,
+        );
+
+        // If we've exhausted retries, fail
+        if (attemptCount > maxRetries) {
+          actionState.error = error.message;
+          actionState.errorDetails = {
+            message: error.message,
+            stack: error.stack,
+            attempts: attemptCount,
+            lastAttemptAt: Date.now(),
+          };
+          actionState.endedAt = Date.now();
+          this._emit("action:error", {
+            phaseId: phase.id,
+            actionId: action.id,
+            error,
+            attempts: attemptCount,
+          });
+          throw error;
+        }
       }
+    }
+  },
 
-      // START lifecycle
-      actionState.lifecycle = this.ActionLifecycle.START;
-      this._emit("action:lifecycle", {
-        phaseId: phase.id,
-        actionId: action.id,
-        lifecycle: this.ActionLifecycle.START,
-      });
+  /**
+   * Execute action with timeout wrapper
+   * @param {Object} action - Action definition
+   * @param {string} actionType - Action type
+   * @param {Object} actionState - Action state
+   * @param {Object} phaseState - Phase state
+   * @param {number} timeout - Timeout in ms
+   * @returns {Promise<*>} Action output
+   */
+  async _executeActionWithTimeout(
+    action,
+    actionType,
+    actionState,
+    phaseState,
+    timeout,
+  ) {
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(
+          new Error(`Action "${action.name}" timed out after ${timeout}ms`),
+        );
+      }, timeout);
+    });
 
-      // Resolve input
-      actionState.input = await this._resolveActionInput(action, phaseState);
+    const executionPromise = this._executeActionByType(
+      action,
+      actionType,
+      actionState,
+      phaseState,
+    );
 
-      // IN_PROGRESS lifecycle
-      actionState.lifecycle = this.ActionLifecycle.IN_PROGRESS;
-      this._emit("action:lifecycle", {
-        phaseId: phase.id,
-        actionId: action.id,
-        lifecycle: this.ActionLifecycle.IN_PROGRESS,
-      });
+    return Promise.race([executionPromise, timeoutPromise]);
+  },
 
-      // Execute based on action type
-      let output;
-      const actionType = action.actionType || this.ActionType.STANDARD;
+  /**
+   * Execute action based on type
+   * @param {Object} action - Action definition
+   * @param {string} actionType - Action type
+   * @param {Object} actionState - Action state
+   * @param {Object} phaseState - Phase state
+   * @returns {Promise<*>} Action output
+   */
+  async _executeActionByType(action, actionType, actionState, phaseState) {
+    switch (actionType) {
+      case this.ActionType.CRUD_PIPELINE:
+        return this._executeCRUDAction(action, actionState, phaseState);
 
-      switch (actionType) {
-        case this.ActionType.CRUD_PIPELINE:
-          output = await this._executeCRUDAction(
-            action,
-            actionState,
-            phaseState,
-          );
-          break;
+      case this.ActionType.RAG_PIPELINE:
+        return this._executeRAGAction(action, actionState, phaseState);
 
-        case this.ActionType.RAG_PIPELINE:
-          output = await this._executeRAGAction(
-            action,
-            actionState,
-            phaseState,
-          );
-          break;
+      case this.ActionType.DELIBERATIVE_RAG:
+        return this._executeDeliberativeRAGAction(
+          action,
+          actionState,
+          phaseState,
+        );
 
-        case this.ActionType.DELIBERATIVE_RAG:
-          output = await this._executeDeliberativeRAGAction(
-            action,
-            actionState,
-            phaseState,
-          );
-          break;
+      case this.ActionType.USER_GAVEL:
+        return this._executeUserGavelAction(action, actionState, phaseState);
 
-        case this.ActionType.USER_GAVEL:
-          output = await this._executeUserGavelAction(
-            action,
-            actionState,
-            phaseState,
-          );
-          break;
+      case this.ActionType.SYSTEM:
+        return this._executeSystemAction(action, actionState, phaseState);
 
-        case this.ActionType.SYSTEM:
-          output = await this._executeSystemAction(
-            action,
-            actionState,
-            phaseState,
-          );
-          break;
+      case this.ActionType.CHARACTER_WORKSHOP:
+        return this._executeCharacterWorkshopAction(
+          action,
+          actionState,
+          phaseState,
+        );
 
-        case this.ActionType.CHARACTER_WORKSHOP:
-          output = await this._executeCharacterWorkshopAction(
-            action,
-            actionState,
-            phaseState,
-          );
-          break;
-
-        case this.ActionType.STANDARD:
-        default:
-          // Standard action with optional RAG
-          let ragResults = null;
-          if (action.rag?.enabled && this._curationSystem) {
-            ragResults = await this._executeActionRAG(action, actionState);
-          }
-          output = await this._executeActionParticipants(
-            action,
-            actionState,
-            ragResults,
-          );
-          break;
-      }
-
-      // Store output
-      actionState.output = output;
-
-      // Route output
-      await this._routeActionOutput(action, actionState, phaseState);
-
-      // COMPLETE lifecycle
-      actionState.lifecycle = this.ActionLifecycle.COMPLETE;
-      actionState.endedAt = Date.now();
-      this._emit("action:lifecycle", {
-        phaseId: phase.id,
-        actionId: action.id,
-        lifecycle: this.ActionLifecycle.COMPLETE,
-      });
-    } catch (error) {
-      actionState.error = error.message;
-      actionState.endedAt = Date.now();
-      this._emit("action:error", {
-        phaseId: phase.id,
-        actionId: action.id,
-        error,
-      });
-      throw error;
+      case this.ActionType.STANDARD:
+      default:
+        // Standard action with optional RAG
+        let ragResults = null;
+        if (action.rag?.enabled && this._curationSystem) {
+          ragResults = await this._executeActionRAG(action, actionState);
+        }
+        return this._executeActionParticipants(action, actionState, ragResults);
     }
   },
 

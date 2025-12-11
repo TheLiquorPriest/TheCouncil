@@ -215,6 +215,8 @@ const PromptBuilder = {
     dragging: false,
     draggedIndex: null,
     draggedElement: null,
+    isFromAvailable: false,
+    tokenData: null,
   },
 
   /**
@@ -273,6 +275,8 @@ const PromptBuilder = {
         dragging: false,
         draggedIndex: null,
         draggedElement: null,
+        isFromAvailable: false,
+        tokenData: null,
       },
       _previewDebounce: null,
     };
@@ -947,8 +951,64 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
     // Bind stack item actions
     this._bindStackActions(instance, contentEl);
 
-    // Initialize drag-drop
+    // Initialize drag-drop for available tokens
+    this._initAvailableTokenDrag(instance, contentEl);
+
+    // Initialize drag-drop for stack reordering
     this._initDragDrop(instance, contentEl);
+  },
+
+  /**
+   * Initialize drag events for available tokens (drag to stack)
+   * @param {Object} instance - Instance state
+   * @param {HTMLElement} contentEl - Content element
+   */
+  _initAvailableTokenDrag(instance, contentEl) {
+    const availableTokens = contentEl.querySelectorAll(
+      ".prompt-builder-available-token",
+    );
+
+    availableTokens.forEach((tokenEl) => {
+      tokenEl.addEventListener("dragstart", (e) => {
+        instance._dragState.dragging = true;
+        instance._dragState.draggedIndex = null; // Not from stack
+        instance._dragState.draggedElement = tokenEl;
+        instance._dragState.isFromAvailable = true;
+        instance._dragState.tokenData = {
+          type: "macro",
+          token: tokenEl.dataset.token,
+          label: tokenEl.dataset.label,
+        };
+        tokenEl.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "copy";
+        e.dataTransfer.setData(
+          "application/json",
+          JSON.stringify(instance._dragState.tokenData),
+        );
+      });
+
+      tokenEl.addEventListener("dragend", () => {
+        instance._dragState.dragging = false;
+        instance._dragState.draggedIndex = null;
+        instance._dragState.draggedElement = null;
+        instance._dragState.isFromAvailable = false;
+        instance._dragState.tokenData = null;
+        tokenEl.classList.remove("dragging");
+
+        // Clean up drop indicators
+        const stackList = contentEl.querySelector(".prompt-builder-stack-list");
+        stackList?.classList.remove("drag-over");
+        contentEl
+          .querySelectorAll(".prompt-builder-stack-item")
+          .forEach((el) => {
+            el.classList.remove(
+              "drag-over",
+              "drag-over-top",
+              "drag-over-bottom",
+            );
+          });
+      });
+    });
   },
 
   /**
@@ -1457,6 +1517,7 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
         instance._dragState.dragging = true;
         instance._dragState.draggedIndex = parseInt(item.dataset.index, 10);
         instance._dragState.draggedElement = item;
+        instance._dragState.isFromAvailable = false;
         item.classList.add("dragging");
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", item.dataset.index);
@@ -1466,49 +1527,165 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
         instance._dragState.dragging = false;
         instance._dragState.draggedIndex = null;
         instance._dragState.draggedElement = null;
+        instance._dragState.isFromAvailable = false;
         item.classList.remove("dragging");
         stackList
           .querySelectorAll(".prompt-builder-stack-item")
           .forEach((el) => {
-            el.classList.remove("drag-over");
+            el.classList.remove(
+              "drag-over",
+              "drag-over-top",
+              "drag-over-bottom",
+            );
           });
+        stackList.classList.remove("drag-over");
       });
 
       item.addEventListener("dragover", (e) => {
         e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
+
+        // Determine if dragging from available tokens or reordering
+        if (instance._dragState.isFromAvailable) {
+          e.dataTransfer.dropEffect = "copy";
+        } else {
+          e.dataTransfer.dropEffect = "move";
+        }
+
         if (!item.classList.contains("dragging")) {
+          // Calculate if drop would be above or below this item
+          const rect = item.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+
+          item.classList.remove("drag-over-top", "drag-over-bottom");
+          if (e.clientY < midY) {
+            item.classList.add("drag-over-top");
+          } else {
+            item.classList.add("drag-over-bottom");
+          }
           item.classList.add("drag-over");
         }
       });
 
-      item.addEventListener("dragleave", () => {
-        item.classList.remove("drag-over");
+      item.addEventListener("dragleave", (e) => {
+        // Only remove if actually leaving the item
+        if (!item.contains(e.relatedTarget)) {
+          item.classList.remove(
+            "drag-over",
+            "drag-over-top",
+            "drag-over-bottom",
+          );
+        }
       });
 
       item.addEventListener("drop", (e) => {
         e.preventDefault();
-        item.classList.remove("drag-over");
+        e.stopPropagation();
+        item.classList.remove("drag-over", "drag-over-top", "drag-over-bottom");
 
-        const fromIndex = instance._dragState.draggedIndex;
         const toIndex = parseInt(item.dataset.index, 10);
 
-        if (fromIndex !== null && fromIndex !== toIndex) {
-          this._reorderTokens(instance, fromIndex, toIndex);
+        // Check if dropping from available tokens
+        if (
+          instance._dragState.isFromAvailable &&
+          instance._dragState.tokenData
+        ) {
+          // Calculate insert position based on drop location
+          const rect = item.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          const insertIndex = e.clientY < midY ? toIndex : toIndex + 1;
+
+          this._insertTokenAtIndex(
+            instance,
+            instance._dragState.tokenData,
+            insertIndex,
+          );
+        } else {
+          // Reordering within stack
+          const fromIndex = instance._dragState.draggedIndex;
+          if (fromIndex !== null && fromIndex !== toIndex) {
+            // Calculate actual target index based on drop position
+            const rect = item.getBoundingClientRect();
+            const midY = rect.top + rect.height / 2;
+            let targetIndex = e.clientY < midY ? toIndex : toIndex + 1;
+
+            // Adjust if moving down (since we'll remove from fromIndex first)
+            if (fromIndex < targetIndex) {
+              targetIndex--;
+            }
+
+            this._reorderTokens(instance, fromIndex, targetIndex);
+          }
         }
       });
     });
 
-    // Allow drop on empty stack
+    // Stack list drop zone (for empty stack or dropping at end)
     stackList.addEventListener("dragover", (e) => {
       e.preventDefault();
+      if (instance._dragState.isFromAvailable) {
+        e.dataTransfer.dropEffect = "copy";
+      } else {
+        e.dataTransfer.dropEffect = "move";
+      }
+
+      // Only show drag-over on the list itself, not on items
+      if (
+        e.target === stackList ||
+        e.target.classList.contains("prompt-builder-stack-empty")
+      ) {
+        stackList.classList.add("drag-over");
+      }
+    });
+
+    stackList.addEventListener("dragleave", (e) => {
+      if (!stackList.contains(e.relatedTarget)) {
+        stackList.classList.remove("drag-over");
+      }
     });
 
     stackList.addEventListener("drop", (e) => {
-      if (e.target === stackList && instance._config.tokens.length === 0) {
+      // Only handle if dropping directly on stackList (not on items)
+      if (
+        e.target === stackList ||
+        e.target.classList.contains("prompt-builder-stack-empty")
+      ) {
+        e.preventDefault();
+        stackList.classList.remove("drag-over");
+
         // Handle drop from available tokens
+        if (
+          instance._dragState.isFromAvailable &&
+          instance._dragState.tokenData
+        ) {
+          this._addTokenToStack(instance, instance._dragState.tokenData);
+        } else if (instance._dragState.draggedIndex !== null) {
+          // Moving to end of stack
+          const fromIndex = instance._dragState.draggedIndex;
+          const toIndex = instance._config.tokens.length - 1;
+          if (fromIndex !== toIndex) {
+            this._reorderTokens(instance, fromIndex, toIndex);
+          }
+        }
       }
     });
+  },
+
+  /**
+   * Insert token at specific index
+   * @param {Object} instance - Instance state
+   * @param {Object} tokenConfig - Token configuration
+   * @param {number} index - Insert index
+   */
+  _insertTokenAtIndex(instance, tokenConfig, index) {
+    const newToken = {
+      ...tokenConfig,
+      prefix: "",
+      suffix: "",
+    };
+    instance._config.tokens.splice(index, 0, newToken);
+    this._refreshStackDisplay(instance);
+    this._updatePreview(instance);
+    this._notifyChange(instance);
   },
 
   // ===== PREVIEW =====
@@ -2049,6 +2226,35 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
       .prompt-builder-stack-item.drag-over {
         border-color: var(--SmartThemeQuoteColor, #3a3);
         border-style: dashed;
+      }
+
+      .prompt-builder-stack-item.drag-over-top {
+        border-top: 3px solid var(--SmartThemeQuoteColor, #3a3);
+        margin-top: -2px;
+      }
+
+      .prompt-builder-stack-item.drag-over-bottom {
+        border-bottom: 3px solid var(--SmartThemeQuoteColor, #3a3);
+        margin-bottom: -2px;
+      }
+
+      .prompt-builder-stack-list.drag-over {
+        border-color: var(--SmartThemeQuoteColor, #3a3);
+        background: rgba(58, 170, 58, 0.1);
+      }
+
+      .prompt-builder-available-token {
+        cursor: grab;
+      }
+
+      .prompt-builder-available-token.dragging {
+        opacity: 0.5;
+        cursor: grabbing;
+      }
+
+      .prompt-builder-available-token[draggable="true"]:hover {
+        background: var(--SmartThemeBorderColor, #444);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
       }
 
       .prompt-builder-stack-item-handle {

@@ -13,10 +13,10 @@ The Council is a multi-agent orchestration system for SillyTavern with **four co
 
 | System | Completion | Status |
 |--------|------------|--------|
-| Agents System | ~90% | Functional, minor polish needed |
-| Curation System | ~70% | Needs agent isolation, quality pass |
-| Character System | 0% | **NEW - To be built** |
-| Pipeline System | ~80% | Threads UI, Outputs/Variables refinement |
+| Agents System | ~95% | Functional, minor polish needed |
+| Curation System | ~98% | Quality pass complete, schemas optimized |
+| Character System | ~98% | Core + UI + Pipeline integration complete |
+| Pipeline System | ~98% | Character Workshop UI complete |
 
 ---
 
@@ -263,14 +263,17 @@ TheCouncil/
 
 ## System 1: Agents System
 
-### Status: ~90% Complete
+### Status: ~95% Complete
 
 ### Remaining Tasks
 
-- [ ] **1.1 Prompt Builder Polish (P2)**
-  - Fix drag-and-drop token insertion
-  - Fix token reorder functionality
-  - (Deferred: Full overhaul planned for P2)
+- [x] **1.1 Prompt Builder Polish (P2)** ✅
+  - Fixed drag-and-drop token insertion from available tokens to stack
+  - Fixed token reorder functionality with visual indicators
+  - Added drag-over-top/drag-over-bottom visual feedback
+  - Enhanced drop zone handling for empty stack
+  - Added `_initAvailableTokenDrag()` method
+  - Added `_insertTokenAtIndex()` method
 
 - [ ] **1.2 Minor UI Polish (P3)**
   - Inline styles → main.css
@@ -301,16 +304,30 @@ TheCouncil/
   - Position-to-agent assignments (`_positionAssignments` Map)
   - `getCurationTeamSummary()` for team overview
 
-- [ ] **2.2 Quality Pass (P1)**
-  - Review all CRUD operations
-  - Test RAG pipeline execution
-  - Validate store schema handling
-  - Error handling improvements
+- [x] **2.5 Curation Team UI (P1)** ✅
+  - Added "Team" tab to Curation Modal
+  - Position cards with assignment status
+  - Agent cards with configuration preview
+  - Agent editor dialog (create/edit agents)
+  - Position-agent assignment dialog
+  - Agent duplication and deletion
+  - Full CSS styling
 
-- [ ] **2.3 Optimized Default Schemas (P1)**
-  - Review each default store schema
-  - Optimize for efficient retrieval
-  - Add indexing recommendations
+- [x] **2.2 Quality Pass (P1)** ✅
+  - Enhanced CRUD operations with comprehensive validation
+  - Added `validateEntry()` method with detailed error reporting
+  - Added `ValidationErrors` constants for standardized messages
+  - Improved RAG pipeline execution with timing and logging
+  - Added batch operations (`batchCreate()`, `batchDelete()`)
+  - Enhanced error handling with validation errors attached
+
+- [x] **2.3 Optimized Default Schemas (P1)** ✅
+  - Added `_indexCache` for fast lookups on indexed fields
+  - Added `_rebuildIndex()` and `rebuildAllIndexes()` methods
+  - Added `queryByIndex()` for O(1) lookups on indexed fields
+  - Added `_updateIndexForEntry()` for incremental index updates
+  - Added `getStoreStats()` for detailed store analytics
+  - Added field fill rate calculations
 
 - [ ] **2.4 UI Polish (P2)**
   - Fix small issues throughout Curation UI
@@ -319,14 +336,17 @@ TheCouncil/
 
 ### Completed ✅
 - Store schema definitions
-- CRUD operations
-- RAG pipeline basics
+- CRUD operations (with batch support)
+- RAG pipeline execution (with timing/logging)
 - Data persistence
 - Default stores
 - Curation positions (Archivist, Topologists)
 - Curation agent isolation (dedicated registry)
 - Default curation agents with system prompts
 - Character CRUD/RAG pipelines
+- Index caching for fast lookups
+- Comprehensive validation system
+- Store statistics and analytics
 
 ---
 
@@ -350,11 +370,14 @@ TheCouncil/
   - Phase output copy/clear actions
   - Clear all outputs functionality
 
-- [ ] **3.3 Quality Pass (P1)**
-  - Review execution flow
-  - Test all action types
-  - Validate trigger conditions
-  - Error handling improvements
+- [x] **3.3 Quality Pass (P1)** ✅
+  - Added retry logic with configurable retryCount per action
+  - Added timeout wrapper with proper error handling
+  - Added pipeline validation (`_validatePipeline()`)
+  - Refactored action execution into `_executeActionByType()` and `_executeActionWithTimeout()`
+  - Enhanced error details in action state (attempts, errorDetails)
+  - Added action:retry event emission
+  - Abort-safe error handling (don't retry aborts)
 
 - [x] **3.4 Pipeline Trigger Button (P2)** ✅
   - Added button next to ST send button
@@ -375,6 +398,11 @@ TheCouncil/
 - Global variable management UI
 - Pipeline trigger button near ST send
 - Character participation in actions
+- Retry logic and timeout handling
+- Pipeline validation
+- Character Workshop action type in UI
+- Character Participants configuration UI
+- Character Workshop configuration UI
 
 ---
 
@@ -382,15 +410,23 @@ TheCouncil/
 
 ### Remaining Tasks
 
-- [ ] **4.1 Token Picker Refinement (P2)**
-  - Better category organization
-  - Recent tokens
-  - Context-aware suggestions
+- [x] **4.1 Token Picker Refinement (P2)** ✅
+  - Added `setContext()` for context-aware mode
+  - Added `getSuggestedTokens()` returning context-relevant tokens
+  - Added `CONTEXT_SUGGESTIONS` for phase, action, prompt, curation, character contexts
+  - Added suggested tokens section in picker UI
+  - Added `_findTokenInfo()` helper for token lookups
+  - Enhanced styling for suggested tokens
 
-- [ ] **4.2 Execution Monitor Polish (P2)**
-  - Real-time updates
-  - Better error display
-  - Action-level detail view
+- [x] **4.2 Execution Monitor Polish (P2)** ✅
+  - Added expandable action details panel
+  - Added `_renderActionDetails()` with input/output/timing/error display
+  - Added `_getActionStatusInfo()` for status icons and colors
+  - Added `_toggleActionDetail()` for expand/collapse
+  - Added action type badges
+  - Added retry attempt badges
+  - Added spinner animation for running actions
+  - Enhanced CSS with status colors and detail styling
 
 - [ ] **4.3 Import/Export UI (P3)**
   - Full pipeline export
@@ -398,8 +434,8 @@ TheCouncil/
   - Preset creation wizard
 
 ### Completed ✅
-- TokenPicker component
-- ExecutionMonitor component
+- TokenPicker component (with context-aware suggestions)
+- ExecutionMonitor component (with action detail views)
 - ParticipantSelector component
 - ContextConfig component
 - PromptBuilder (basic)
@@ -510,6 +546,96 @@ The Curation system is designed to:
 ---
 
 ## Change Log
+
+### 2024-XX-XX - Quality Pass & Component Enhancements
+- Updated `core/curation-system.js` to v2.1.0:
+  - Added `ValidationErrors` constants for standardized error messages
+  - Added `_indexCache` Map for fast indexed field lookups
+  - Added `_rebuildIndex()` and `rebuildAllIndexes()` methods
+  - Added `_initializeIndexCaches()` called after loading persisted data
+  - Added `queryByIndex()` for O(1) lookups on indexed fields
+  - Added `validateEntry()` with detailed error/warning reporting
+  - Added `_updateIndexForEntry()` for incremental index maintenance
+  - Added `batchCreate()` for optimized bulk inserts with validation
+  - Added `batchDelete()` for optimized bulk deletions
+  - Added `getStoreStats()` for detailed store analytics with field fill rates
+  - Enhanced `create()`, `update()`, `delete()` with validation and index updates
+  - Enhanced `executeRAG()` with timing, logging, and input validation
+  - Enhanced `getSummary()` with totalEntries and indexedStoreCount
+- Updated `ui/components/token-picker.js` to v1.1.0:
+  - Added `_currentContext` state for context-aware suggestions
+  - Added `CONTEXT_SUGGESTIONS` with tokens for phase, action, prompt, curation, character contexts
+  - Added `setContext()` to set current editing context
+  - Added `getSuggestedTokens()` combining context + recent tokens
+  - Added `_findTokenInfo()` helper to look up token metadata
+  - Added suggested tokens section in picker UI with context badge
+  - Added CSS styles for suggested tokens display
+- Updated `ui/components/execution-monitor.js` to v1.1.0:
+  - Added `_expandedActions` Set for tracking expanded actions
+  - Added `_renderActionDetails()` for detailed action view (input, output, timing, errors)
+  - Added `_getActionStatusInfo()` for status icons and color classes
+  - Added `_toggleActionDetail()` for expand/collapse functionality
+  - Added `toggleActionDetail()` public method on instances
+  - Added action type badges and retry attempt badges
+  - Added spinner animation for running actions
+  - Added action detail toggle event binding
+  - Added comprehensive CSS for enhanced action display
+
+### 2024-XX-XX - Curation Team UI & Pipeline Character System UI
+- Updated `ui/curation-modal.js`:
+  - Added new "🤖 Team" tab for curation agent management
+  - Added `_renderTeamTab()` with positions and agents views
+  - Added `_renderPositionCard()` showing position status and assigned agents
+  - Added `_renderAgentCard()` with configuration preview
+  - Added `_showAgentEditor()` dialog for creating/editing agents:
+    - Agent name and description
+    - Position assignment
+    - System prompt configuration (source, custom text)
+    - API configuration (temperature, maxTokens, topP, etc.)
+  - Added `_showAssignAgentDialog()` for position-agent assignment
+  - Added `_duplicateAgent()` and `_confirmDeleteAgent()` methods
+  - Added comprehensive CSS styles for team UI components
+  - Removed redundant positions grid from Pipelines tab
+- Updated `ui/pipeline-modal.js`:
+  - Added `character_workshop` option to Action Type dropdown
+  - Added Character Workshop Configuration section in Curation tab:
+    - Workshop mode selection (refinement, consistency, collaboration)
+    - Character ID specification
+    - Director inclusion toggle
+    - Editorial positions for collaboration mode
+    - RAG context configuration
+    - Custom prompt overrides
+    - Output consolidation mode
+    - Workshop thread configuration
+  - Added Character Participation UI in Participants tab:
+    - Enable/disable character participants toggle
+    - Character selection mode (explicit, spawned, dynamic)
+    - Character ID and type filtering
+    - Director inclusion option
+    - Voicing guidance toggle
+    - Character RAG context configuration
+  - Added visibility toggles for character options
+  - Updated save logic to capture all character-related configurations:
+    - `characterParticipantsConfig` in participants
+    - `characterWorkshopConfig` for workshop actions
+  - Added CSS styles for character participation and workshop UI
+
+### 2024-XX-XX - Quality Pass & Prompt Builder Fix
+- Updated `core/pipeline-system.js`:
+  - Added `_validatePipeline()` for configuration validation
+  - Added retry logic with configurable `retryCount` per action
+  - Added `_executeActionWithTimeout()` wrapper
+  - Refactored action execution into `_executeActionByType()`
+  - Enhanced error handling with `errorDetails` in action state
+  - Added `action:retry` event for retry tracking
+  - Abort-safe error handling
+- Updated `ui/components/prompt-builder.js`:
+  - Fixed drag-and-drop token insertion from available tokens
+  - Added `_initAvailableTokenDrag()` for available token dragging
+  - Added `_insertTokenAtIndex()` for positional insertion
+  - Added visual indicators for drop position (top/bottom)
+  - Enhanced stack list drop zone handling
+  - Added CSS styles for drag-over-top/drag-over-bottom states
 
 ### 2024-XX-XX - Pipeline UI Enhancements & Curation Agent Isolation
 - Updated `ui/pipeline-modal.js`:

@@ -13,7 +13,7 @@
 
 const TokenPicker = {
   // ===== VERSION =====
-  VERSION: "2.0.0",
+  VERSION: "1.1.0",
 
   // ===== CONSTANTS =====
 
@@ -437,6 +437,65 @@ const TokenPicker = {
    */
   MAX_RECENT: 10,
 
+  /**
+   * Current context for suggestions
+   * @type {Object}
+   */
+  _currentContext: {
+    type: null, // 'phase', 'action', 'prompt', 'curation', 'character'
+    phaseId: null,
+    actionId: null,
+    actionType: null,
+  },
+
+  /**
+   * Context-aware token suggestions
+   */
+  CONTEXT_SUGGESTIONS: {
+    phase: [
+      "{{phase.name}}",
+      "{{phase.output}}",
+      "{{phase.variables}}",
+      "{{globals}}",
+      "{{input}}",
+    ],
+    action: [
+      "{{action.input}}",
+      "{{action.output}}",
+      "{{input}}",
+      "{{context}}",
+      "{{char}}",
+      "{{user}}",
+    ],
+    prompt: [
+      "{{char}}",
+      "{{user}}",
+      "{{input}}",
+      "{{context}}",
+      "{{scenario}}",
+      "{{persona}}",
+    ],
+    curation: [
+      "{{store.data}}",
+      "{{store.query}}",
+      "{{store.results}}",
+      "{{rag.context}}",
+    ],
+    character: [
+      "{{character.name}}",
+      "{{character.personality}}",
+      "{{character.voice}}",
+      "{{character.background}}",
+    ],
+    standard: [
+      "{{input}}",
+      "{{context}}",
+      "{{char}}",
+      "{{user}}",
+      "{{scenario}}",
+    ],
+  },
+
   // ===== INITIALIZATION =====
 
   /**
@@ -449,6 +508,70 @@ const TokenPicker = {
     this._loadRecentTokens();
     this._injectStyles();
     this._log("info", "TokenPicker initialized");
+  },
+
+  /**
+   * Set current context for suggestions
+   * @param {Object} context - Context object
+   * @param {string} context.type - Context type (phase, action, prompt, curation, character)
+   * @param {string} context.phaseId - Current phase ID
+   * @param {string} context.actionId - Current action ID
+   * @param {string} context.actionType - Current action type
+   */
+  setContext(context = {}) {
+    this._currentContext = {
+      type: context.type || null,
+      phaseId: context.phaseId || null,
+      actionId: context.actionId || null,
+      actionType: context.actionType || null,
+    };
+    this._log("debug", "TokenPicker context set:", this._currentContext);
+  },
+
+  /**
+   * Get suggested tokens based on current context
+   * @returns {Array} Array of suggested token objects
+   */
+  getSuggestedTokens() {
+    const contextType = this._currentContext.type || "standard";
+    const suggestions =
+      this.CONTEXT_SUGGESTIONS[contextType] ||
+      this.CONTEXT_SUGGESTIONS.standard;
+
+    // Combine with recent tokens, removing duplicates
+    const recentSet = new Set(this._recentTokens.slice(0, 5));
+    const combined = [...suggestions];
+
+    for (const recent of recentSet) {
+      if (!combined.includes(recent)) {
+        combined.push(recent);
+      }
+    }
+
+    // Convert to token objects
+    return combined.slice(0, 10).map((token) => {
+      const tokenInfo = this._findTokenInfo(token);
+      return {
+        token,
+        name: tokenInfo?.name || token.replace(/\{\{|\}\}/g, ""),
+        description: tokenInfo?.description || "Recently used or suggested",
+        isSuggested: suggestions.includes(token),
+        isRecent: recentSet.has(token),
+      };
+    });
+  },
+
+  /**
+   * Find token info from TOKENS registry
+   * @param {string} token - Token string
+   * @returns {Object|null} Token info or null
+   */
+  _findTokenInfo(token) {
+    for (const category of Object.keys(this.TOKENS)) {
+      const found = this.TOKENS[category].find((t) => t.token === token);
+      if (found) return found;
+    }
+    return null;
   },
 
   /**
@@ -591,6 +714,37 @@ const TokenPicker = {
           ${instance._searchQuery ? '<button class="token-picker-search-clear">✕</button>' : ""}
         </div>
       `;
+    }
+
+    // Suggested tokens (context-aware)
+    if (!instance._searchQuery) {
+      const suggestedTokens = this.getSuggestedTokens();
+      if (suggestedTokens.length > 0) {
+        const contextType = this._currentContext.type || "standard";
+        html += `
+          <div class="council-token-suggested">
+            <div class="council-token-suggested-header">
+              <span class="council-token-suggested-icon">💡</span>
+              <span class="council-token-suggested-title">Suggested</span>
+              <span class="council-token-context-badge">${this._escapeHtml(contextType)}</span>
+            </div>
+            <div class="council-token-suggested-list">
+              ${suggestedTokens
+                .map(
+                  (t) => `
+                <button class="council-token-suggested-item ${t.isRecent ? "recent" : ""}"
+                        data-token="${this._escapeHtml(t.token)}"
+                        title="${this._escapeHtml(t.description)}">
+                  <span class="council-token-text">${this._escapeHtml(this._truncateToken(t.token))}</span>
+                  ${t.isRecent ? '<span class="council-token-recent-badge">🕐</span>' : ""}
+                </button>
+              `,
+                )
+                .join("")}
+            </div>
+          </div>
+        `;
+      }
     }
 
     // Recent tokens
@@ -1024,6 +1178,79 @@ const TokenPicker = {
     if (document.getElementById("council-token-picker-styles")) return;
 
     const style = document.createElement("style");
+    // Add suggested tokens styles at the beginning
+    const suggestedStyles = `
+      .council-token-suggested {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+        background: linear-gradient(180deg, rgba(59, 130, 246, 0.1), transparent);
+      }
+
+      .council-token-suggested-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 8px;
+        font-size: 0.8rem;
+        color: var(--SmartThemeBodyColor, #ccc);
+      }
+
+      .council-token-suggested-icon {
+        font-size: 0.9rem;
+      }
+
+      .council-token-suggested-title {
+        font-weight: 600;
+      }
+
+      .council-token-context-badge {
+        font-size: 0.65rem;
+        padding: 2px 6px;
+        border-radius: 8px;
+        background: var(--SmartThemeQuoteColor, #666);
+        color: white;
+        text-transform: uppercase;
+        margin-left: auto;
+      }
+
+      .council-token-suggested-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .council-token-suggested-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        border-radius: 4px;
+        background: var(--SmartThemeBlurTintColor, #2a2a3a);
+        color: var(--SmartThemeBodyColor, #ddd);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .council-token-suggested-item:hover {
+        background: var(--SmartThemeQuoteColor, #3a3a4a);
+        border-color: var(--SmartThemeBorderColor, #555);
+      }
+
+      .council-token-suggested-item.recent {
+        border-color: rgba(234, 179, 8, 0.3);
+      }
+
+      .council-token-recent-badge {
+        font-size: 0.6rem;
+        opacity: 0.7;
+      }
+
+      .council-token-text {
+        font-family: monospace;
+      }
+    `;
     style.id = "council-token-picker-styles";
     style.textContent = `
       /* Token Picker Container */
