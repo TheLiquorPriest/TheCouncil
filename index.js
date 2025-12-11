@@ -181,6 +181,11 @@
       "ui/nav-modal.js",
     ];
 
+    // Add integration tests in debug mode
+    if (DEBUG) {
+      moduleFiles.push("tests/integration-test.js");
+    }
+
     // Load stylesheet
     loadStylesheet(`${basePath}/styles/main.css`);
 
