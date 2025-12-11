@@ -1383,6 +1383,44 @@ const TheCouncilKernel = {
   },
 
   /**
+   * Set orchestration mode
+   * @param {string} mode - Mode: 'synthesis' | 'compilation' | 'injection'
+   * @returns {boolean} Success
+   */
+  setOrchestrationMode(mode) {
+    const orchestration = this.getSystem("orchestration");
+    if (orchestration) {
+      return orchestration.setMode(mode);
+    }
+    return false;
+  },
+
+  /**
+   * Get orchestration mode
+   * @returns {string}
+   */
+  getOrchestrationMode() {
+    const orchestration = this.getSystem("orchestration");
+    if (orchestration) {
+      return orchestration.getMode();
+    }
+    return this.getState("session.orchestrationMode") || "synthesis";
+  },
+
+  /**
+   * Deliver output to SillyTavern
+   * @param {string} output - Output to deliver
+   * @returns {Promise<boolean>} Success
+   */
+  async deliverToST(output) {
+    const orchestration = this.getSystem("orchestration");
+    if (orchestration) {
+      return orchestration.deliverToST(output);
+    }
+    return false;
+  },
+
+  /**
    * Show UI modal
    * @param {string} modalName - Modal name
    */

@@ -271,6 +271,65 @@ const OrchestrationSystem = {
     return Object.fromEntries(this._injectionMappings);
   },
 
+  // ===== PUBLIC ST INTEGRATION API =====
+
+  /**
+   * Deliver response to SillyTavern (public API)
+   * Delivers response based on current mode
+   * @param {string} response - Response or prompt to deliver
+   * @returns {Promise<boolean>} Success
+   */
+  async deliverToST(response) {
+    if (!response) {
+      this._log("warn", "Cannot deliver empty content to ST");
+      return false;
+    }
+
+    try {
+      switch (this._mode) {
+        case this.Mode.SYNTHESIS:
+          await this._deliverSynthesizedResponse(response);
+          return true;
+
+        case this.Mode.COMPILATION:
+          await this._deliverCompiledPrompt(response);
+          return true;
+
+        case this.Mode.INJECTION:
+          this._log("warn", "Injection mode does not use direct delivery");
+          return false;
+
+        default:
+          this._log("error", `Unknown mode: ${this._mode}`);
+          return false;
+      }
+    } catch (error) {
+      this._log("error", `Failed to deliver to ST: ${error.message}`);
+      return false;
+    }
+  },
+
+  /**
+   * Replace ST's prompt with Council-generated prompt (Mode 2)
+   * @param {string} prompt - Compiled prompt
+   * @returns {Promise<boolean>} Success
+   */
+  async replaceSTPrompt(prompt) {
+    if (this._mode !== this.Mode.COMPILATION) {
+      this._log("warn", "replaceSTPrompt should only be called in Compilation mode");
+    }
+    return this.deliverToST(prompt);
+  },
+
+  /**
+   * Inject Council context into ST's prompt (Mode 3)
+   * @param {Object} promptData - ST's prompt data
+   * @returns {Object} Modified prompt data
+   */
+  injectSTContext(promptData) {
+    return this.injectIntoSTPrompt(promptData);
+  },
+
   // ===== RUN MANAGEMENT =====
 
   /**
@@ -1681,13 +1740,15 @@ const OrchestrationSystem = {
     // Mode-specific handling
     switch (this._mode) {
       case this.Mode.SYNTHESIS:
-        // Final output is the response
-        this._log("debug", "Synthesis mode: output ready for delivery");
+        // Mode 1: Deliver synthesized response to ST chat
+        this._log("info", "Synthesis mode: Delivering final response to ST chat");
+        await this._deliverSynthesizedResponse(finalOutput);
         break;
 
       case this.Mode.COMPILATION:
-        // Final output is a prompt to be sent to ST
-        this._log("debug", "Compilation mode: prompt ready for ST");
+        // Mode 2: Replace ST's prompt with compiled prompt
+        this._log("info", "Compilation mode: Setting compiled prompt for ST LLM");
+        await this._deliverCompiledPrompt(finalOutput);
         break;
 
       case this.Mode.INJECTION:
@@ -1814,6 +1875,259 @@ const OrchestrationSystem = {
    */
   _emitProgress() {
     this._emit("orchestration:progress:updated", { progress: this.getProgress() });
+  },
+
+  // ===== ST INTEGRATION =====
+
+  /**
+   * Deliver synthesized response to ST chat (Mode 1)
+   * @param {string} response - Final synthesized response
+   * @returns {Promise<void>}
+   */
+  async _deliverSynthesizedResponse(response) {
+    if (!response || response.trim() === "") {
+      this._log("warn", "Cannot deliver empty response to ST");
+      return;
+    }
+
+    try {
+      // Get ST context
+      const stContext = window.SillyTavern?.getContext?.();
+      if (!stContext) {
+        this._log("error", "SillyTavern context not available");
+        this._emit("orchestration:st:error", {
+          mode: "synthesis",
+          error: "ST context unavailable"
+        });
+        return;
+      }
+
+      // Add the response as an AI message to chat
+      // ST's addOneMessage expects: { mes: string, is_user: boolean, name: string }
+      const characterName = stContext.name2 || "Assistant";
+
+      // Use ST's sendMessageAs if available (preferred method)
+      if (typeof window.Generate_called === "function") {
+        this._log("debug", "Injecting Council response into ST generation");
+
+        // Store the response to be picked up by ST
+        window.councilSynthesizedResponse = response;
+
+        // Trigger ST to display the message
+        if (typeof window.addOneMessage === "function") {
+          await window.addOneMessage({
+            mes: response,
+            is_user: false,
+            name: characterName,
+            force_avatar: false,
+            extra: {
+              type: "council_synthesis",
+              pipelineId: this._runState?.pipelineId,
+              runId: this._runState?.id,
+            }
+          });
+
+          this._log("info", "Response delivered to ST chat successfully");
+          this._emit("orchestration:st:delivered", {
+            mode: "synthesis",
+            messageLength: response.length
+          });
+        }
+      } else {
+        this._log("warn", "ST message injection API not available");
+      }
+
+    } catch (error) {
+      this._log("error", `Failed to deliver response to ST: ${error.message}`);
+      this._emit("orchestration:st:error", {
+        mode: "synthesis",
+        error: error.message
+      });
+    }
+  },
+
+  /**
+   * Deliver compiled prompt to replace ST's prompt (Mode 2)
+   * @param {string} prompt - Compiled prompt
+   * @returns {Promise<void>}
+   */
+  async _deliverCompiledPrompt(prompt) {
+    if (!prompt || prompt.trim() === "") {
+      this._log("warn", "Cannot deliver empty compiled prompt to ST");
+      return;
+    }
+
+    try {
+      // Store the compiled prompt globally for ST to use
+      // This will be picked up by ST's generate interceptor or prompt builder
+      window.councilCompiledPrompt = {
+        prompt: prompt,
+        timestamp: Date.now(),
+        pipelineId: this._runState?.pipelineId,
+        runId: this._runState?.id,
+      };
+
+      this._log("info", `Compiled prompt ready (${prompt.length} chars)`);
+      this._log("debug", "Prompt preview:", prompt.substring(0, 200) + "...");
+
+      this._emit("orchestration:st:prompt_ready", {
+        mode: "compilation",
+        promptLength: prompt.length,
+        preview: prompt.substring(0, 100)
+      });
+
+      // Notify that ST should now call its LLM with this prompt
+      this._log("info", "ST should now generate using the compiled prompt");
+
+      // If ST's generate function is available, we can trigger it
+      if (typeof window.Generate === "function") {
+        this._log("debug", "Triggering ST generation with compiled prompt");
+
+        // ST will check window.councilCompiledPrompt and use it instead of default prompt
+        // This requires integration on the ST side or via generate_interceptor
+      }
+
+    } catch (error) {
+      this._log("error", `Failed to deliver compiled prompt: ${error.message}`);
+      this._emit("orchestration:st:error", {
+        mode: "compilation",
+        error: error.message
+      });
+    }
+  },
+
+  /**
+   * Inject Council data into ST's prompt (Mode 3 support)
+   * @param {Object} promptData - ST's prompt data object
+   * @returns {Object} Modified prompt data
+   */
+  injectIntoSTPrompt(promptData) {
+    // Mode 3 functionality - replace tokens with RAG results
+    if (this._mode !== this.Mode.INJECTION || this._injectionMappings.size === 0) {
+      return promptData;
+    }
+
+    this._log("debug", "Injecting Council data into ST prompt (Mode 3)");
+
+    try {
+      let modifiedPrompt = promptData.prompt || "";
+
+      // Replace each mapped token with RAG results
+      for (const [stToken, ragPipelineId] of this._injectionMappings) {
+        const tokenRegex = new RegExp(`{{${stToken}}}`, 'g');
+
+        if (tokenRegex.test(modifiedPrompt)) {
+          // Get RAG results (this would be executed earlier, we're retrieving cached results)
+          const ragResult = this._getCachedRAGResult(ragPipelineId);
+
+          if (ragResult) {
+            modifiedPrompt = modifiedPrompt.replace(tokenRegex, ragResult);
+            this._log("debug", `Replaced {{${stToken}}} with RAG results from ${ragPipelineId}`);
+          }
+        }
+      }
+
+      promptData.prompt = modifiedPrompt;
+
+      this._emit("orchestration:injection:applied", {
+        replacements: this._injectionMappings.size,
+      });
+
+      return promptData;
+    } catch (error) {
+      this._log("error", `Failed to inject into ST prompt: ${error.message}`);
+      return promptData;
+    }
+  },
+
+  /**
+   * Get cached RAG result for injection
+   * @param {string} ragPipelineId - RAG pipeline ID
+   * @returns {string|null} Cached result or null
+   */
+  _getCachedRAGResult(ragPipelineId) {
+    // This would retrieve RAG results that were executed before prompt building
+    // For now, return a placeholder
+    if (this._runState && this._runState.globals && this._runState.globals.ragResults) {
+      return this._runState.globals.ragResults[ragPipelineId] || null;
+    }
+    return null;
+  },
+
+  /**
+   * Execute RAG pipelines for injection mode (called before ST prompt building)
+   * @param {Object} context - Current ST context
+   * @returns {Promise<Object>} RAG results keyed by pipeline ID
+   */
+  async executeInjectionRAG(context) {
+    if (this._mode !== this.Mode.INJECTION || this._injectionMappings.size === 0) {
+      return {};
+    }
+
+    this._log("info", `Executing ${this._injectionMappings.size} RAG pipelines for injection`);
+
+    const curationSystem = this._getSystem("curation");
+    if (!curationSystem) {
+      this._log("error", "CurationSystem not available for injection mode");
+      return {};
+    }
+
+    const ragResults = {};
+
+    try {
+      // Execute each RAG pipeline
+      for (const [stToken, ragPipelineId] of this._injectionMappings) {
+        this._log("debug", `Executing RAG pipeline: ${ragPipelineId} for token {{${stToken}}}`);
+
+        try {
+          const result = await curationSystem.executeRAG(ragPipelineId, {
+            query: context.userInput || "",
+            context: context,
+            limit: 5,
+          });
+
+          // Format results as string
+          if (result?.results && result.results.length > 0) {
+            ragResults[ragPipelineId] = result.results
+              .map(r => `[${r.storeName}] ${JSON.stringify(r.entry)}`)
+              .join("\n\n");
+
+            this._log("debug", `RAG pipeline ${ragPipelineId} returned ${result.results.length} results`);
+          } else {
+            ragResults[ragPipelineId] = "";
+            this._log("debug", `RAG pipeline ${ragPipelineId} returned no results`);
+          }
+
+          this._emit("orchestration:injection:rag_complete", {
+            token: stToken,
+            pipelineId: ragPipelineId,
+            resultCount: result?.results?.length || 0,
+          });
+
+        } catch (error) {
+          this._log("error", `RAG pipeline ${ragPipelineId} failed: ${error.message}`);
+          ragResults[ragPipelineId] = "";
+        }
+      }
+
+      // Cache results for injection
+      if (!this._runState) {
+        this._runState = {
+          globals: { ragResults },
+        };
+      } else {
+        if (!this._runState.globals) {
+          this._runState.globals = {};
+        }
+        this._runState.globals.ragResults = ragResults;
+      }
+
+      return ragResults;
+
+    } catch (error) {
+      this._log("error", `Failed to execute injection RAG: ${error.message}`);
+      return {};
+    }
   },
 
   // ===== SUMMARY =====
