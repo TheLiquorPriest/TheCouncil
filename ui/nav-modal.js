@@ -2,9 +2,10 @@
  * TheCouncil - Navigation Modal UI
  *
  * Floating navigation component for quick access to all systems:
- * - Agents System access
  * - Curation System access
- * - Pipeline System access
+ * - Character System access
+ * - Pipeline System access (includes agent/team management)
+ * - Injection System access
  * - Pipeline execution controls
  * - Quick status indicator
  *
@@ -52,7 +53,7 @@ const NavModal = {
    * @type {Object}
    */
   _modals: {
-    agents: null,
+    // agents removed - managed via pipeline modal
     curation: null,
     character: null,
     pipeline: null,
@@ -119,10 +120,9 @@ const NavModal = {
    * Initialize the Navigation Modal
    * @param {Object} options - Configuration options
    * @param {Object} options.kernel - Kernel instance (optional)
-   * @param {Object} options.agentsModal - Reference to AgentsModal
    * @param {Object} options.curationModal - Reference to CurationModal
    * @param {Object} options.characterModal - Reference to CharacterModal
-   * @param {Object} options.pipelineModal - Reference to PipelineModal
+   * @param {Object} options.pipelineModal - Reference to PipelineModal (includes agent management)
    * @param {Object} options.gavelModal - Reference to GavelModal
    * @param {Object} options.injectionModal - Reference to InjectionModal
    * @param {Object} options.pipelineSystem - Reference to PipelineSystem
@@ -146,7 +146,7 @@ const NavModal = {
       this._logger = options.logger;
     }
 
-    this._modals.agents = options.agentsModal;
+    // agentsModal removed - agents managed via PipelineModal
     this._modals.curation = options.curationModal;
     this._modals.character = options.characterModal;
     this._modals.pipeline = options.pipelineModal;
@@ -275,10 +275,6 @@ const NavModal = {
       </div>
 
       <div class="council-nav-buttons">
-        <button class="council-nav-btn" data-action="open-agents" title="Agents System">
-          <span class="council-nav-btn-icon">👥</span>
-          <span class="council-nav-btn-label">Agents</span>
-        </button>
         <button class="council-nav-btn" data-action="open-curation" title="Curation System">
           <span class="council-nav-btn-icon">📚</span>
           <span class="council-nav-btn-label">Curation</span>
@@ -588,9 +584,7 @@ const NavModal = {
       case "toggle-expand":
         this.toggleExpanded();
         break;
-      case "open-agents":
-        this._openModal("agents");
-        break;
+      // NOTE: "open-agents" case removed - agents managed via Pipeline modal
       case "open-curation":
         this._openModal("curation");
         break;
@@ -1018,10 +1012,11 @@ const NavModal = {
       isExpanded: this._isExpanded,
       position: { ...this._position },
       modalsAvailable: {
-        agents: !!this._modals.agents,
         curation: !!this._modals.curation,
+        character: !!this._modals.character,
         pipeline: !!this._modals.pipeline,
         gavel: !!this._modals.gavel,
+        injection: !!this._modals.injection,
       },
       pipelineRunning: this._pipelineSystem?.isRunning() || false,
     };

@@ -116,6 +116,12 @@ const PipelineBuilderModal = {
     // Subscribe to PipelineBuilderSystem events
     this._subscribeToEvents();
 
+    // Register with Kernel modal system
+    if (this._kernel && this._kernel.registerModal) {
+      this._kernel.registerModal("agents", this);
+      this._log("debug", "Registered with Kernel modal system");
+    }
+
     this._initialized = true;
     this._log("info", "Pipeline Builder Modal initialized");
 

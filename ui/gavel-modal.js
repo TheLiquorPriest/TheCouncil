@@ -139,6 +139,12 @@ const GavelModal = {
     // Load history from storage
     this._loadHistory();
 
+    // Register with Kernel modal system
+    if (this._kernel && this._kernel.registerModal) {
+      this._kernel.registerModal("gavel", this);
+      this._log("debug", "Registered with Kernel modal system");
+    }
+
     this._initialized = true;
     this._log("info", "Gavel Modal initialized");
 

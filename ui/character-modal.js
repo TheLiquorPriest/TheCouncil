@@ -106,6 +106,7 @@ const CharacterModal = {
       return this;
     }
 
+    this._kernel = options.kernel || null;
     this._characterSystem = options.characterSystem;
     this._curationSystem = options.curationSystem;
     this._logger = options.logger;
@@ -122,6 +123,12 @@ const CharacterModal = {
 
     // Subscribe to system events
     this._subscribeToEvents();
+
+    // Register with Kernel modal system
+    if (this._kernel && this._kernel.registerModal) {
+      this._kernel.registerModal("character", this);
+      this._log("debug", "Registered with Kernel modal system");
+    }
 
     this._initialized = true;
     this._log("info", "Character Modal initialized");

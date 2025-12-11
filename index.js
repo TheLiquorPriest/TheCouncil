@@ -38,7 +38,7 @@
     ApiClient: null,
 
     // UI Modals
-    AgentsModal: null,
+    // AgentsModal: null, // REMOVED: agents managed via PipelineModal
     CurationModal: null,
     CharacterModal: null,
     PipelineModal: null,
@@ -168,7 +168,7 @@
       "ui/components/execution-monitor.js",
 
       // UI Modals
-      "ui/agents-modal.js",
+      // "ui/agents-modal.js", // REMOVED: agents managed via PipelineModal per SYSTEM_DEFINITIONS.md
       "ui/curation-modal.js",
       "ui/character-modal.js",
       "ui/pipeline-modal.js",
@@ -208,7 +208,7 @@
     Systems.PipelineSystem = window.PipelineSystem || null;
     Systems.OutputManager = window.OutputManager || null;
 
-    Systems.AgentsModal = window.AgentsModal || null;
+    // Systems.AgentsModal removed - agents managed via PipelineModal
     Systems.CurationModal = window.CurationModal || null;
     Systems.CharacterModal = window.CharacterModal || null;
     Systems.PipelineModal = window.PipelineModal || null;
@@ -235,7 +235,7 @@
       CharacterSystem: !!Systems.CharacterSystem,
       PipelineSystem: !!Systems.PipelineSystem,
       OutputManager: !!Systems.OutputManager,
-      AgentsModal: !!Systems.AgentsModal,
+      // AgentsModal removed - agents managed via PipelineModal
       CurationModal: !!Systems.CurationModal,
       CharacterModal: !!Systems.CharacterModal,
       PipelineModal: !!Systems.PipelineModal,
@@ -342,13 +342,9 @@
       logger.log("info", "CurationSystem initialized");
     }
 
-    // Initialize Character System
+    // Initialize Character System (Kernel pattern - registers itself)
     if (Systems.CharacterSystem) {
-      Systems.CharacterSystem.init({
-        curationSystem: Systems.CurationSystem,
-        logger: Kernel.getModule("logger"),
-      });
-      Kernel.registerSystem("characterSystem", Systems.CharacterSystem);
+      Systems.CharacterSystem.init(Kernel);
       logger.log("info", "CharacterSystem initialized");
     }
 
@@ -430,70 +426,59 @@
 
   /**
    * Initialize UI modals
+   * @param {Object} Kernel - Kernel instance
    */
-  function initializeUI() {
+  function initializeUI(Kernel) {
     logger.log("info", "Initializing UI modals...");
     console.log("[TheCouncil] initializeUI called - Systems available:", {
-      AgentsModal: !!Systems.AgentsModal,
+      // AgentsModal removed - agents managed via PipelineModal
       CurationModal: !!Systems.CurationModal,
       CharacterModal: !!Systems.CharacterModal,
       PipelineModal: !!Systems.PipelineModal,
       GavelModal: !!Systems.GavelModal,
+      InjectionModal: !!Systems.InjectionModal,
       NavModal: !!Systems.NavModal,
     });
 
-    // Initialize Agents Modal
-    if (Systems.AgentsModal) {
-      Systems.AgentsModal.init({
-        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
-        logger: Systems.Logger,
-      });
-    }
+    // NOTE: AgentsModal removed - editorial agents are managed via PipelineModal
+    // per SYSTEM_DEFINITIONS.md: "agents-system.js functionality consolidated into Pipeline Builder System"
 
     // Initialize Curation Modal
     if (Systems.CurationModal) {
       Systems.CurationModal.init({
+        kernel: Kernel,
         curationSystem: Systems.CurationSystem,
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
     }
 
     // Initialize Character Modal
     if (Systems.CharacterModal) {
       Systems.CharacterModal.init({
+        kernel: Kernel,
         characterSystem: Systems.CharacterSystem,
         curationSystem: Systems.CurationSystem,
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
     }
 
-    // Initialize Pipeline Modal
+    // Initialize Pipeline Modal (Kernel pattern)
     if (Systems.PipelineModal) {
-      Systems.PipelineModal.init({
-        pipelineSystem: Systems.PipelineSystem,
-        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
-        outputManager: Systems.OutputManager,
-        logger: Systems.Logger,
-      });
+      Systems.PipelineModal.init(Kernel);
     }
 
-    // Initialize Gavel Modal
+    // Initialize Gavel Modal (Kernel + options hybrid)
     if (Systems.GavelModal) {
-      Systems.GavelModal.init({
-        pipelineSystem: Systems.PipelineSystem,
-        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
-        outputManager: Systems.OutputManager,
-        logger: Systems.Logger,
-      });
+      Systems.GavelModal.init(Kernel);
     }
 
     // Initialize Injection Modal (Task 5.3 - Mode 3 Injection UI)
     if (Systems.InjectionModal) {
       Systems.InjectionModal.init({
-        kernel: window.TheCouncilKernel || window.TheCouncil,
+        kernel: Kernel,
         orchestrationSystem: Systems.OrchestrationSystem,
         curationSystem: Systems.CurationSystem,
-        logger: Systems.Logger,
+        logger: Kernel.getModule("logger"),
       });
     }
 
@@ -502,7 +487,8 @@
       console.log("[TheCouncil] Initializing NavModal...");
       try {
         Systems.NavModal.init({
-          agentsModal: Systems.AgentsModal,
+          kernel: Kernel,
+          // agentsModal removed - agents managed via PipelineModal
           curationModal: Systems.CurationModal,
           characterModal: Systems.CharacterModal,
           pipelineModal: Systems.PipelineModal,
@@ -510,7 +496,7 @@
           injectionModal: Systems.InjectionModal,
           pipelineSystem: Systems.PipelineSystem,
           orchestrationSystem: Systems.OrchestrationSystem,
-          logger: Systems.Logger,
+          logger: Kernel.getModule("logger"),
         });
         console.log("[TheCouncil] NavModal.init() completed", {
           initialized: Systems.NavModal._initialized,
@@ -1001,7 +987,7 @@
         await initializeSystems(Kernel);
 
         // Initialize UI
-        initializeUI();
+        initializeUI(Kernel);
 
         // Register SillyTavern event listeners
         registerSTEventListeners();
