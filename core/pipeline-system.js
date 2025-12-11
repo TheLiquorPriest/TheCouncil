@@ -2457,6 +2457,33 @@ Provide actionable insights for improving character voice and consistency.`;
 
     const idsToResolve =
       positionIds?.length > 0 ? positionIds : defaultPositions;
+
+    // Use CurationSystem to resolve curation agents (not AgentsSystem)
+    if (this._curationSystem) {
+      const agents = [];
+      for (const positionId of idsToResolve) {
+        // First try to get the agent assigned to this position
+        const agent = this._curationSystem.getAgentForPosition(positionId);
+        if (agent) {
+          agents.push(agent);
+          continue;
+        }
+
+        // Fallback: search all curation agents for one with this positionId
+        const allCurationAgents = this._curationSystem.getAllCurationAgents();
+        for (const curationAgent of allCurationAgents) {
+          if (curationAgent.positionId === positionId) {
+            agents.push(curationAgent);
+            break;
+          }
+        }
+      }
+      if (agents.length > 0) {
+        return agents;
+      }
+    }
+
+    // Fallback to AgentsSystem if CurationSystem doesn't have agents
     return this._resolveParticipantsFromIds(idsToResolve);
   },
 

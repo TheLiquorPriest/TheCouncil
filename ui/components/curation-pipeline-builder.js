@@ -508,7 +508,7 @@ const CurationPipelineBuilder = {
             <div class="cpb-pipeline-meta">
               <span class="cpb-meta-badge cpb-op-${pipeline.operation}">${pipeline.operation.toUpperCase()}</span>
               <span class="cpb-meta-store">📁 ${pipeline.storeId}</span>
-              <span class="cpb-meta-steps">📊 ${pipeline.actions?.length || 0} steps</span>
+              <span class="cpb-meta-steps">📊 ${pipeline.actions?.length || pipeline.steps?.length || 0} steps</span>
             </div>
           `
               : `
@@ -624,7 +624,7 @@ const CurationPipelineBuilder = {
           <div class="cpb-form-section">
             <h4>📊 Pipeline Steps</h4>
             <div class="cpb-steps-container" id="cpb-steps">
-              ${this._renderSteps(p.steps || [], agents)}
+              ${this._renderSteps(p.steps || p.actions || [], agents)}
             </div>
             <button class="cpb-btn cpb-btn-secondary cpb-add-step" data-action="add-step">
               + Add Step
@@ -955,7 +955,7 @@ const CurationPipelineBuilder = {
                     ? agents
                         .map(
                           (a) => `
-                  <option value="${a.id}" ${step.agentId === a.id || step.agentRole === a.id ? "selected" : ""}>
+                  <option value="${a.id}" ${this._isAgentSelectedForStep(step, a) ? "selected" : ""}>
                     ${a.type === "curation" ? "🤖 " : "📋 "}${this._escapeHtml(a.name)}${a.type ? ` (${a.type})` : ""}
                   </option>
                 `,
@@ -1314,9 +1314,158 @@ const CurationPipelineBuilder = {
     if (pipeline) {
       instance.type = type;
       instance.mode = "edit";
-      instance.pipeline = { ...pipeline };
+      // Normalize pipeline structure: convert actions to steps and positionId to agentId
+      const normalizedPipeline = this._normalizePipelineForUI({ ...pipeline });
+      instance.pipeline = normalizedPipeline;
       this._renderInstance(instance);
     }
+  },
+
+  /**
+   * Normalize pipeline data for UI display
+   * Converts 'actions' to 'steps' and 'positionId' to 'agentId'
+   * @param {Object} pipeline - Raw pipeline from CurationSystem
+   * @returns {Object} Normalized pipeline for UI
+   */
+  _normalizePipelineForUI(pipeline) {
+    // Convert actions array to steps array if needed
+    if (pipeline.actions && !pipeline.steps) {
+      pipeline.steps = pipeline.actions.map((action, index) => {
+        // Resolve the agent ID from the position ID
+        // Default pipelines reference positions, but we want the assigned agent
+        let resolvedAgentId = action.agentId || "";
+
+        if (!resolvedAgentId && action.positionId) {
+          // Try to find the agent assigned to this position
+          const assignedAgent = this._resolveAgentForPosition(
+            action.positionId,
+          );
+          resolvedAgentId = assignedAgent?.id || action.positionId;
+        }
+
+        return {
+          id: action.id || `step_${index}`,
+          name: action.name || `Step ${index + 1}`,
+          // Use resolved agent ID
+          agentId: resolvedAgentId,
+          inputSource:
+            action.inputSource || action.inputMapping
+              ? "pipeline_input"
+              : "pipeline_input",
+          outputTarget:
+            action.outputTarget || action.outputMapping
+              ? "next_step"
+              : "next_step",
+          promptTemplate: action.promptTemplate || "",
+          // Preserve original fields for reference
+          positionId: action.positionId,
+          _originalPositionId: action.positionId,
+          _originalInputMapping: action.inputMapping,
+          _originalOutputMapping: action.outputMapping,
+        };
+      });
+    }
+    return pipeline;
+  },
+
+  /**
+   * Resolve the agent assigned to a position
+   * @param {string} positionId - Position ID
+   * @returns {Object|null} Agent object or null
+   */
+  _resolveAgentForPosition(positionId) {
+    if (!this._curationSystem) return null;
+
+    // First try to get the agent directly assigned to this position
+    if (this._curationSystem.getAgentForPosition) {
+      const agent = this._curationSystem.getAgentForPosition(positionId);
+      if (agent) return agent;
+    }
+
+    // Fallback: search all agents for one with matching positionId
+    if (this._curationSystem.getAllCurationAgents) {
+      const agents = this._curationSystem.getAllCurationAgents();
+      for (const agent of agents) {
+        if (agent.positionId === positionId) {
+          return agent;
+        }
+      }
+    }
+
+    return null;
+  },
+
+  /**
+   * Convert UI pipeline back to storage format
+   * Converts 'steps' to 'actions' and properly maps agent/position IDs
+   * @param {Object} pipeline - UI pipeline data
+   * @returns {Object} Pipeline for storage
+   */
+  _normalizePipelineForStorage(pipeline) {
+    if (pipeline.steps) {
+      pipeline.actions = pipeline.steps.map((step) => {
+        // Resolve the position ID from the selected agent
+        let positionId = step._originalPositionId || "";
+        let agentId = step.agentId || "";
+
+        // If an agent was selected (e.g., "curation_character_topologist"),
+        // we need to find its associated position for pipeline execution
+        if (agentId && this._curationSystem?.getCurationAgent) {
+          const agent = this._curationSystem.getCurationAgent(agentId);
+          if (agent?.positionId) {
+            positionId = agent.positionId;
+          }
+        }
+
+        // If selected value is a position ID directly (no agent prefix),
+        // use it as the positionId
+        if (agentId && !positionId) {
+          // Check if this is a position ID rather than an agent ID
+          if (this._curationSystem?.getCurationPosition) {
+            const position = this._curationSystem.getCurationPosition(agentId);
+            if (position) {
+              positionId = agentId;
+            }
+          }
+        }
+
+        return {
+          id: step.id,
+          name: step.name,
+          description: step.description || "",
+          // Store positionId for pipeline execution compatibility
+          positionId: positionId || agentId || "",
+          // Also store agentId for explicit agent reference
+          agentId: agentId || "",
+          promptTemplate: step.promptTemplate || "",
+          inputMapping: step._originalInputMapping || {},
+          outputMapping: step._originalOutputMapping || {},
+        };
+      });
+    }
+    return pipeline;
+  },
+
+  /**
+   * Check if an agent should be selected for a step
+   * Handles matching by agentId, agentRole, positionId, or agent's positionId
+   * @param {Object} step - The pipeline step
+   * @param {Object} agent - The agent option
+   * @returns {boolean} True if agent should be selected
+   */
+  _isAgentSelectedForStep(step, agent) {
+    // Direct ID match
+    if (step.agentId === agent.id) return true;
+    if (step.agentRole === agent.id) return true;
+
+    // Position ID match (default pipelines use positionId)
+    if (step.positionId) {
+      // Check if step's positionId matches agent's id or positionId
+      if (step.positionId === agent.id) return true;
+      if (step.positionId === agent.positionId) return true;
+    }
+
+    return false;
   },
 
   /**
@@ -1399,8 +1548,9 @@ const CurationPipelineBuilder = {
 
         // Simulate CRUD pipeline execution
         const pipeline = instance.pipeline;
-        for (let i = 0; i < (pipeline.steps?.length || 0); i++) {
-          const step = pipeline.steps[i];
+        const steps = pipeline.steps || pipeline.actions || [];
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
           addLog(`Executing step ${i + 1}: ${step.name}`, "info");
           await this._delay(500); // Simulate processing
           addLog(`Step ${i + 1} completed`, "success");
@@ -1456,7 +1606,9 @@ const CurationPipelineBuilder = {
    * @param {Object} instance - Instance
    */
   _saveCRUDPipeline(instance) {
-    const pipeline = this._gatherFormData(instance);
+    let pipeline = this._gatherFormData(instance);
+    // Convert to storage format (steps -> actions, agentId -> positionId)
+    pipeline = this._normalizePipelineForStorage(pipeline);
 
     if (!pipeline.id || !pipeline.name) {
       this._showToast("Pipeline ID and name are required", "error");
@@ -1765,21 +1917,29 @@ const CurationPipelineBuilder = {
           name: agent.name,
           description: agent.description || "",
           type: "curation",
+          // Include positionId for matching pipeline action references
+          positionId: agent.positionId || null,
         });
       }
     }
 
     // Also add curation positions as agent roles (fallback)
+    // This ensures positions are available even if no agent is assigned
     if (this._curationSystem?.getCurationPositions) {
       const positions = this._curationSystem.getCurationPositions();
       for (const position of positions) {
-        // Only add if not already represented by an agent
-        if (!agents.some((a) => a.id === position.id)) {
+        // Only add if no agent is assigned to this position
+        // Check both id and positionId to avoid duplicates
+        const hasAgent = agents.some(
+          (a) => a.id === position.id || a.positionId === position.id,
+        );
+        if (!hasAgent) {
           agents.push({
             id: position.id,
             name: position.name,
             description: position.promptModifiers?.roleDescription || "",
             type: "position",
+            positionId: position.id,
           });
         }
       }

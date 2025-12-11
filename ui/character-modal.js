@@ -87,6 +87,12 @@ const CharacterModal = {
    */
   _cleanupFns: [],
 
+  /**
+   * Reference to PromptBuilder instance for Director editing
+   * @type {Object|null}
+   */
+  _promptBuilderInstance: null,
+
   // ===== INITIALIZATION =====
 
   /**
@@ -127,6 +133,12 @@ const CharacterModal = {
    * Destroy the modal and clean up
    */
   destroy() {
+    // Clean up PromptBuilder instance
+    if (this._promptBuilderInstance) {
+      this._promptBuilderInstance.destroy();
+      this._promptBuilderInstance = null;
+    }
+
     // Run cleanup functions
     for (const cleanup of this._cleanupFns) {
       try {
@@ -414,6 +426,12 @@ const CharacterModal = {
    * Render content based on active tab
    */
   _renderContent() {
+    // Clean up PromptBuilder instance when switching tabs (unless going to director tab)
+    if (this._activeTab !== "director" && this._promptBuilderInstance) {
+      this._promptBuilderInstance.destroy();
+      this._promptBuilderInstance = null;
+    }
+
     switch (this._activeTab) {
       case "characters":
         this._renderCharactersTab();
@@ -889,6 +907,15 @@ const CharacterModal = {
       return;
     }
 
+    // Prepare initial prompt builder config from director data
+    const promptConfig = director?.systemPrompt || {};
+    const initialMode =
+      promptConfig.source === "preset"
+        ? "preset"
+        : promptConfig.source === "tokens"
+          ? "tokens"
+          : "custom";
+
     this._elements.content.innerHTML = `
       <div class="council-character-tab-content">
         <div class="council-character-director-panel">
@@ -912,14 +939,6 @@ const CharacterModal = {
                         data-director="description"
                         rows="2"
               >${this._escapeHtml(director.description || "")}</textarea>
-            </div>
-
-            <div class="council-character-field">
-              <label>System Prompt</label>
-              <textarea class="council-character-input council-character-code"
-                        data-director="systemPrompt"
-                        rows="10"
-              >${this._escapeHtml(director.systemPrompt?.customText || "")}</textarea>
             </div>
           </div>
 
@@ -957,6 +976,16 @@ const CharacterModal = {
             </div>
           </div>
 
+          <div class="council-character-section">
+            <div class="council-character-section-header">
+              <h4>💬 System Prompt</h4>
+              <span class="council-character-section-hint">Use custom text, ST presets, or token-based prompts</span>
+            </div>
+            <div class="council-character-prompt-builder-container" data-prompt-builder="director">
+              <!-- PromptBuilder will be rendered here -->
+            </div>
+          </div>
+
           <div class="council-character-detail-actions">
             <button class="council-character-btn council-character-btn-primary" data-action="save-director">
               💾 Save Changes
@@ -968,6 +997,50 @@ const CharacterModal = {
         </div>
       </div>
     `;
+
+    // Initialize PromptBuilder in the director panel
+    this._initDirectorPromptBuilder(promptConfig, initialMode);
+  },
+
+  /**
+   * Initialize PromptBuilder for Director tab
+   * @param {Object} promptConfig - Current prompt configuration
+   * @param {string} initialMode - Initial mode (custom, preset, tokens)
+   */
+  _initDirectorPromptBuilder(promptConfig, initialMode) {
+    // Clean up existing instance
+    if (this._promptBuilderInstance) {
+      this._promptBuilderInstance.destroy();
+      this._promptBuilderInstance = null;
+    }
+
+    const promptBuilderContainer = this._elements.content.querySelector(
+      '[data-prompt-builder="director"]',
+    );
+
+    if (promptBuilderContainer && window.PromptBuilder) {
+      this._promptBuilderInstance = window.PromptBuilder.createInstance({
+        initialMode: initialMode,
+        initialPrompt: promptConfig.customText || "",
+        initialPreset: promptConfig.presetName || null,
+        initialTokens: promptConfig.tokens || [],
+        onChange: (value) => {
+          this._log("debug", "Director PromptBuilder changed:", value);
+        },
+      });
+      this._promptBuilderInstance.render(promptBuilderContainer);
+    } else {
+      // Fallback to simple textarea if PromptBuilder not available
+      promptBuilderContainer.innerHTML = `
+        <div class="council-character-field">
+          <label>System Prompt</label>
+          <textarea class="council-character-input council-character-code"
+                    data-director="systemPrompt"
+                    rows="10"
+          >${this._escapeHtml(promptConfig.customText || "")}</textarea>
+        </div>
+      `;
+    }
   },
 
   /**
@@ -1266,17 +1339,34 @@ const CharacterModal = {
   _saveDirectorConfig() {
     const content = this._elements.content;
 
+    // Get system prompt config from PromptBuilder or fallback to textarea
+    let systemPromptConfig;
+    if (this._promptBuilderInstance) {
+      const promptValue = this._promptBuilderInstance.getValue();
+      systemPromptConfig = {
+        source: promptValue.mode,
+        customText:
+          promptValue.mode === "custom"
+            ? promptValue.customPrompt
+            : promptValue.generatedPrompt || "",
+        presetName: promptValue.presetName || null,
+        tokens: promptValue.tokens || [],
+      };
+    } else {
+      systemPromptConfig = {
+        source: "custom",
+        customText:
+          content.querySelector('[data-director="systemPrompt"]')?.value || "",
+      };
+    }
+
     const updates = {
       name:
         content.querySelector('[data-director="name"]')?.value ||
         "Character Director",
       description:
         content.querySelector('[data-director="description"]')?.value || "",
-      systemPrompt: {
-        source: "custom",
-        customText:
-          content.querySelector('[data-director="systemPrompt"]')?.value || "",
-      },
+      systemPrompt: systemPromptConfig,
       apiConfig: {
         useCurrentConnection:
           content.querySelector('[data-director="useCurrentConnection"]')
@@ -2164,6 +2254,44 @@ const CharacterModal = {
         border-radius: 6px;
         max-height: 400px;
         overflow: auto;
+      }
+
+      /* Prompt Builder Container */
+      .council-character-prompt-builder-container {
+        background: rgba(0, 0, 0, 0.15);
+        border: 1px solid var(--SmartThemeBorderColor, #333);
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 200px;
+      }
+
+      .council-character-prompt-builder-container .prompt-builder {
+        background: transparent;
+      }
+
+      .council-character-prompt-builder-container .prompt-builder-mode-selector {
+        margin-bottom: 12px;
+      }
+
+      .council-character-prompt-builder-container textarea {
+        background: var(--SmartThemeBlurTintColor, #1a1a2e);
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        color: var(--SmartThemeBodyColor, #fff);
+        border-radius: 6px;
+        padding: 12px;
+        width: 100%;
+        min-height: 150px;
+        font-family: monospace;
+        font-size: 13px;
+        resize: vertical;
+      }
+
+      .council-character-prompt-builder-container select {
+        background: var(--SmartThemeBlurTintColor, #1a1a2e);
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        color: var(--SmartThemeBodyColor, #fff);
+        border-radius: 6px;
+        padding: 8px 12px;
       }
 
       /* Mobile Responsive */

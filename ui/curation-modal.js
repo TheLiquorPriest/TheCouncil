@@ -90,6 +90,12 @@ const CurationModal = {
    */
   _pipelineBuilderInstance: null,
 
+  /**
+   * Reference to PromptBuilder instance for agent editing
+   * @type {Object|null}
+   */
+  _promptBuilderInstance: null,
+
   // ===== INITIALIZATION =====
 
   /**
@@ -1281,6 +1287,15 @@ const CurationModal = {
     const isEdit = !!agent;
     const positions = this._curationSystem.getCurationPositions();
 
+    // Prepare initial prompt builder config from agent data
+    const promptConfig = agent?.systemPrompt || {};
+    const initialMode =
+      promptConfig.source === "preset"
+        ? "preset"
+        : promptConfig.source === "tokens"
+          ? "tokens"
+          : "custom";
+
     const dialog = document.createElement("div");
     dialog.className = "council-curation-dialog-overlay";
     dialog.innerHTML = `
@@ -1289,90 +1304,95 @@ const CurationModal = {
           <h3>${isEdit ? "Edit Curation Agent" : "Create Curation Agent"}</h3>
           <button class="council-curation-dialog-close" data-dialog="cancel">✕</button>
         </div>
-        <div class="council-curation-dialog-content">
-          <div class="council-curation-form-group">
-            <label>Agent Name *</label>
-            <input type="text" class="council-form-input" data-field="name"
-                   value="${this._escapeHtml(agent?.name || "")}"
-                   placeholder="e.g., Expert Archivist">
-          </div>
-
-          <div class="council-curation-form-group">
-            <label>Description</label>
-            <textarea class="council-form-textarea" data-field="description" rows="2"
-                      placeholder="Brief description of this agent's expertise...">${this._escapeHtml(agent?.description || "")}</textarea>
-          </div>
-
-          <div class="council-curation-form-group">
-            <label>Position</label>
-            <select class="council-form-input" data-field="positionId">
-              <option value="">-- No Position --</option>
-              ${positions
-                .map(
-                  (p) => `
-                <option value="${p.id}" ${agent?.positionId === p.id ? "selected" : ""}>
-                  ${this._escapeHtml(p.name)} (${p.tier})
-                </option>
-              `,
-                )
-                .join("")}
-            </select>
-            <p class="council-form-hint">Assign this agent to a curation position.</p>
-          </div>
-
-          <h4 class="council-section-title">System Prompt</h4>
-          <div class="council-curation-form-group">
-            <label>Prompt Source</label>
-            <select class="council-form-input" data-field="promptSource">
-              <option value="custom" ${(agent?.systemPrompt?.source || "custom") === "custom" ? "selected" : ""}>Custom Text</option>
-              <option value="position" ${agent?.systemPrompt?.source === "position" ? "selected" : ""}>From Position</option>
-            </select>
-          </div>
-
-          <div class="council-curation-form-group">
-            <label>System Prompt Text</label>
-            <textarea class="council-form-textarea council-form-textarea-large" data-field="systemPrompt" rows="6"
-                      placeholder="You are a specialized curation agent...">${this._escapeHtml(agent?.systemPrompt?.customText || "")}</textarea>
-            <p class="council-form-hint">The system prompt that defines this agent's behavior and expertise.</p>
-          </div>
-
-          <h4 class="council-section-title">API Configuration</h4>
-          <div class="council-curation-form-group">
-            <label class="council-checkbox">
-              <input type="checkbox" data-field="useCurrentConnection"
-                     ${agent?.apiConfig?.useCurrentConnection !== false ? "checked" : ""}>
-              Use Current SillyTavern Connection
-            </label>
-            <p class="council-form-hint">When enabled, uses your active API connection settings.</p>
-          </div>
-
-          <div class="council-form-row">
-            <div class="council-curation-form-group">
-              <label>Temperature</label>
-              <input type="number" class="council-form-input" data-field="temperature"
-                     value="${agent?.apiConfig?.temperature ?? 0.7}"
-                     min="0" max="2" step="0.1">
+        <div class="council-curation-dialog-content council-curation-dialog-scrollable">
+          <div class="council-curation-dialog-section">
+            <h4 class="council-curation-section-title">📝 Basic Information</h4>
+            <div class="council-curation-form-row">
+              <div class="council-curation-form-group">
+                <label>Agent ID</label>
+                <input type="text" class="council-form-input" data-field="id"
+                       value="${this._escapeHtml(agent?.id || "")}"
+                       placeholder="e.g., archivist_expert"
+                       ${isEdit ? "disabled" : ""}>
+              </div>
+              <div class="council-curation-form-group">
+                <label>Agent Name *</label>
+                <input type="text" class="council-form-input" data-field="name"
+                       value="${this._escapeHtml(agent?.name || "")}"
+                       placeholder="e.g., Expert Archivist">
+              </div>
             </div>
+
             <div class="council-curation-form-group">
-              <label>Max Tokens</label>
-              <input type="number" class="council-form-input" data-field="maxTokens"
-                     value="${agent?.apiConfig?.maxTokens ?? 2048}"
-                     min="100" max="16000">
+              <label>Description</label>
+              <textarea class="council-form-textarea" data-field="description" rows="2"
+                        placeholder="Brief description of this agent's expertise...">${this._escapeHtml(agent?.description || "")}</textarea>
+            </div>
+
+            <div class="council-curation-form-group">
+              <label>Assigned Position</label>
+              <select class="council-form-input" data-field="positionId">
+                <option value="">-- No Position --</option>
+                ${positions
+                  .map(
+                    (p) => `
+                  <option value="${p.id}" ${agent?.positionId === p.id ? "selected" : ""}>
+                    ${this._escapeHtml(p.name)} (${p.tier})
+                  </option>
+                `,
+                  )
+                  .join("")}
+              </select>
+              <p class="council-form-hint">Assign this agent to a curation position.</p>
             </div>
           </div>
 
-          <div class="council-form-row">
+          <div class="council-curation-dialog-section">
+            <h4 class="council-curation-section-title">⚙️ API Configuration</h4>
             <div class="council-curation-form-group">
-              <label>Top P</label>
-              <input type="number" class="council-form-input" data-field="topP"
-                     value="${agent?.apiConfig?.topP ?? 1}"
-                     min="0" max="1" step="0.1">
+              <label class="council-checkbox">
+                <input type="checkbox" data-field="useCurrentConnection"
+                       ${agent?.apiConfig?.useCurrentConnection !== false ? "checked" : ""}>
+                Use Current SillyTavern Connection
+              </label>
+              <p class="council-form-hint">When enabled, uses your active API connection settings.</p>
             </div>
-            <div class="council-curation-form-group">
-              <label>Frequency Penalty</label>
-              <input type="number" class="council-form-input" data-field="frequencyPenalty"
-                     value="${agent?.apiConfig?.frequencyPenalty ?? 0}"
-                     min="-2" max="2" step="0.1">
+
+            <div class="council-curation-form-row">
+              <div class="council-curation-form-group">
+                <label>Temperature</label>
+                <input type="number" class="council-form-input" data-field="temperature"
+                       value="${agent?.apiConfig?.temperature ?? 0.7}"
+                       min="0" max="2" step="0.1">
+              </div>
+              <div class="council-curation-form-group">
+                <label>Max Tokens</label>
+                <input type="number" class="council-form-input" data-field="maxTokens"
+                       value="${agent?.apiConfig?.maxTokens ?? 2048}"
+                       min="100" max="16000">
+              </div>
+            </div>
+
+            <div class="council-curation-form-row">
+              <div class="council-curation-form-group">
+                <label>Top P</label>
+                <input type="number" class="council-form-input" data-field="topP"
+                       value="${agent?.apiConfig?.topP ?? 1}"
+                       min="0" max="1" step="0.1">
+              </div>
+              <div class="council-curation-form-group">
+                <label>Frequency Penalty</label>
+                <input type="number" class="council-form-input" data-field="frequencyPenalty"
+                       value="${agent?.apiConfig?.frequencyPenalty ?? 0}"
+                       min="-2" max="2" step="0.1">
+              </div>
+            </div>
+          </div>
+
+          <div class="council-curation-dialog-section">
+            <h4 class="council-curation-section-title">💬 System Prompt</h4>
+            <div class="council-curation-prompt-builder-container" data-prompt-builder="curation-agent">
+              <!-- PromptBuilder will be rendered here -->
             </div>
           </div>
         </div>
@@ -1387,8 +1407,49 @@ const CurationModal = {
 
     document.body.appendChild(dialog);
 
+    // Initialize PromptBuilder in the dialog
+    const promptBuilderContainer = dialog.querySelector(
+      '[data-prompt-builder="curation-agent"]',
+    );
+    if (promptBuilderContainer && window.PromptBuilder) {
+      this._promptBuilderInstance = window.PromptBuilder.createInstance({
+        initialMode: initialMode,
+        initialPrompt: promptConfig.customText || "",
+        initialPreset: promptConfig.presetName || null,
+        initialTokens: promptConfig.tokens || [],
+        onChange: (value) => {
+          this._log("debug", "PromptBuilder changed:", value);
+        },
+      });
+      this._promptBuilderInstance.render(promptBuilderContainer);
+    } else {
+      // Fallback to simple textarea if PromptBuilder not available
+      promptBuilderContainer.innerHTML = `
+        <div class="council-curation-form-group">
+          <label>Prompt Source</label>
+          <select class="council-form-input" data-field="promptSource">
+            <option value="custom" ${(promptConfig.source || "custom") === "custom" ? "selected" : ""}>Custom Text</option>
+            <option value="position" ${promptConfig.source === "position" ? "selected" : ""}>From Position</option>
+          </select>
+        </div>
+        <div class="council-curation-form-group">
+          <label>System Prompt Text</label>
+          <textarea class="council-form-textarea council-form-textarea-large" data-field="systemPrompt" rows="8"
+                    placeholder="You are a specialized curation agent...">${this._escapeHtml(promptConfig.customText || "")}</textarea>
+          <p class="council-form-hint">The system prompt that defines this agent's behavior and expertise.</p>
+        </div>
+      `;
+    }
+
     // Handle dialog actions
-    const cleanup = () => dialog.remove();
+    const cleanup = () => {
+      // Clean up PromptBuilder instance
+      if (this._promptBuilderInstance) {
+        this._promptBuilderInstance.destroy();
+        this._promptBuilderInstance = null;
+      }
+      dialog.remove();
+    };
 
     dialog.querySelectorAll("[data-dialog]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
@@ -1404,6 +1465,31 @@ const CurationModal = {
           if (!name) {
             this._showToast("Agent name is required", "error");
             return;
+          }
+
+          // Get system prompt config from PromptBuilder or fallback
+          let systemPromptConfig;
+          if (this._promptBuilderInstance) {
+            const promptValue = this._promptBuilderInstance.getValue();
+            systemPromptConfig = {
+              source: promptValue.mode,
+              customText:
+                promptValue.mode === "custom"
+                  ? promptValue.customPrompt
+                  : promptValue.generatedPrompt || "",
+              presetName: promptValue.presetName || null,
+              tokens: promptValue.tokens || [],
+            };
+          } else {
+            systemPromptConfig = {
+              source:
+                dialog.querySelector('[data-field="promptSource"]')?.value ||
+                "custom",
+              customText:
+                dialog
+                  .querySelector('[data-field="systemPrompt"]')
+                  ?.value.trim() || "",
+            };
           }
 
           const agentData = {
@@ -1433,12 +1519,7 @@ const CurationModal = {
                   dialog.querySelector('[data-field="frequencyPenalty"]').value,
                 ) || 0,
             },
-            systemPrompt: {
-              source: dialog.querySelector('[data-field="promptSource"]').value,
-              customText: dialog
-                .querySelector('[data-field="systemPrompt"]')
-                .value.trim(),
-            },
+            systemPrompt: systemPromptConfig,
           };
 
           try {
@@ -1446,7 +1527,10 @@ const CurationModal = {
               this._curationSystem.updateCurationAgent(agentId, agentData);
               this._showToast("Agent updated successfully", "success");
             } else {
-              agentData.id = `agent_${Date.now()}`;
+              const newId =
+                dialog.querySelector('[data-field="id"]')?.value.trim() ||
+                `agent_${Date.now()}`;
+              agentData.id = newId;
               this._curationSystem.registerCurationAgent(agentData);
               this._showToast("Agent created successfully", "success");
             }
@@ -2682,18 +2766,18 @@ const CurationModal = {
 
       /* Agent Card Styles */
       .council-agent-card {
-        background: var(--council-bg);
-        border: 1px solid var(--council-border);
-        border-radius: var(--council-radius-md);
+        background: var(--council-bg, var(--SmartThemeBlurTintColor, #1a1a2e));
+        border: 1px solid var(--council-border, var(--SmartThemeBorderColor, #333));
+        border-radius: var(--council-radius-md, 8px);
         padding: 16px;
       }
 
       .council-agent-card.default {
-        border-left: 3px solid var(--council-primary);
+        border-left: 3px solid var(--council-primary, #3b82f6);
       }
 
       .council-agent-card.custom {
-        border-left: 3px solid var(--council-secondary);
+        border-left: 3px solid var(--council-secondary, #8b5cf6);
       }
 
       .council-agent-header {
@@ -2715,7 +2799,7 @@ const CurationModal = {
 
       .council-agent-name {
         font-weight: 600;
-        color: var(--council-text);
+        color: var(--council-text, var(--SmartThemeBodyColor, #fff));
       }
 
       .council-badge {
@@ -2727,7 +2811,7 @@ const CurationModal = {
       }
 
       .council-badge.default {
-        background: var(--council-primary);
+        background: var(--council-primary, #3b82f6);
         color: white;
       }
 
@@ -2744,27 +2828,27 @@ const CurationModal = {
 
       .council-agent-description {
         font-size: 0.875rem;
-        color: var(--council-text-muted);
+        color: var(--council-text-muted, #888);
         margin-bottom: 12px;
       }
 
       .council-agent-prompt-preview {
-        background: var(--council-surface);
-        border-radius: var(--council-radius-sm);
+        background: var(--council-surface, rgba(0,0,0,0.2));
+        border-radius: var(--council-radius-sm, 4px);
         padding: 8px 12px;
         margin-bottom: 12px;
       }
 
       .council-prompt-label {
         font-size: 0.75rem;
-        color: var(--council-text-muted);
+        color: var(--council-text-muted, #888);
         display: block;
         margin-bottom: 4px;
       }
 
       .council-prompt-text {
         font-size: 0.8125rem;
-        color: var(--council-text);
+        color: var(--council-text, #fff);
         font-family: monospace;
         white-space: pre-wrap;
         word-break: break-word;
@@ -2784,29 +2868,29 @@ const CurationModal = {
       }
 
       .council-config-label {
-        color: var(--council-text-muted);
+        color: var(--council-text-muted, #888);
       }
 
       .council-config-value {
         font-weight: 500;
-        color: var(--council-text);
+        color: var(--council-text, #fff);
       }
 
       .council-agent-actions {
         display: flex;
         gap: 8px;
         padding-top: 12px;
-        border-top: 1px solid var(--council-border);
+        border-top: 1px solid var(--council-border, #333);
       }
 
-      /* Dialog Styles */
+      /* Dialog Styles - Solid Background Fix */
       .council-curation-dialog-overlay {
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.7);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -2814,9 +2898,10 @@ const CurationModal = {
       }
 
       .council-curation-dialog {
-        background: var(--council-bg);
-        border-radius: var(--council-radius-lg);
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        background: var(--SmartThemeBlurTintColor, #1a1a2e);
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
         width: 90%;
         max-width: 500px;
         max-height: 90vh;
@@ -2825,7 +2910,7 @@ const CurationModal = {
       }
 
       .council-curation-dialog-lg {
-        max-width: 700px;
+        max-width: 800px;
       }
 
       .council-curation-dialog-header {
@@ -2833,13 +2918,15 @@ const CurationModal = {
         justify-content: space-between;
         align-items: center;
         padding: 16px 20px;
-        border-bottom: 1px solid var(--council-border);
+        border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 12px 12px 0 0;
       }
 
       .council-curation-dialog-header h3 {
         margin: 0;
         font-size: 1.125rem;
-        color: var(--council-text);
+        color: var(--SmartThemeBodyColor, #fff);
       }
 
       .council-curation-dialog-close {
@@ -2847,18 +2934,44 @@ const CurationModal = {
         border: none;
         font-size: 1.25rem;
         cursor: pointer;
-        color: var(--council-text-muted);
-        padding: 4px;
+        color: var(--SmartThemeBodyColor, #888);
+        padding: 4px 8px;
+        border-radius: 4px;
+        transition: background 0.15s;
       }
 
       .council-curation-dialog-close:hover {
-        color: var(--council-text);
+        color: var(--SmartThemeBodyColor, #fff);
+        background: rgba(255, 255, 255, 0.1);
       }
 
       .council-curation-dialog-content {
         padding: 20px;
         overflow-y: auto;
         flex: 1;
+        background: var(--SmartThemeBlurTintColor, #1a1a2e);
+      }
+
+      .council-curation-dialog-scrollable {
+        max-height: calc(90vh - 140px);
+      }
+
+      .council-curation-dialog-section {
+        margin-bottom: 24px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--SmartThemeBorderColor, #333);
+      }
+
+      .council-curation-dialog-section:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+      }
+
+      .council-curation-section-title {
+        margin: 0 0 16px 0;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--SmartThemeBodyColor, #fff);
       }
 
       .council-curation-dialog-footer {
@@ -2866,7 +2979,9 @@ const CurationModal = {
         justify-content: flex-end;
         gap: 12px;
         padding: 16px 20px;
-        border-top: 1px solid var(--council-border);
+        border-top: 1px solid var(--SmartThemeBorderColor, #444);
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 0 0 12px 12px;
       }
 
       .council-curation-form-group {
@@ -2878,7 +2993,13 @@ const CurationModal = {
         margin-bottom: 6px;
         font-size: 0.875rem;
         font-weight: 500;
-        color: var(--council-text);
+        color: var(--SmartThemeBodyColor, #ccc);
+      }
+
+      .council-curation-form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
       }
 
       .council-form-row {
@@ -2906,6 +3027,15 @@ const CurationModal = {
 
       .council-curation-btn-danger:hover {
         background: #dc2626;
+      }
+
+      /* PromptBuilder container inside dialog */
+      .council-curation-prompt-builder-container {
+        background: rgba(0, 0, 0, 0.15);
+        border: 1px solid var(--SmartThemeBorderColor, #333);
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 200px;
       }
     `;
 
