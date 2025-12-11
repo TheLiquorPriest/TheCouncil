@@ -61,40 +61,16 @@ const PipelineModal = {
   _autoScrollThreads: true,
 
   /**
-   * Reference to PipelineSystem
+   * Reference to Kernel
    * @type {Object|null}
    */
-  _pipelineSystem: null,
+  _kernel: null,
 
   /**
-   * Reference to PresetManager
+   * Reference to PipelineBuilderSystem
    * @type {Object|null}
    */
-  _presetManager: null,
-
-  /**
-   * Reference to AgentsSystem
-   * @type {Object|null}
-   */
-  _agentsSystem: null,
-
-  /**
-   * Reference to ContextManager
-   * @type {Object|null}
-   */
-  _contextManager: null,
-
-  /**
-   * Reference to OutputManager
-   * @type {Object|null}
-   */
-  _outputManager: null,
-
-  /**
-   * Reference to ThreadManager
-   * @type {Object|null}
-   */
-  _threadManager: null,
+  _pipelineBuilder: null,
 
   /**
    * Reference to Logger
@@ -149,32 +125,21 @@ const PipelineModal = {
 
   /**
    * Initialize the Pipeline Modal
-   * @param {Object} options - Configuration options
-   * @param {Object} options.pipelineSystem - Reference to PipelineSystem
-   * @param {Object} options.agentsSystem - Reference to AgentsSystem
-   * @param {Object} options.contextManager - Reference to ContextManager
-   * @param {Object} options.outputManager - Reference to OutputManager
-   * @param {Object} options.threadManager - Reference to ThreadManager
-   * @param {Object} options.logger - Logger instance
+   * @param {Object} kernel - Kernel reference
    * @returns {PipelineModal}
    */
-  init(options = {}) {
+  init(kernel) {
     if (this._initialized) {
       this._log("warn", "PipelineModal already initialized");
       return this;
     }
 
-    this._pipelineSystem = options.pipelineSystem;
-    this._presetManager =
-      options.presetManager || window.TheCouncilPresetManager;
-    this._agentsSystem = options.agentsSystem;
-    this._contextManager = options.contextManager;
-    this._outputManager = options.outputManager;
-    this._threadManager = options.threadManager;
-    this._logger = options.logger;
+    this._kernel = kernel;
+    this._logger = kernel.getModule("logger");
+    this._pipelineBuilder = kernel.getSystem("pipelineBuilder");
 
-    if (!this._pipelineSystem) {
-      this._log("error", "PipelineSystem is required for PipelineModal");
+    if (!this._pipelineBuilder) {
+      this._log("error", "PipelineBuilderSystem not available in Kernel");
       return this;
     }
 
@@ -399,34 +364,36 @@ const PipelineModal = {
   },
 
   /**
-   * Subscribe to PipelineSystem events
+   * Subscribe to PipelineBuilderSystem and Orchestration events
    */
   _subscribeToEvents() {
-    if (!this._pipelineSystem) return;
+    if (!this._kernel || !this._pipelineBuilder) return;
 
     const events = [
-      "pipeline:registered",
-      "pipeline:updated",
-      "pipeline:deleted",
-      "run:started",
-      "run:paused",
-      "run:resumed",
-      "run:aborted",
-      "run:completed",
-      "run:failed",
-      "phase:started",
-      "phase:completed",
-      "action:started",
-      "action:completed",
-      "gavel:requested",
+      // PipelineBuilder events
+      "pipelineBuilder:pipeline:created",
+      "pipelineBuilder:pipeline:updated",
+      "pipelineBuilder:pipeline:deleted",
+      // Orchestration events (when available)
+      "orchestration:run:started",
+      "orchestration:run:paused",
+      "orchestration:run:resumed",
+      "orchestration:run:aborted",
+      "orchestration:run:completed",
+      "orchestration:run:failed",
+      "orchestration:phase:started",
+      "orchestration:phase:completed",
+      "orchestration:action:started",
+      "orchestration:action:completed",
+      "orchestration:gavel:requested",
     ];
 
     for (const event of events) {
       const handler = (data) => {
         this._handleSystemEvent(event, data);
       };
-      this._pipelineSystem.on(event, handler);
-      this._cleanupFns.push(() => this._pipelineSystem.off(event, handler));
+      this._kernel.on(event, handler);
+      this._cleanupFns.push(() => this._kernel.off(event, handler));
     }
   },
 

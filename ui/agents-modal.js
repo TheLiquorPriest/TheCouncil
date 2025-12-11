@@ -1,17 +1,20 @@
 /**
- * TheCouncil - Agents System Modal UI
+ * TheCouncil - Pipeline Builder Modal UI
  *
  * Comprehensive UI for managing the organizational structure:
  * - Agents (AI configurations)
  * - Agent Pools (selection groups)
  * - Positions (roles in the organization)
  * - Teams (groups with leaders and members)
+ * - Pipelines (workflow definitions)
  * - Hierarchy overview
+ *
+ * Uses PipelineBuilderSystem for all operations.
  *
  * @version 2.0.0
  */
 
-const AgentsModal = {
+const PipelineBuilderModal = {
   // ===== VERSION =====
   VERSION: "2.0.0",
 
@@ -30,10 +33,16 @@ const AgentsModal = {
   _activeTab: "hierarchy",
 
   /**
-   * Reference to AgentsSystem
+   * Reference to Kernel
    * @type {Object|null}
    */
-  _agentsSystem: null,
+  _kernel: null,
+
+  /**
+   * Reference to PipelineBuilderSystem
+   * @type {Object|null}
+   */
+  _pipelineBuilder: null,
 
   /**
    * Reference to Logger
@@ -80,36 +89,35 @@ const AgentsModal = {
   // ===== INITIALIZATION =====
 
   /**
-   * Initialize the Agents Modal
-   * @param {Object} options - Configuration options
-   * @param {Object} options.agentsSystem - Reference to AgentsSystem
-   * @param {Object} options.logger - Logger instance
-   * @returns {AgentsModal}
+   * Initialize the Pipeline Builder Modal
+   * @param {Object} kernel - Kernel reference
+   * @returns {PipelineBuilderModal}
    */
-  init(options = {}) {
+  init(kernel) {
     if (this._initialized) {
-      this._log("warn", "AgentsModal already initialized");
+      this._log("warn", "PipelineBuilderModal already initialized");
       return this;
     }
 
-    this._agentsSystem = options.agentsSystem;
-    this._logger = options.logger;
+    this._kernel = kernel;
+    this._logger = kernel.getModule("logger");
+    this._pipelineBuilder = kernel.getSystem("pipelineBuilder");
 
-    if (!this._agentsSystem) {
-      this._log("error", "AgentsSystem is required for AgentsModal");
+    if (!this._pipelineBuilder) {
+      this._log("error", "PipelineBuilderSystem not available in Kernel");
       return this;
     }
 
-    this._log("info", "Initializing Agents Modal...");
+    this._log("info", "Initializing Pipeline Builder Modal...");
 
     // Create modal DOM
     this._createModal();
 
-    // Subscribe to AgentsSystem events
+    // Subscribe to PipelineBuilderSystem events
     this._subscribeToEvents();
 
     this._initialized = true;
-    this._log("info", "Agents Modal initialized");
+    this._log("info", "Pipeline Builder Modal initialized");
 
     return this;
   },
@@ -195,8 +203,8 @@ const AgentsModal = {
       <div class="council-agents-container">
         <div class="council-agents-header">
           <h2 class="council-agents-title">
-            <span class="council-agents-icon">👥</span>
-            Agents System
+            <span class="council-agents-icon">📋</span>
+            Pipeline Builder
           </h2>
           <div class="council-agents-header-actions">
             <button class="council-agents-btn council-agents-btn-icon" data-action="import" title="Import Hierarchy">
@@ -226,6 +234,9 @@ const AgentsModal = {
           </button>
           <button class="council-agents-tab" data-tab="teams">
             👥 Teams
+          </button>
+          <button class="council-agents-tab" data-tab="pipelines">
+            ⚙️ Pipelines
           </button>
         </div>
 
@@ -282,34 +293,38 @@ const AgentsModal = {
   },
 
   /**
-   * Subscribe to AgentsSystem events
+   * Subscribe to PipelineBuilderSystem events
    */
   _subscribeToEvents() {
-    if (!this._agentsSystem) return;
+    if (!this._kernel || !this._pipelineBuilder) return;
 
     const events = [
-      "agent:created",
-      "agent:updated",
-      "agent:deleted",
-      "pool:created",
-      "pool:updated",
-      "pool:deleted",
-      "position:created",
-      "position:updated",
-      "position:deleted",
-      "team:created",
-      "team:updated",
-      "team:deleted",
-      "system:imported",
-      "system:companyNameChanged",
+      "pipelineBuilder:agent:created",
+      "pipelineBuilder:agent:updated",
+      "pipelineBuilder:agent:deleted",
+      "pipelineBuilder:pool:created",
+      "pipelineBuilder:pool:updated",
+      "pipelineBuilder:pool:deleted",
+      "pipelineBuilder:position:created",
+      "pipelineBuilder:position:updated",
+      "pipelineBuilder:position:deleted",
+      "pipelineBuilder:team:created",
+      "pipelineBuilder:team:updated",
+      "pipelineBuilder:team:deleted",
+      "pipelineBuilder:pipeline:created",
+      "pipelineBuilder:pipeline:updated",
+      "pipelineBuilder:pipeline:deleted",
+      "pipelineBuilder:imported",
+      "pipelineBuilder:companyNameChanged",
     ];
 
     for (const event of events) {
-      const unsubscribe = this._agentsSystem.on(event, () => {
+      const handler = () => {
         this._refreshCurrentTab();
         this._updateStatus();
-      });
-      this._cleanupFns.push(unsubscribe);
+      };
+      this._kernel.on(event, handler);
+      this._cleanupFns.push(() => this._kernel.off(event, handler));
     }
   },
 
@@ -320,7 +335,7 @@ const AgentsModal = {
    */
   show() {
     if (!this._initialized) {
-      this._log("error", "AgentsModal not initialized");
+      this._log("error", "PipelineBuilderModal not initialized");
       return;
     }
 
@@ -332,7 +347,7 @@ const AgentsModal = {
     this._refreshCurrentTab();
     this._updateStatus();
 
-    this._log("info", "Agents Modal shown");
+    this._log("info", "Pipeline Builder Modal shown");
   },
 
   /**
@@ -344,7 +359,7 @@ const AgentsModal = {
     this._elements.modal.classList.remove("visible");
     this._selectedItem = null;
 
-    this._log("info", "Agents Modal hidden");
+    this._log("info", "Pipeline Builder Modal hidden");
   },
 
   /**
@@ -409,6 +424,9 @@ const AgentsModal = {
       case "teams":
         this._renderTeamsTab();
         break;
+      case "pipelines":
+        this._renderPipelinesTab();
+        break;
       default:
         this._renderHierarchyTab();
     }
@@ -420,8 +438,8 @@ const AgentsModal = {
    * Render hierarchy tab
    */
   _renderHierarchyTab() {
-    const hierarchy = this._agentsSystem.getHierarchy();
-    const summary = this._agentsSystem.getSummary();
+    const hierarchy = this._pipelineBuilder.getHierarchy();
+    const summary = this._pipelineBuilder.getSummary();
 
     this._elements.content.innerHTML = `
       <div class="council-agents-hierarchy">
@@ -512,10 +530,10 @@ const AgentsModal = {
    */
   _renderPositionCard(position, context = "member") {
     const agent = position.assignedAgentId
-      ? this._agentsSystem.getAgent(position.assignedAgentId)
+      ? this._pipelineBuilder.getAgent(position.assignedAgentId)
       : null;
     const pool = position.assignedPoolId
-      ? this._agentsSystem.getAgentPool(position.assignedPoolId)
+      ? this._pipelineBuilder.getAgentPool(position.assignedPoolId)
       : null;
     const filled = !!(agent || pool);
 
@@ -632,7 +650,7 @@ const AgentsModal = {
       saveBtn.addEventListener("click", () => {
         const input = content.querySelector(".council-company-name-input");
         if (input) {
-          this._agentsSystem.setCompanyName(input.value);
+          this._pipelineBuilder.setCompanyName(input.value);
           this._showToast("Company name updated", "success");
         }
       });
@@ -654,7 +672,7 @@ const AgentsModal = {
    * Render agents tab
    */
   _renderAgentsTab() {
-    const agents = this._agentsSystem.getAllAgents();
+    const agents = this._pipelineBuilder.getAllAgents();
 
     this._elements.content.innerHTML = `
       <div class="council-agents-list-view">
@@ -696,7 +714,7 @@ const AgentsModal = {
    * @returns {string} HTML
    */
   _renderAgentCard(agent) {
-    const positions = this._agentsSystem
+    const positions = this._pipelineBuilder
       .getAllPositions()
       .filter((p) => p.assignedAgentId === agent.id);
 
@@ -752,7 +770,7 @@ const AgentsModal = {
    * Render pools tab
    */
   _renderPoolsTab() {
-    const pools = this._agentsSystem.getAllAgentPools();
+    const pools = this._pipelineBuilder.getAllAgentPools();
 
     this._elements.content.innerHTML = `
       <div class="council-agents-list-view">
@@ -798,9 +816,9 @@ const AgentsModal = {
    */
   _renderPoolCard(pool) {
     const agents = pool.agentIds
-      .map((id) => this._agentsSystem.getAgent(id))
+      .map((id) => this._pipelineBuilder.getAgent(id))
       .filter(Boolean);
-    const positions = this._agentsSystem
+    const positions = this._pipelineBuilder
       .getAllPositions()
       .filter((p) => p.assignedPoolId === pool.id);
 
@@ -879,8 +897,8 @@ const AgentsModal = {
    * Render positions tab
    */
   _renderPositionsTab() {
-    const positions = this._agentsSystem.getAllPositions();
-    const teams = this._agentsSystem.getAllTeams();
+    const positions = this._pipelineBuilder.getAllPositions();
+    const teams = this._pipelineBuilder.getAllTeams();
 
     // Separate curation and pipeline teams
     const curationTeams = teams.filter((t) => this._isCurationTeam(t));
@@ -1018,10 +1036,10 @@ const AgentsModal = {
    */
   _renderPositionRow(position) {
     const agent = position.assignedAgentId
-      ? this._agentsSystem.getAgent(position.assignedAgentId)
+      ? this._pipelineBuilder.getAgent(position.assignedAgentId)
       : null;
     const pool = position.assignedPoolId
-      ? this._agentsSystem.getAgentPool(position.assignedPoolId)
+      ? this._pipelineBuilder.getAgentPool(position.assignedPoolId)
       : null;
     const filled = !!(agent || pool);
 
@@ -1074,7 +1092,7 @@ const AgentsModal = {
    * Render teams tab
    */
   _renderTeamsTab() {
-    const teams = this._agentsSystem.getAllTeams();
+    const teams = this._pipelineBuilder.getAllTeams();
     const curationTeams = teams.filter((t) => this._isCurationTeam(t));
     const pipelineTeams = teams.filter((t) => !this._isCurationTeam(t));
 
@@ -1148,7 +1166,7 @@ const AgentsModal = {
    */
   _renderTeamRow(team, isCuration = false) {
     const leader = team.leaderId
-      ? this._agentsSystem.getPosition(team.leaderId)
+      ? this._pipelineBuilder.getPosition(team.leaderId)
       : null;
     const memberCount = team.memberIds.length;
 
@@ -1309,7 +1327,7 @@ const AgentsModal = {
       reader.onload = (event) => {
         try {
           const data = JSON.parse(event.target.result);
-          if (this._agentsSystem.import(data)) {
+          if (this._pipelineBuilder.import(data)) {
             this._showToast("Hierarchy imported successfully", "success");
             this._refreshCurrentTab();
           } else {
@@ -1330,7 +1348,7 @@ const AgentsModal = {
    */
   _handleExport() {
     try {
-      const data = this._agentsSystem.export();
+      const data = this._pipelineBuilder.export();
       const json = JSON.stringify(data, null, 2);
       const blob = new Blob([json], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -1354,7 +1372,7 @@ const AgentsModal = {
    * @param {string} id - Agent ID (for edit) or null (for create)
    */
   _showAgentDialog(id = null) {
-    const agent = id ? this._agentsSystem.getAgent(id) : null;
+    const agent = id ? this._pipelineBuilder.getAgent(id) : null;
     const isEdit = !!agent;
 
     // Prepare initial prompt builder config from agent data
@@ -1554,7 +1572,7 @@ const AgentsModal = {
 
         try {
           if (isEdit) {
-            this._agentsSystem.updateAgent(id, {
+            this._pipelineBuilder.updateAgent(id, {
               name: formData.name,
               description: formData.description,
               apiConfig: {
@@ -1569,7 +1587,7 @@ const AgentsModal = {
             });
             this._showToast("Agent updated", "success");
           } else {
-            this._agentsSystem.createAgent({
+            this._pipelineBuilder.createAgent({
               id: formData.id,
               name: formData.name,
               description: formData.description,
@@ -1608,9 +1626,9 @@ const AgentsModal = {
    * @param {string} id - Pool ID (for edit) or null (for create)
    */
   _showPoolDialog(id = null) {
-    const pool = id ? this._agentsSystem.getAgentPool(id) : null;
+    const pool = id ? this._pipelineBuilder.getAgentPool(id) : null;
     const isEdit = !!pool;
-    const agents = this._agentsSystem.getAllAgents();
+    const agents = this._pipelineBuilder.getAllAgents();
 
     const dialogHtml = `
       <div class="council-dialog-overlay" data-dialog="pool">
@@ -1685,14 +1703,14 @@ const AgentsModal = {
 
       try {
         if (isEdit) {
-          this._agentsSystem.updateAgentPool(id, {
+          this._pipelineBuilder.updateAgentPool(id, {
             name: formData.name,
             selectionMode: formData.selectionMode,
             agentIds,
           });
           this._showToast("Pool updated", "success");
         } else {
-          this._agentsSystem.createAgentPool({
+          this._pipelineBuilder.createAgentPool({
             id: formData.id,
             name: formData.name,
             selectionMode: formData.selectionMode,
@@ -1713,9 +1731,9 @@ const AgentsModal = {
    * @param {string} id - Position ID (for edit) or null (for create)
    */
   _showPositionDialog(id = null) {
-    const position = id ? this._agentsSystem.getPosition(id) : null;
+    const position = id ? this._pipelineBuilder.getPosition(id) : null;
     const isEdit = !!position;
-    const teams = this._agentsSystem.getAllTeams();
+    const teams = this._pipelineBuilder.getAllTeams();
 
     const dialogHtml = `
       <div class="council-dialog-overlay" data-dialog="position">
@@ -1801,7 +1819,7 @@ const AgentsModal = {
 
       try {
         if (isEdit) {
-          this._agentsSystem.updatePosition(id, {
+          this._pipelineBuilder.updatePosition(id, {
             name: formData.name,
             tier: formData.tier,
             teamId: formData.teamId || null,
@@ -1813,7 +1831,7 @@ const AgentsModal = {
           });
           this._showToast("Position updated", "success");
         } else {
-          this._agentsSystem.createPosition({
+          this._pipelineBuilder.createPosition({
             id: formData.id,
             name: formData.name,
             tier: formData.tier,
@@ -1839,14 +1857,14 @@ const AgentsModal = {
    * @param {string} positionId - Position ID
    */
   _showAssignmentDialog(positionId) {
-    const position = this._agentsSystem.getPosition(positionId);
+    const position = this._pipelineBuilder.getPosition(positionId);
     if (!position) {
       this._showToast("Position not found", "error");
       return;
     }
 
-    const agents = this._agentsSystem.getAllAgents();
-    const pools = this._agentsSystem.getAllAgentPools();
+    const agents = this._pipelineBuilder.getAllAgents();
+    const pools = this._pipelineBuilder.getAllAgentPools();
 
     const dialogHtml = `
       <div class="council-dialog-overlay" data-dialog="assignment">
@@ -1916,26 +1934,26 @@ const AgentsModal = {
         switch (formData.assignmentType) {
           case "agent":
             if (formData.agentId) {
-              this._agentsSystem.assignAgentToPosition(
+              this._pipelineBuilder.assignAgentToPosition(
                 positionId,
                 formData.agentId,
               );
             } else {
-              this._agentsSystem.assignAgentToPosition(positionId, null);
+              this._pipelineBuilder.assignAgentToPosition(positionId, null);
             }
             break;
           case "pool":
             if (formData.poolId) {
-              this._agentsSystem.assignPoolToPosition(
+              this._pipelineBuilder.assignPoolToPosition(
                 positionId,
                 formData.poolId,
               );
             } else {
-              this._agentsSystem.assignPoolToPosition(positionId, null);
+              this._pipelineBuilder.assignPoolToPosition(positionId, null);
             }
             break;
           default:
-            this._agentsSystem.assignAgentToPosition(positionId, null);
+            this._pipelineBuilder.assignAgentToPosition(positionId, null);
         }
         this._showToast("Assignment updated", "success");
         return true;
@@ -1968,9 +1986,9 @@ const AgentsModal = {
    * @param {string} id - Team ID (for edit) or null (for create)
    */
   _showTeamDialog(id = null) {
-    const team = id ? this._agentsSystem.getTeam(id) : null;
+    const team = id ? this._pipelineBuilder.getTeam(id) : null;
     const isEdit = !!team;
-    const positions = this._agentsSystem.getAllPositions();
+    const positions = this._pipelineBuilder.getAllPositions();
 
     const dialogHtml = `
       <div class="council-dialog-overlay" data-dialog="team">
@@ -2040,14 +2058,14 @@ const AgentsModal = {
 
       try {
         if (isEdit) {
-          this._agentsSystem.updateTeam(id, {
+          this._pipelineBuilder.updateTeam(id, {
             name: formData.name,
             icon: formData.icon,
             description: formData.description,
           });
           this._showToast("Team updated", "success");
         } else {
-          this._agentsSystem.createTeam({
+          this._pipelineBuilder.createTeam({
             id: formData.id,
             name: formData.name,
             icon: formData.icon,
@@ -2072,7 +2090,7 @@ const AgentsModal = {
    */
   _duplicateAgent(id) {
     try {
-      const newAgent = this._agentsSystem.duplicateAgent(id);
+      const newAgent = this._pipelineBuilder.duplicateAgent(id);
       this._showToast(`Agent duplicated: ${newAgent.name}`, "success");
       this._refreshCurrentTab();
     } catch (e) {
@@ -2120,16 +2138,16 @@ const AgentsModal = {
       try {
         switch (type) {
           case "agent":
-            this._agentsSystem.deleteAgent(id);
+            this._pipelineBuilder.deleteAgent(id);
             break;
           case "pool":
-            this._agentsSystem.deleteAgentPool(id);
+            this._pipelineBuilder.deleteAgentPool(id);
             break;
           case "position":
-            this._agentsSystem.deletePosition(id);
+            this._pipelineBuilder.deletePosition(id);
             break;
           case "team":
-            this._agentsSystem.deleteTeam(id, false);
+            this._pipelineBuilder.deleteTeam(id, false);
             break;
         }
         this._showToast(`${names[type]} deleted`, "success");
@@ -2235,7 +2253,7 @@ const AgentsModal = {
     );
     if (!statusText) return;
 
-    const summary = this._agentsSystem?.getSummary?.();
+    const summary = this._pipelineBuilder?.getSummary?.();
     if (!summary) {
       statusText.textContent = "System not ready";
       return;
@@ -2280,6 +2298,121 @@ const AgentsModal = {
     return div.innerHTML;
   },
 
+  // ===== PIPELINES TAB =====
+
+  /**
+   * Render pipelines tab
+   */
+  _renderPipelinesTab() {
+    const pipelines = this._pipelineBuilder.getAllPipelines();
+
+    this._elements.content.innerHTML = `
+      <div class="council-agents-pipelines">
+        <div class="council-list-header">
+          <h3>Pipelines</h3>
+          <button class="council-agents-btn council-agents-btn-primary" data-action="create-pipeline">
+            + Create Pipeline
+          </button>
+        </div>
+
+        <div class="council-pipelines-list">
+          ${pipelines.map((pipeline) => `
+            <div class="council-pipeline-item" data-pipeline-id="${this._escapeHtml(pipeline.id)}">
+              <div class="council-pipeline-info">
+                <h4 class="council-pipeline-name">${this._escapeHtml(pipeline.name || pipeline.id)}</h4>
+                <p class="council-pipeline-description">${this._escapeHtml(pipeline.description || "No description")}</p>
+                <div class="council-pipeline-meta">
+                  <span class="council-badge">${pipeline.phases?.length || 0} phases</span>
+                  <span class="council-badge">${pipeline.phases?.reduce((sum, p) => sum + (p.actions?.length || 0), 0) || 0} actions</span>
+                </div>
+              </div>
+              <div class="council-pipeline-actions">
+                <button class="council-agents-btn council-agents-btn-small" data-action="edit-pipeline" data-pipeline-id="${this._escapeHtml(pipeline.id)}">
+                  Edit
+                </button>
+                <button class="council-agents-btn council-agents-btn-small council-agents-btn-danger" data-action="delete-pipeline" data-pipeline-id="${this._escapeHtml(pipeline.id)}">
+                  Delete
+                </button>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+
+        ${pipelines.length === 0 ? `
+          <div class="council-empty-state">
+            <p>No pipelines defined yet</p>
+            <button class="council-agents-btn council-agents-btn-primary" data-action="create-pipeline">
+              Create First Pipeline
+            </button>
+          </div>
+        ` : ""}
+      </div>
+    `;
+
+    // Bind pipeline actions
+    this._elements.content.querySelectorAll('[data-action="create-pipeline"]').forEach((btn) => {
+      btn.addEventListener("click", () => this._createPipeline());
+    });
+
+    this._elements.content.querySelectorAll('[data-action="edit-pipeline"]').forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const pipelineId = e.target.dataset.pipelineId;
+        this._editPipeline(pipelineId);
+      });
+    });
+
+    this._elements.content.querySelectorAll('[data-action="delete-pipeline"]').forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const pipelineId = e.target.dataset.pipelineId;
+        if (confirm(`Delete pipeline "${pipelineId}"?`)) {
+          this._pipelineBuilder.deletePipeline(pipelineId);
+          this._refreshCurrentTab();
+        }
+      });
+    });
+  },
+
+  /**
+   * Create a new pipeline
+   */
+  _createPipeline() {
+    const name = prompt("Pipeline name:");
+    if (!name) return;
+
+    try {
+      const pipeline = this._pipelineBuilder.createPipeline({
+        id: name.toLowerCase().replace(/\s+/g, "-"),
+        name: name,
+        description: "",
+        phases: [],
+      });
+      this._log("info", "Pipeline created:", pipeline.id);
+      this._refreshCurrentTab();
+    } catch (error) {
+      alert(`Error creating pipeline: ${error.message}`);
+      this._log("error", "Failed to create pipeline:", error);
+    }
+  },
+
+  /**
+   * Edit a pipeline
+   * @param {string} pipelineId - Pipeline ID
+   */
+  _editPipeline(pipelineId) {
+    const pipeline = this._pipelineBuilder.getPipeline(pipelineId);
+    if (!pipeline) {
+      alert("Pipeline not found");
+      return;
+    }
+
+    // Show pipeline editor (basic for now)
+    const description = prompt("Pipeline description:", pipeline.description || "");
+    if (description !== null) {
+      this._pipelineBuilder.updatePipeline(pipelineId, { description });
+      this._refreshCurrentTab();
+    }
+  },
+
   /**
    * Log a message
    * @param {string} level - Log level
@@ -2288,7 +2421,7 @@ const AgentsModal = {
    */
   _log(level, message, ...args) {
     if (this._logger && typeof this._logger[level] === "function") {
-      this._logger[level](`[AgentsModal] ${message}`, ...args);
+      this._logger[level](`[PipelineBuilderModal] ${message}`, ...args);
     }
   },
 
@@ -3613,8 +3746,8 @@ const AgentsModal = {
 
 // Export for different environments
 if (typeof window !== "undefined") {
-  window.AgentsModal = AgentsModal;
+  window.PipelineBuilderModal = PipelineBuilderModal;
 }
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = AgentsModal;
+  module.exports = PipelineBuilderModal;
 }
