@@ -89,6 +89,12 @@ const NavModal = {
   _initialized: false,
 
   /**
+   * Kernel reference
+   * @type {Object|null}
+   */
+  _kernel: null,
+
+  /**
    * Event listener cleanup functions
    * @type {Function[]}
    */
@@ -105,6 +111,7 @@ const NavModal = {
   /**
    * Initialize the Navigation Modal
    * @param {Object} options - Configuration options
+   * @param {Object} options.kernel - Kernel instance (optional)
    * @param {Object} options.agentsModal - Reference to AgentsModal
    * @param {Object} options.curationModal - Reference to CurationModal
    * @param {Object} options.characterModal - Reference to CharacterModal
@@ -120,13 +127,22 @@ const NavModal = {
       return this;
     }
 
+    // Set kernel reference
+    this._kernel = options.kernel || null;
+
+    // Get logger from kernel if available
+    if (this._kernel && !options.logger) {
+      this._logger = this._kernel.getModule("logger");
+    } else {
+      this._logger = options.logger;
+    }
+
     this._modals.agents = options.agentsModal;
     this._modals.curation = options.curationModal;
     this._modals.character = options.characterModal;
     this._modals.pipeline = options.pipelineModal;
     this._modals.gavel = options.gavelModal;
     this._pipelineSystem = options.pipelineSystem;
-    this._logger = options.logger;
 
     this._log("info", "Initializing Navigation Modal...");
 
@@ -214,6 +230,15 @@ const NavModal = {
 
     // Inject styles if not present
     this._injectStyles();
+
+    // Register with Kernel if available
+    if (this._kernel) {
+      this._kernel.registerModal("nav", this);
+      this._log("debug", "Registered with Kernel modal system");
+
+      // Listen to Kernel UI events
+      this._subscribeToKernelEvents();
+    }
 
     // Show by default
     this.show();
@@ -343,6 +368,40 @@ const NavModal = {
     }
   },
 
+  /**
+   * Subscribe to Kernel UI events
+   */
+  _subscribeToKernelEvents() {
+    if (!this._kernel) return;
+
+    // Listen to ui:show events
+    const showHandler = (data) => {
+      if (data.modalName === "nav") {
+        this.show();
+      }
+    };
+    this._kernel.on("ui:show", showHandler);
+    this._cleanupFns.push(() => this._kernel.off("ui:show", showHandler));
+
+    // Listen to ui:hide events
+    const hideHandler = (data) => {
+      if (data.modalName === "nav") {
+        this.hide();
+      }
+    };
+    this._kernel.on("ui:hide", hideHandler);
+    this._cleanupFns.push(() => this._kernel.off("ui:hide", hideHandler));
+
+    // Listen to ui:toggle events
+    const toggleHandler = (data) => {
+      if (data.modalName === "nav") {
+        this.toggle();
+      }
+    };
+    this._kernel.on("ui:toggle", toggleHandler);
+    this._cleanupFns.push(() => this._kernel.off("ui:toggle", toggleHandler));
+  },
+
   // ===== SHOW / HIDE =====
 
   /**
@@ -355,6 +414,11 @@ const NavModal = {
     this._elements.container.classList.add("visible");
     this._updateStatus();
 
+    // Update Kernel state if available
+    if (this._kernel) {
+      this._kernel.setState("ui.activeModal", "nav");
+    }
+
     this._log("info", "Navigation Modal shown");
   },
 
@@ -364,6 +428,11 @@ const NavModal = {
   hide() {
     this._isVisible = false;
     this._elements.container.classList.remove("visible");
+
+    // Clear Kernel state if this was the active modal
+    if (this._kernel && this._kernel.getState("ui.activeModal") === "nav") {
+      this._kernel.setState("ui.activeModal", null);
+    }
 
     this._log("info", "Navigation Modal hidden");
   },
@@ -530,6 +599,15 @@ const NavModal = {
    * @param {string} modalName - Modal name
    */
   _openModal(modalName) {
+    // Try to use Kernel's modal system first
+    if (this._kernel) {
+      const success = this._kernel.showModal(modalName);
+      if (success) {
+        return;
+      }
+    }
+
+    // Fallback to direct modal reference
     const modal = this._modals[modalName];
     if (!modal) {
       this._log("warn", `Modal not available: ${modalName}`);

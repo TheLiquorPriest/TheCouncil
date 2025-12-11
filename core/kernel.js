@@ -1414,6 +1414,620 @@ const TheCouncilKernel = {
     return this.getState("ui.activeModal");
   },
 
+  // ===== UI INFRASTRUCTURE =====
+
+  /**
+   * Registered modals
+   * @type {Map<string, Object>}
+   */
+  _modals: new Map(),
+
+  /**
+   * Register a modal
+   * @param {string} name - Modal name/ID
+   * @param {Object} modal - Modal instance with show/hide methods
+   * @returns {boolean} Success
+   */
+  registerModal(name, modal) {
+    if (this._modals.has(name)) {
+      this._log("warn", `Modal "${name}" already registered, overwriting`);
+    }
+
+    // Validate modal has required methods
+    if (typeof modal.show !== "function" || typeof modal.hide !== "function") {
+      this._log("error", `Modal "${name}" must have show() and hide() methods`);
+      return false;
+    }
+
+    this._modals.set(name, modal);
+    this._log("debug", `Modal registered: ${name}`);
+    this._emit("kernel:modal:registered", { name, modal });
+    return true;
+  },
+
+  /**
+   * Unregister a modal
+   * @param {string} name - Modal name
+   * @returns {boolean} Success
+   */
+  unregisterModal(name) {
+    if (!this._modals.has(name)) {
+      return false;
+    }
+    this._modals.delete(name);
+    this._log("debug", `Modal unregistered: ${name}`);
+    this._emit("kernel:modal:unregistered", { name });
+    return true;
+  },
+
+  /**
+   * Show a modal
+   * @param {string} name - Modal name
+   * @param {Object} options - Options to pass to modal.show()
+   * @returns {boolean} Success
+   */
+  showModal(name, options = {}) {
+    const modal = this._modals.get(name);
+    if (!modal) {
+      this._log("warn", `Modal "${name}" not found`);
+      return false;
+    }
+
+    // Hide current active modal if different
+    const currentActive = this.getState("ui.activeModal");
+    if (currentActive && currentActive !== name) {
+      this.hideModal(currentActive);
+    }
+
+    try {
+      modal.show(options);
+      this.setState("ui.activeModal", name);
+      this._log("debug", `Modal shown: ${name}`);
+      this._emit("kernel:modal:shown", { name, options });
+      return true;
+    } catch (error) {
+      this._log("error", `Failed to show modal "${name}":`, error);
+      return false;
+    }
+  },
+
+  /**
+   * Hide a modal
+   * @param {string} name - Modal name
+   * @returns {boolean} Success
+   */
+  hideModal(name) {
+    const modal = this._modals.get(name);
+    if (!modal) {
+      this._log("warn", `Modal "${name}" not found`);
+      return false;
+    }
+
+    try {
+      modal.hide();
+
+      // Clear active modal if this was it
+      if (this.getState("ui.activeModal") === name) {
+        this.setState("ui.activeModal", null);
+      }
+
+      this._log("debug", `Modal hidden: ${name}`);
+      this._emit("kernel:modal:hidden", { name });
+      return true;
+    } catch (error) {
+      this._log("error", `Failed to hide modal "${name}":`, error);
+      return false;
+    }
+  },
+
+  /**
+   * Toggle a modal
+   * @param {string} name - Modal name
+   * @param {Object} options - Options to pass to modal if showing
+   * @returns {boolean} Success
+   */
+  toggleModal(name, options = {}) {
+    const modal = this._modals.get(name);
+    if (!modal) {
+      this._log("warn", `Modal "${name}" not found`);
+      return false;
+    }
+
+    // Check if modal is visible
+    const isVisible = typeof modal.isVisible === "function" ? modal.isVisible() : false;
+
+    if (isVisible) {
+      return this.hideModal(name);
+    } else {
+      return this.showModal(name, options);
+    }
+  },
+
+  /**
+   * Get a registered modal
+   * @param {string} name - Modal name
+   * @returns {Object|null} Modal instance or null
+   */
+  getModal(name) {
+    return this._modals.get(name) || null;
+  },
+
+  /**
+   * Get all registered modal names
+   * @returns {string[]} Array of modal names
+   */
+  getAllModalNames() {
+    return Array.from(this._modals.keys());
+  },
+
+  /**
+   * Toast container element
+   * @type {HTMLElement|null}
+   */
+  _toastContainer: null,
+
+  /**
+   * Active toasts
+   * @type {Set<HTMLElement>}
+   */
+  _activeToasts: new Set(),
+
+  /**
+   * Show a toast notification
+   * @param {string} message - Message to display
+   * @param {string} type - Type: 'info', 'success', 'warning', 'error' (default: 'info')
+   * @param {number} duration - Duration in ms (default: 3000, 0 = permanent)
+   * @returns {Object} Toast object with remove() method
+   */
+  toast(message, type = "info", duration = 3000) {
+    // Ensure toast container exists
+    if (!this._toastContainer) {
+      this._createToastContainer();
+    }
+
+    // Create toast element
+    const toast = document.createElement("div");
+    toast.className = `council-toast council-toast-${type}`;
+    toast.setAttribute("role", "alert");
+    toast.setAttribute("aria-live", "polite");
+
+    // Add icon based on type
+    const icon = document.createElement("span");
+    icon.className = "council-toast-icon";
+    icon.textContent = this._getToastIcon(type);
+    toast.appendChild(icon);
+
+    // Add message
+    const messageEl = document.createElement("span");
+    messageEl.className = "council-toast-message";
+    messageEl.textContent = message;
+    toast.appendChild(messageEl);
+
+    // Add close button
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "council-toast-close";
+    closeBtn.textContent = "×";
+    closeBtn.setAttribute("aria-label", "Close notification");
+    closeBtn.addEventListener("click", () => removeToast());
+    toast.appendChild(closeBtn);
+
+    // Add to container
+    this._toastContainer.appendChild(toast);
+    this._activeToasts.add(toast);
+
+    // Trigger animation
+    setTimeout(() => toast.classList.add("visible"), 10);
+
+    // Auto-remove after duration
+    let timeoutId = null;
+    if (duration > 0) {
+      timeoutId = setTimeout(() => removeToast(), duration);
+    }
+
+    // Remove function
+    const removeToast = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      toast.classList.remove("visible");
+      setTimeout(() => {
+        toast.remove();
+        this._activeToasts.delete(toast);
+      }, 300);
+    };
+
+    this._log("debug", `Toast shown: ${type} - ${message}`);
+    this._emit("kernel:toast:shown", { message, type, duration });
+
+    return { remove: removeToast, element: toast };
+  },
+
+  /**
+   * Create toast container
+   */
+  _createToastContainer() {
+    this._toastContainer = document.createElement("div");
+    this._toastContainer.id = "council-toast-container";
+    this._toastContainer.className = "council-toast-container";
+    document.body.appendChild(this._toastContainer);
+
+    // Inject toast styles
+    this._injectToastStyles();
+  },
+
+  /**
+   * Get icon for toast type
+   * @param {string} type - Toast type
+   * @returns {string} Icon character
+   */
+  _getToastIcon(type) {
+    const icons = {
+      info: "ℹ️",
+      success: "✓",
+      warning: "⚠️",
+      error: "✕"
+    };
+    return icons[type] || icons.info;
+  },
+
+  /**
+   * Inject toast styles
+   */
+  _injectToastStyles() {
+    if (document.getElementById("council-toast-styles")) return;
+
+    const style = document.createElement("style");
+    style.id = "council-toast-styles";
+    style.textContent = `
+      .council-toast-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 10003;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 400px;
+        pointer-events: none;
+      }
+
+      .council-toast {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        background: var(--SmartThemeBlurTintColor, #1a1a2e);
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        border-radius: 8px;
+        color: var(--SmartThemeBodyColor, #eee);
+        font-size: 14px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        opacity: 0;
+        transform: translateX(100%);
+        transition: opacity 0.3s ease, transform 0.3s ease;
+        pointer-events: auto;
+      }
+
+      .council-toast.visible {
+        opacity: 1;
+        transform: translateX(0);
+      }
+
+      .council-toast-icon {
+        font-size: 18px;
+        flex-shrink: 0;
+      }
+
+      .council-toast-message {
+        flex: 1;
+        word-break: break-word;
+      }
+
+      .council-toast-close {
+        background: none;
+        border: none;
+        color: inherit;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.6;
+        transition: opacity 0.2s;
+        flex-shrink: 0;
+      }
+
+      .council-toast-close:hover {
+        opacity: 1;
+      }
+
+      .council-toast-info {
+        border-left: 3px solid #60a5fa;
+      }
+
+      .council-toast-success {
+        border-left: 3px solid #4ade80;
+      }
+
+      .council-toast-warning {
+        border-left: 3px solid #fbbf24;
+      }
+
+      .council-toast-error {
+        border-left: 3px solid #f87171;
+      }
+
+      @media (max-width: 768px) {
+        .council-toast-container {
+          left: 10px;
+          right: 10px;
+          bottom: 10px;
+          max-width: none;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  },
+
+  /**
+   * Clear all toasts
+   */
+  clearToasts() {
+    for (const toast of this._activeToasts) {
+      toast.classList.remove("visible");
+      setTimeout(() => toast.remove(), 300);
+    }
+    this._activeToasts.clear();
+  },
+
+  /**
+   * Confirmation dialog element
+   * @type {HTMLElement|null}
+   */
+  _confirmDialog: null,
+
+  /**
+   * Show a confirmation dialog
+   * @param {string} message - Confirmation message
+   * @param {Object} options - Options
+   * @param {string} options.title - Dialog title (default: "Confirm")
+   * @param {string} options.confirmText - Confirm button text (default: "Confirm")
+   * @param {string} options.cancelText - Cancel button text (default: "Cancel")
+   * @param {string} options.type - Type: 'info', 'warning', 'danger' (default: 'info')
+   * @returns {Promise<boolean>} Resolves to true if confirmed, false if cancelled
+   */
+  confirm(message, options = {}) {
+    const {
+      title = "Confirm",
+      confirmText = "Confirm",
+      cancelText = "Cancel",
+      type = "info"
+    } = options;
+
+    return new Promise((resolve) => {
+      // Create dialog if it doesn't exist
+      if (!this._confirmDialog) {
+        this._createConfirmDialog();
+      }
+
+      // Update dialog content
+      const dialog = this._confirmDialog;
+      dialog.querySelector(".council-confirm-title").textContent = title;
+      dialog.querySelector(".council-confirm-message").textContent = message;
+      dialog.querySelector(".council-confirm-btn").textContent = confirmText;
+      dialog.querySelector(".council-confirm-cancel").textContent = cancelText;
+
+      // Set type class
+      const container = dialog.querySelector(".council-confirm-container");
+      container.className = `council-confirm-container council-confirm-${type}`;
+
+      // Handle confirm
+      const handleConfirm = () => {
+        cleanup();
+        resolve(true);
+      };
+
+      // Handle cancel
+      const handleCancel = () => {
+        cleanup();
+        resolve(false);
+      };
+
+      // Cleanup function
+      const cleanup = () => {
+        dialog.classList.remove("visible");
+        confirmBtn.removeEventListener("click", handleConfirm);
+        cancelBtn.removeEventListener("click", handleCancel);
+        dialog.removeEventListener("click", handleBackdropClick);
+      };
+
+      // Backdrop click
+      const handleBackdropClick = (e) => {
+        if (e.target === dialog) {
+          handleCancel();
+        }
+      };
+
+      // Attach event listeners
+      const confirmBtn = dialog.querySelector(".council-confirm-btn");
+      const cancelBtn = dialog.querySelector(".council-confirm-cancel");
+
+      confirmBtn.addEventListener("click", handleConfirm);
+      cancelBtn.addEventListener("click", handleCancel);
+      dialog.addEventListener("click", handleBackdropClick);
+
+      // Show dialog
+      dialog.classList.add("visible");
+
+      this._log("debug", `Confirmation dialog shown: ${message}`);
+      this._emit("kernel:confirm:shown", { message, options });
+    });
+  },
+
+  /**
+   * Create confirmation dialog
+   */
+  _createConfirmDialog() {
+    this._confirmDialog = document.createElement("div");
+    this._confirmDialog.className = "council-confirm-dialog";
+    this._confirmDialog.setAttribute("role", "dialog");
+    this._confirmDialog.setAttribute("aria-modal", "true");
+    this._confirmDialog.innerHTML = `
+      <div class="council-confirm-container">
+        <div class="council-confirm-header">
+          <h3 class="council-confirm-title">Confirm</h3>
+        </div>
+        <div class="council-confirm-body">
+          <p class="council-confirm-message"></p>
+        </div>
+        <div class="council-confirm-footer">
+          <button class="council-confirm-cancel">Cancel</button>
+          <button class="council-confirm-btn">Confirm</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(this._confirmDialog);
+
+    // Inject confirm styles
+    this._injectConfirmStyles();
+  },
+
+  /**
+   * Inject confirmation dialog styles
+   */
+  _injectConfirmStyles() {
+    if (document.getElementById("council-confirm-styles")) return;
+
+    const style = document.createElement("style");
+    style.id = "council-confirm-styles";
+    style.textContent = `
+      .council-confirm-dialog {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 10002;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s ease, visibility 0.2s ease;
+      }
+
+      .council-confirm-dialog.visible {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .council-confirm-container {
+        background: var(--SmartThemeBlurTintColor, #1a1a2e);
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        border-radius: 12px;
+        width: 90%;
+        max-width: 450px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        transform: scale(0.9);
+        transition: transform 0.2s ease;
+      }
+
+      .council-confirm-dialog.visible .council-confirm-container {
+        transform: scale(1);
+      }
+
+      .council-confirm-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--SmartThemeBorderColor, #333);
+      }
+
+      .council-confirm-title {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--SmartThemeBodyColor, #eee);
+      }
+
+      .council-confirm-body {
+        padding: 20px;
+      }
+
+      .council-confirm-message {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--SmartThemeBodyColor, #ccc);
+      }
+
+      .council-confirm-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 16px 20px;
+        border-top: 1px solid var(--SmartThemeBorderColor, #333);
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 0 0 12px 12px;
+      }
+
+      .council-confirm-cancel,
+      .council-confirm-btn {
+        padding: 10px 20px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: none;
+      }
+
+      .council-confirm-cancel {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--SmartThemeBodyColor, #ccc);
+      }
+
+      .council-confirm-cancel:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .council-confirm-btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+
+      .council-confirm-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+      }
+
+      .council-confirm-container.council-confirm-danger .council-confirm-btn {
+        background: linear-gradient(135deg, #f87171 0%, #dc2626 100%);
+      }
+
+      .council-confirm-container.council-confirm-warning .council-confirm-btn {
+        background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+      }
+
+      @media (max-width: 768px) {
+        .council-confirm-container {
+          width: 95%;
+        }
+
+        .council-confirm-footer {
+          flex-direction: column-reverse;
+        }
+
+        .council-confirm-cancel,
+        .council-confirm-btn {
+          width: 100%;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+  },
+
   // ===== ST INTEGRATION =====
 
   /**
