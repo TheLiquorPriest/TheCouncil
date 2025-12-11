@@ -613,6 +613,593 @@ const TheCouncilKernel = {
     };
   },
 
+  // ===== STORAGE ABSTRACTION =====
+
+  /**
+   * Save data to storage with chat-scoped key
+   * @param {string} key - Storage key
+   * @param {any} data - Data to save
+   * @param {Object} options - Storage options
+   * @returns {Promise<boolean>} Success
+   */
+  async saveData(key, data, options = {}) {
+    const { scope = "chat", merge = false } = options;
+
+    try {
+      const scopedKey = this._getScopedKey(key, scope);
+      const stContext = window.SillyTavern?.getContext?.();
+
+      if (stContext?.extensionSettings) {
+        // Use ST extension storage
+        if (merge && stContext.extensionSettings[scopedKey]) {
+          const existing = stContext.extensionSettings[scopedKey];
+          stContext.extensionSettings[scopedKey] = typeof existing === "object" && typeof data === "object"
+            ? this._deepMerge(existing, data)
+            : data;
+        } else {
+          stContext.extensionSettings[scopedKey] = data;
+        }
+
+        if (window.saveSettingsDebounced) {
+          window.saveSettingsDebounced();
+        }
+        this._log("debug", `Data saved: ${scopedKey}`);
+        this._emit("kernel:storage:saved", { key: scopedKey, scope });
+        return true;
+      } else {
+        // Fallback to localStorage
+        const storageKey = `TheCouncil_${scopedKey}`;
+        if (merge) {
+          const existing = localStorage.getItem(storageKey);
+          if (existing) {
+            const parsed = JSON.parse(existing);
+            const merged = typeof parsed === "object" && typeof data === "object"
+              ? this._deepMerge(parsed, data)
+              : data;
+            localStorage.setItem(storageKey, JSON.stringify(merged));
+          } else {
+            localStorage.setItem(storageKey, JSON.stringify(data));
+          }
+        } else {
+          localStorage.setItem(storageKey, JSON.stringify(data));
+        }
+        this._log("debug", `Data saved to localStorage: ${storageKey}`);
+        this._emit("kernel:storage:saved", { key: scopedKey, scope });
+        return true;
+      }
+    } catch (error) {
+      this._log("error", `Failed to save data for key "${key}":`, error);
+      this._emit("kernel:storage:error", { key, error: error.message });
+      return false;
+    }
+  },
+
+  /**
+   * Load data from storage with chat-scoped key
+   * @param {string} key - Storage key
+   * @param {Object} options - Storage options
+   * @returns {Promise<any>} Loaded data or null
+   */
+  async loadData(key, options = {}) {
+    const { scope = "chat", defaultValue = null } = options;
+
+    try {
+      const scopedKey = this._getScopedKey(key, scope);
+      const stContext = window.SillyTavern?.getContext?.();
+
+      if (stContext?.extensionSettings) {
+        // Use ST extension storage
+        const data = stContext.extensionSettings[scopedKey];
+        if (data !== undefined) {
+          this._log("debug", `Data loaded from ST: ${scopedKey}`);
+          this._emit("kernel:storage:loaded", { key: scopedKey, scope });
+          return data;
+        }
+      } else {
+        // Fallback to localStorage
+        const storageKey = `TheCouncil_${scopedKey}`;
+        const stored = localStorage.getItem(storageKey);
+        if (stored) {
+          const data = JSON.parse(stored);
+          this._log("debug", `Data loaded from localStorage: ${storageKey}`);
+          this._emit("kernel:storage:loaded", { key: scopedKey, scope });
+          return data;
+        }
+      }
+
+      return defaultValue;
+    } catch (error) {
+      this._log("error", `Failed to load data for key "${key}":`, error);
+      this._emit("kernel:storage:error", { key, error: error.message });
+      return defaultValue;
+    }
+  },
+
+  /**
+   * Clear data from storage
+   * @param {string} key - Storage key (if null, clears all Council data)
+   * @param {Object} options - Storage options
+   * @returns {Promise<boolean>} Success
+   */
+  async clearData(key = null, options = {}) {
+    const { scope = "chat" } = options;
+
+    try {
+      if (key === null) {
+        // Clear all Council data
+        const stContext = window.SillyTavern?.getContext?.();
+        if (stContext?.extensionSettings) {
+          // Clear all keys starting with TheCouncil_
+          const keysToDelete = Object.keys(stContext.extensionSettings).filter(k =>
+            k.startsWith("TheCouncil_")
+          );
+          for (const k of keysToDelete) {
+            delete stContext.extensionSettings[k];
+          }
+          if (window.saveSettingsDebounced) {
+            window.saveSettingsDebounced();
+          }
+          this._log("info", "All Council data cleared from ST storage");
+        } else {
+          // Clear from localStorage
+          const keysToDelete = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith("TheCouncil_")) {
+              keysToDelete.push(k);
+            }
+          }
+          for (const k of keysToDelete) {
+            localStorage.removeItem(k);
+          }
+          this._log("info", "All Council data cleared from localStorage");
+        }
+        this._emit("kernel:storage:cleared", { key: null });
+        return true;
+      } else {
+        // Clear specific key
+        const scopedKey = this._getScopedKey(key, scope);
+        const stContext = window.SillyTavern?.getContext?.();
+
+        if (stContext?.extensionSettings) {
+          delete stContext.extensionSettings[scopedKey];
+          if (window.saveSettingsDebounced) {
+            window.saveSettingsDebounced();
+          }
+        } else {
+          const storageKey = `TheCouncil_${scopedKey}`;
+          localStorage.removeItem(storageKey);
+        }
+
+        this._log("debug", `Data cleared: ${scopedKey}`);
+        this._emit("kernel:storage:cleared", { key: scopedKey, scope });
+        return true;
+      }
+    } catch (error) {
+      this._log("error", `Failed to clear data for key "${key}":`, error);
+      this._emit("kernel:storage:error", { key, error: error.message });
+      return false;
+    }
+  },
+
+  /**
+   * Get scoped storage key
+   * @param {string} key - Base key
+   * @param {string} scope - Scope ('global' | 'chat' | 'character')
+   * @returns {string} Scoped key
+   */
+  _getScopedKey(key, scope) {
+    if (scope === "global") {
+      return `TheCouncil_${key}`;
+    }
+
+    const stContext = window.SillyTavern?.getContext?.();
+    const chatId = stContext?.chatId || "default";
+    const characterId = stContext?.characterId || "default";
+
+    if (scope === "chat") {
+      return `TheCouncil_chat_${chatId}_${key}`;
+    } else if (scope === "character") {
+      return `TheCouncil_char_${characterId}_${key}`;
+    }
+
+    // Default to chat scope
+    return `TheCouncil_chat_${chatId}_${key}`;
+  },
+
+  /**
+   * Check if data exists for a key
+   * @param {string} key - Storage key
+   * @param {Object} options - Storage options
+   * @returns {Promise<boolean>} True if exists
+   */
+  async hasData(key, options = {}) {
+    const data = await this.loadData(key, options);
+    return data !== null;
+  },
+
+  // ===== PRESET MANAGEMENT =====
+
+  /**
+   * Presets directory relative to extension
+   * @type {string}
+   */
+  PRESETS_DIR: "data/presets",
+
+  /**
+   * Extension path - set during init
+   * @type {string}
+   */
+  _extensionPath: "",
+
+  /**
+   * Loaded presets cache
+   * @type {Map<string, Object>}
+   */
+  _presets: new Map(),
+
+  /**
+   * Discover available presets from data/presets/
+   * @returns {Promise<Array>} Array of preset metadata
+   */
+  async discoverPresets() {
+    this._log("info", "Discovering presets...");
+
+    try {
+      const presetFiles = await this._listPresetFiles();
+      this._log("info", `Found ${presetFiles.length} preset file(s)`);
+
+      const loadPromises = presetFiles.map(file =>
+        this._loadPresetFile(file).catch(err => {
+          this._log("error", `Failed to load preset ${file}: ${err.message}`);
+          return null;
+        })
+      );
+
+      const results = await Promise.all(loadPromises);
+      const validPresets = results.filter(p => p !== null);
+
+      // Cache all valid presets
+      for (const preset of validPresets) {
+        this._presets.set(preset.id, preset);
+        this._log("info", `Loaded preset: ${preset.name} (${preset.id})`);
+      }
+
+      this._emit("kernel:presets:discovered", {
+        count: validPresets.length,
+        presets: validPresets.map(p => ({ id: p.id, name: p.name, description: p.description }))
+      });
+
+      // Return metadata only
+      return validPresets.map(p => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        version: p.version,
+        metadata: p.metadata
+      }));
+    } catch (error) {
+      this._log("error", `Failed to discover presets: ${error.message}`);
+      this._emit("kernel:presets:error", { error: error.message });
+      return [];
+    }
+  },
+
+  /**
+   * List preset files in the presets directory
+   * @returns {Promise<string[]>} Array of file paths
+   */
+  async _listPresetFiles() {
+    const presetsPath = this._getPresetsPath();
+
+    // Try to fetch known preset files
+    const knownFiles = [
+      "default-pipeline.json",
+      "standard-pipeline.json",
+      "quick-pipeline.json"
+    ];
+
+    const validFiles = [];
+    for (const file of knownFiles) {
+      const filePath = `${presetsPath}/${file}`;
+      try {
+        const response = await fetch(filePath, { method: "HEAD" });
+        if (response.ok) {
+          validFiles.push(filePath);
+        }
+      } catch (e) {
+        // File doesn't exist or fetch failed
+      }
+    }
+
+    return validFiles;
+  },
+
+  /**
+   * Get the full presets directory path
+   * @returns {string}
+   */
+  _getPresetsPath() {
+    if (this._extensionPath) {
+      return `${this._extensionPath}/${this.PRESETS_DIR}`;
+    }
+    // Default path for SillyTavern extensions
+    return `/scripts/extensions/third-party/TheCouncil/${this.PRESETS_DIR}`;
+  },
+
+  /**
+   * Load a preset file
+   * @param {string} filePath - Path to the preset file
+   * @returns {Promise<Object|null>} Loaded and validated preset
+   */
+  async _loadPresetFile(filePath) {
+    try {
+      const response = await fetch(filePath);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const preset = await response.json();
+
+      // Validate preset structure
+      if (!preset.id || !preset.name) {
+        throw new Error("Preset missing required fields (id, name)");
+      }
+
+      // Add source file reference
+      preset._sourceFile = filePath;
+
+      return preset;
+    } catch (error) {
+      this._log("error", `Error loading preset from ${filePath}: ${error.message}`);
+      return null;
+    }
+  },
+
+  /**
+   * Load a preset by ID
+   * @param {string} presetId - Preset ID
+   * @returns {Promise<Object>} Loaded preset
+   */
+  async loadPreset(presetId) {
+    // Check if already in cache
+    if (this._presets.has(presetId)) {
+      this._log("debug", `Preset loaded from cache: ${presetId}`);
+      return this._presets.get(presetId);
+    }
+
+    // Try to discover presets if not cached
+    await this.discoverPresets();
+
+    if (this._presets.has(presetId)) {
+      return this._presets.get(presetId);
+    }
+
+    throw new Error(`Preset "${presetId}" not found`);
+  },
+
+  /**
+   * Apply a preset to all systems
+   * @param {string|Object} presetIdOrData - Preset ID or preset object
+   * @param {Object} options - Application options
+   * @returns {Promise<Object>} Application result
+   */
+  async applyPreset(presetIdOrData, options = {}) {
+    let preset;
+
+    // Load preset if ID provided
+    if (typeof presetIdOrData === "string") {
+      preset = await this.loadPreset(presetIdOrData);
+    } else {
+      preset = presetIdOrData;
+    }
+
+    if (!preset) {
+      throw new Error("Invalid preset data");
+    }
+
+    this._log("info", `Applying preset: ${preset.name} (${preset.id})`);
+
+    // Run beforePresetApply hook
+    await this.runHooks("beforePresetApply", preset);
+
+    const results = {
+      presetId: preset.id,
+      presetName: preset.name,
+      systems: {},
+      errors: []
+    };
+
+    try {
+      // Apply to each system that has an applyPreset method
+      for (const [systemName, system] of this._systems) {
+        if (typeof system.applyPreset === "function") {
+          try {
+            this._log("debug", `Applying preset to system: ${systemName}`);
+            const systemResult = await system.applyPreset(preset, options);
+            results.systems[systemName] = systemResult;
+          } catch (error) {
+            const errorMsg = `${systemName}: ${error.message}`;
+            results.errors.push(errorMsg);
+            this._log("error", `Failed to apply preset to ${systemName}:`, error);
+          }
+        }
+      }
+
+      // Update global state
+      this.setState("session.activePresetId", preset.id, true);
+
+      // Run afterPresetApply hook
+      await this.runHooks("afterPresetApply", { preset, results });
+
+      this._log("info", `Preset applied: ${preset.name}`, results);
+      this._emit("kernel:preset:applied", { preset, results });
+
+      return results;
+    } catch (error) {
+      this._log("error", `Failed to apply preset: ${error.message}`);
+      this._emit("kernel:preset:error", { preset, error: error.message });
+      throw error;
+    }
+  },
+
+  /**
+   * Save current configuration as a new preset
+   * @param {string} name - Preset name
+   * @param {Object} options - Save options
+   * @returns {Promise<Object>} Created preset
+   */
+  async saveAsPreset(name, options = {}) {
+    const {
+      id = `custom_${Date.now()}`,
+      description = "Custom preset created from current configuration"
+    } = options;
+
+    this._log("info", `Creating preset from current state: ${name}`);
+
+    const preset = {
+      id,
+      name,
+      description,
+      version: this.VERSION,
+      metadata: {
+        createdAt: new Date().toISOString(),
+        author: "User",
+        tags: ["custom"]
+      }
+    };
+
+    // Collect configuration from each system
+    for (const [systemName, system] of this._systems) {
+      if (typeof system.exportPresetData === "function") {
+        try {
+          const systemData = await system.exportPresetData();
+          Object.assign(preset, systemData);
+          this._log("debug", `Exported preset data from system: ${systemName}`);
+        } catch (error) {
+          this._log("warn", `Failed to export from ${systemName}: ${error.message}`);
+        }
+      }
+    }
+
+    // Cache the preset
+    this._presets.set(preset.id, preset);
+
+    // Optionally save to storage
+    if (options.persist !== false) {
+      await this.saveData(`preset_${preset.id}`, preset, { scope: "global" });
+    }
+
+    this._log("info", `Preset created: ${preset.name} (${preset.id})`);
+    this._emit("kernel:preset:created", { preset });
+
+    return preset;
+  },
+
+  /**
+   * Get current preset ID
+   * @returns {string|null}
+   */
+  getCurrentPresetId() {
+    return this.getState("session.activePresetId");
+  },
+
+  /**
+   * Get current preset object
+   * @returns {Object|null}
+   */
+  getCurrentPreset() {
+    const presetId = this.getCurrentPresetId();
+    if (!presetId) {
+      return null;
+    }
+    return this._presets.get(presetId) || null;
+  },
+
+  /**
+   * Get all cached presets
+   * @returns {Array<Object>} Array of preset metadata
+   */
+  getAllPresets() {
+    return Array.from(this._presets.values()).map(p => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      version: p.version,
+      metadata: p.metadata
+    }));
+  },
+
+  /**
+   * Get a specific preset from cache
+   * @param {string} presetId - Preset ID
+   * @returns {Object|null}
+   */
+  getPreset(presetId) {
+    return this._presets.get(presetId) || null;
+  },
+
+  /**
+   * Export a preset as JSON
+   * @param {string} presetId - Preset ID to export
+   * @returns {string} JSON string
+   */
+  exportPreset(presetId) {
+    const preset = this._presets.get(presetId);
+    if (!preset) {
+      throw new Error(`Preset "${presetId}" not found`);
+    }
+
+    // Remove internal properties
+    const exportData = { ...preset };
+    delete exportData._sourceFile;
+
+    // Update metadata
+    exportData.metadata = {
+      ...exportData.metadata,
+      exportedAt: new Date().toISOString()
+    };
+
+    return JSON.stringify(exportData, null, 2);
+  },
+
+  /**
+   * Import a preset from JSON
+   * @param {string|Object} data - JSON string or preset object
+   * @param {Object} options - Import options
+   * @returns {Object} Imported preset
+   */
+  importPreset(data, options = {}) {
+    const { applyImmediately = false } = options;
+
+    // Parse if string
+    let preset = typeof data === "string" ? JSON.parse(data) : data;
+
+    // Validate
+    if (!preset.id || !preset.name) {
+      throw new Error("Invalid preset: missing required fields (id, name)");
+    }
+
+    // Check for ID conflict
+    if (this._presets.has(preset.id) && !options.overwrite) {
+      preset.id = `${preset.id}_imported_${Date.now()}`;
+      preset.name = `${preset.name} (Imported)`;
+    }
+
+    // Cache
+    this._presets.set(preset.id, preset);
+
+    this._log("info", `Preset imported: ${preset.name} (${preset.id})`);
+    this._emit("kernel:preset:imported", { preset });
+
+    // Apply if requested
+    if (applyImmediately) {
+      return this.applyPreset(preset.id);
+    }
+
+    return preset;
+  },
+
   // ===== BOOTSTRAP SEQUENCE =====
 
   /**
@@ -825,65 +1412,6 @@ const TheCouncilKernel = {
    */
   getActiveModal() {
     return this.getState("ui.activeModal");
-  },
-
-  // ===== PRESET MANAGEMENT (Delegates to PresetManager) =====
-
-  /**
-   * Discover available presets
-   * @returns {Promise<Array>}
-   */
-  async discoverPresets() {
-    const presetManager = this.getModule("presetManager") || this.getSystem("presetManager");
-    if (presetManager) {
-      return presetManager.discoverPresets();
-    }
-    return [];
-  },
-
-  /**
-   * Load a preset
-   * @param {string} presetId - Preset ID
-   * @returns {Promise<Object>}
-   */
-  async loadPreset(presetId) {
-    const presetManager = this.getModule("presetManager") || this.getSystem("presetManager");
-    if (!presetManager) {
-      throw new Error("PresetManager not available");
-    }
-    return presetManager.loadPreset(presetId);
-  },
-
-  /**
-   * Apply a preset
-   * @param {Object} preset - Preset data
-   * @returns {Promise}
-   */
-  async applyPreset(preset) {
-    const presetManager = this.getModule("presetManager") || this.getSystem("presetManager");
-    if (!presetManager) {
-      throw new Error("PresetManager not available");
-    }
-    await this.runHooks("beforePresetApply", preset);
-    await presetManager.applyPreset(preset);
-    await this.runHooks("afterPresetApply", preset);
-    this.setState("session.activePresetId", preset.id, true);
-  },
-
-  /**
-   * Get current preset
-   * @returns {Object|null}
-   */
-  getCurrentPreset() {
-    const presetId = this.getState("session.activePresetId");
-    if (!presetId) {
-      return null;
-    }
-    const presetManager = this.getModule("presetManager") || this.getSystem("presetManager");
-    if (presetManager && typeof presetManager.getPreset === "function") {
-      return presetManager.getPreset(presetId);
-    }
-    return null;
   },
 
   // ===== ST INTEGRATION =====

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kernel Storage & Preset Test</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1e1e1e;
+      color: #d4d4d4;
+    }
+    .test-section {
+      margin-bottom: 30px;
+      padding: 15px;
+      background: #2d2d2d;
+      border-radius: 5px;
+    }
+    .test-section h2 {
+      margin-top: 0;
+      color: #4ec9b0;
+    }
+    button {
+      padding: 8px 16px;
+      margin: 5px;
+      background: #0e639c;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #1177bb;
+    }
+    .output {
+      background: #1e1e1e;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 3px;
+      border: 1px solid #3e3e3e;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .success { color: #4ec9b0; }
+    .error { color: #f48771; }
+    .info { color: #569cd6; }
+  </style>
+</head>
+<body>
+  <h1>Kernel Storage & Preset Management Test</h1>
+
+  <div class="test-section">
+    <h2>1. Storage Tests</h2>
+    <button onclick="testSaveData()">Save Data</button>
+    <button onclick="testLoadData()">Load Data</button>
+    <button onclick="testHasData()">Check Data Exists</button>
+    <button onclick="testClearData()">Clear Data</button>
+    <button onclick="testScopedKeys()">Test Scoped Keys</button>
+    <div id="storageOutput" class="output"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>2. Preset Discovery Tests</h2>
+    <button onclick="testDiscoverPresets()">Discover Presets</button>
+    <button onclick="testLoadPreset()">Load Preset</button>
+    <button onclick="testGetAllPresets()">Get All Presets</button>
+    <div id="presetOutput" class="output"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>3. Preset Management Tests</h2>
+    <button onclick="testSaveAsPreset()">Save As Preset</button>
+    <button onclick="testImportPreset()">Import Preset</button>
+    <button onclick="testExportPreset()">Export Preset</button>
+    <button onclick="testGetCurrentPreset()">Get Current Preset</button>
+    <div id="presetMgmtOutput" class="output"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>4. Integration Tests</h2>
+    <button onclick="testFullWorkflow()">Run Full Workflow</button>
+    <div id="integrationOutput" class="output"></div>
+  </div>
+
+  <!-- Load Logger first -->
+  <script src="utils/logger.js"></script>
+
+  <!-- Load Kernel -->
+  <script src="core/kernel.js"></script>
+
+  <script>
+    // Initialize Kernel
+    (async () => {
+      try {
+        await window.TheCouncil.init({ debug: true });
+        log('info', 'Kernel initialized successfully', 'integrationOutput');
+      } catch (error) {
+        log('error', `Failed to initialize Kernel: ${error.message}`, 'integrationOutput');
+      }
+    })();
+
+    function log(type, message, outputId) {
+      const output = document.getElementById(outputId);
+      const div = document.createElement('div');
+      div.className = type;
+      div.textContent = `[${type.toUpperCase()}] ${message}`;
+      output.appendChild(div);
+      output.scrollTop = output.scrollHeight;
+      console.log(`[${type}]`, message);
+    }
+
+    // ===== STORAGE TESTS =====
+
+    async function testSaveData() {
+      const outputId = 'storageOutput';
+      try {
+        const testData = { foo: 'bar', timestamp: Date.now() };
+        const success = await window.TheCouncil.saveData('test', testData);
+        log('success', `Save data result: ${success}`, outputId);
+        log('info', `Saved: ${JSON.stringify(testData)}`, outputId);
+      } catch (error) {
+        log('error', `Save failed: ${error.message}`, outputId);
+      }
+    }
+
+    async function testLoadData() {
+      const outputId = 'storageOutput';
+      try {
+        const data = await window.TheCouncil.loadData('test');
+        log('success', `Loaded data: ${JSON.stringify(data)}`, outputId);
+      } catch (error) {
+        log('error', `Load failed: ${error.message}`, outputId);
+      }
+    }
+
+    async function testHasData() {
+      const outputId = 'storageOutput';
+      try {
+        const exists = await window.TheCouncil.hasData('test');
+        log('info', `Data exists: ${exists}`, outputId);
+      } catch (error) {
+        log('error', `Check failed: ${error.message}`, outputId);
+      }
+    }
+
+    async function testClearData() {
+      const outputId = 'storageOutput';
+      try {
+        const success = await window.TheCouncil.clearData('test');
+        log('success', `Clear data result: ${success}`, outputId);
+
+        // Verify it's cleared
+        const data = await window.TheCouncil.loadData('test');
+        log('info', `After clear: ${JSON.stringify(data)}`, outputId);
+      } catch (error) {
+        log('error', `Clear failed: ${error.message}`, outputId);
+      }
+    }
+
+    async function testScopedKeys() {
+      const outputId = 'storageOutput';
+      try {
+        // Test different scopes
+        await window.TheCouncil.saveData('scoped_test', 'global_value', { scope: 'global' });
+        log('success', 'Saved with global scope', outputId);
+
+        await window.TheCouncil.saveData('scoped_test', 'chat_value', { scope: 'chat' });
+        log('success', 'Saved with chat scope', outputId);
+
+        const globalData = await window.TheCouncil.loadData('scoped_test', { scope: 'global' });
+        const chatData = await window.TheCouncil.loadData('scoped_test', { scope: 'chat' });
+
+        log('info', `Global scope: ${globalData}`, outputId);
+        log('info', `Chat scope: ${chatData}`, outputId);
+      } catch (error) {
+        log('error', `Scoped keys failed: ${error.message}`, outputId);
+      }
+    }
+
+    // ===== PRESET DISCOVERY TESTS =====
+
+    async function testDiscoverPresets() {
+      const outputId = 'presetOutput';
+      try {
+        const presets = await window.TheCouncil.discoverPresets();
+        log('success', `Discovered ${presets.length} preset(s)`, outputId);
+        presets.forEach(p => {
+          log('info', `- ${p.name} (${p.id}): ${p.description}`, outputId);
+        });
+      } catch (error) {
+        log('error', `Discovery failed: ${error.message}`, outputId);
+      }
+    }
+
+    async function testLoadPreset() {
+      const outputId = 'presetOutput';
+      try {
+        const preset = await window.TheCouncil.loadPreset('editorial-board');
+        log('success', `Loaded preset: ${preset.name}`, outputId);
+        log('info', `Version: ${preset.version}`, outputId);
+        log('info', `Phases: ${preset.phases?.length || 0}`, outputId);
+      } catch (error) {
+        log('error', `Load failed: ${error.message}`, outputId);
+      }
+    }
+
+    async function testGetAllPresets() {
+      const outputId = 'presetOutput';
+      try {
+        const presets = await window.TheCouncil.getAllPresets();
+        log('success', `Retrieved ${presets.length} cached preset(s)`, outputId);
+        presets.forEach(p => {
+          log('info', `- ${p.name} (v${p.version})`, outputId);
+        });
+      } catch (error) {
+        log('error', `Get all failed: ${error.message}`, outputId);
+      }
+    }
+
+    // ===== PRESET MANAGEMENT TESTS =====
+
+    async function testSaveAsPreset() {
+      const outputId = 'presetMgmtOutput';
+      try {
+        const preset = await window.TheCouncil.saveAsPreset('Test Preset', {
+          description: 'A test preset created from browser test',
+          persist: true
+        });
+        log('success', `Created preset: ${preset.name} (${preset.id})`, outputId);
+        log('info', `Metadata: ${JSON.stringify(preset.metadata)}`, outputId);
+      } catch (error) {
+        log('error', `Save as preset failed: ${error.message}`, outputId);
+      }
+    }
+
+    async function testImportPreset() {
+      const outputId = 'presetMgmtOutput';
+      try {
+        const testPreset = {
+          id: 'test_import',
+          name: 'Imported Test Preset',
+          description: 'This is a test import',
+          version: '1.0.0',
+          metadata: { author: 'Test', tags: ['test'] }
+        };
+
+        const imported = await window.TheCouncil.importPreset(testPreset);
+        log('success', `Imported preset: ${imported.name}`, outputId);
+      } catch (error) {
+        log('error', `Import failed: ${error.message}`, outputId);
+      }
+    }
+
+    async function testExportPreset() {
+      const outputId = 'presetMgmtOutput';
+      try {
+        // First ensure we have a preset to export
+        await window.TheCouncil.discoverPresets();
+        const presets = await window.TheCouncil.getAllPresets();
+
+        if (presets.length > 0) {
+          const json = window.TheCouncil.exportPreset(presets[0].id);
+          log('success', `Exported preset (${json.length} chars)`, outputId);
+          log('info', `Preview: ${json.substring(0, 100)}...`, outputId);
+        } else {
+          log('error', 'No presets available to export', outputId);
+        }
+      } catch (error) {
+        log('error', `Export failed: ${error.message}`, outputId);
+      }
+    }
+
+    async function testGetCurrentPreset() {
+      const outputId = 'presetMgmtOutput';
+      try {
+        const current = window.TheCouncil.getCurrentPreset();
+        if (current) {
+          log('success', `Current preset: ${current.name}`, outputId);
+        } else {
+          log('info', 'No preset currently active', outputId);
+        }
+
+        const currentId = window.TheCouncil.getCurrentPresetId();
+        log('info', `Current ID: ${currentId}`, outputId);
+      } catch (error) {
+        log('error', `Get current failed: ${error.message}`, outputId);
+      }
+    }
+
+    // ===== INTEGRATION TESTS =====
+
+    async function testFullWorkflow() {
+      const outputId = 'integrationOutput';
+      try {
+        log('info', '=== Starting Full Workflow Test ===', outputId);
+
+        // 1. Save some data
+        log('info', 'Step 1: Saving test data...', outputId);
+        await window.TheCouncil.saveData('workflow_test', { step: 1, data: 'test' });
+
+        // 2. Load it back
+        log('info', 'Step 2: Loading test data...', outputId);
+        const loaded = await window.TheCouncil.loadData('workflow_test');
+        log('success', `Loaded: ${JSON.stringify(loaded)}`, outputId);
+
+        // 3. Discover presets
+        log('info', 'Step 3: Discovering presets...', outputId);
+        const presets = await window.TheCouncil.discoverPresets();
+        log('success', `Found ${presets.length} preset(s)`, outputId);
+
+        // 4. Load a preset
+        if (presets.length > 0) {
+          log('info', `Step 4: Loading preset "${presets[0].id}"...`, outputId);
+          const preset = await window.TheCouncil.loadPreset(presets[0].id);
+          log('success', `Loaded: ${preset.name}`, outputId);
+        }
+
+        // 5. Create a custom preset
+        log('info', 'Step 5: Creating custom preset...', outputId);
+        const custom = await window.TheCouncil.saveAsPreset('Workflow Test Preset', {
+          description: 'Created during workflow test'
+        });
+        log('success', `Created: ${custom.name} (${custom.id})`, outputId);
+
+        // 6. Clean up
+        log('info', 'Step 6: Cleaning up test data...', outputId);
+        await window.TheCouncil.clearData('workflow_test');
+
+        log('success', '=== Workflow Test Complete ===', outputId);
+      } catch (error) {
+        log('error', `Workflow failed: ${error.message}`, outputId);
+        console.error(error);
+      }
+    }
+  </script>
+</body>
+</html>

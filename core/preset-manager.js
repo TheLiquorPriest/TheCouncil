@@ -1,22 +1,22 @@
 /**
  * TheCouncil - Preset Manager
  *
- * Core module for managing unified presets:
- * - Discover presets from data/presets/ directory
- * - Load and parse preset files
- * - Apply presets to all relevant systems (Agents, Pipeline, Curation)
- * - Import/export preset functionality
- * - Preset validation and normalization
+ * ⚠️ DEPRECATED: This module is deprecated as of Task 0.2.
+ * All preset management functionality has been migrated into core/kernel.js
  *
- * A unified preset contains:
- * - Pipeline configuration (phases, actions, globals)
- * - Agents configuration (agents by category)
- * - Teams configuration
- * - Threads configuration
- * - Static context settings
- * - Constants
+ * This file is kept temporarily for reference during migration but will be
+ * removed in a future cleanup task (Task 6.2).
+ *
+ * New code should use:
+ * - window.TheCouncil.discoverPresets()
+ * - window.TheCouncil.loadPreset(id)
+ * - window.TheCouncil.applyPreset(preset)
+ * - window.TheCouncil.saveAsPreset(name, options)
+ * - window.TheCouncil.importPreset(data)
+ * - window.TheCouncil.exportPreset(id)
  *
  * @version 1.0.0
+ * @deprecated Use TheCouncilKernel preset management methods instead
  */
 
 const PresetManager = {
