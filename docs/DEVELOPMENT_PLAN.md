@@ -821,6 +821,8 @@ At ~1-2 sessions per day (side project pace), estimate **2-3 weeks** to alpha.
 When starting a new session, provide this to the Sonnet agent:
 
 ```
+docs/DEVELOPMENT_PLAN.md
+
 ## Task: [Task ID] - [Task Name]
 
 ### Context
