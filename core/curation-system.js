@@ -631,6 +631,15 @@ When analyzing content, focus on scene-specific elements and situational context
   },
 
   /**
+   * Create a new curation agent (CRUD wrapper for registerCurationAgent)
+   * @param {Object} agent - Agent configuration
+   * @returns {Object} Created agent
+   */
+  createCurationAgent(agent) {
+    return this.registerCurationAgent(agent);
+  },
+
+  /**
    * Register a curation agent
    * @param {Object} agent - Agent configuration
    * @returns {Object} Registered agent
