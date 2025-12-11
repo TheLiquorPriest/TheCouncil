@@ -433,6 +433,14 @@
    */
   function initializeUI() {
     logger.log("info", "Initializing UI modals...");
+    console.log("[TheCouncil] initializeUI called - Systems available:", {
+      AgentsModal: !!Systems.AgentsModal,
+      CurationModal: !!Systems.CurationModal,
+      CharacterModal: !!Systems.CharacterModal,
+      PipelineModal: !!Systems.PipelineModal,
+      GavelModal: !!Systems.GavelModal,
+      NavModal: !!Systems.NavModal,
+    });
 
     // Initialize Agents Modal
     if (Systems.AgentsModal) {
@@ -491,17 +499,28 @@
 
     // Initialize Nav Modal
     if (Systems.NavModal) {
-      Systems.NavModal.init({
-        agentsModal: Systems.AgentsModal,
-        curationModal: Systems.CurationModal,
-        characterModal: Systems.CharacterModal,
-        pipelineModal: Systems.PipelineModal,
-        gavelModal: Systems.GavelModal,
-        injectionModal: Systems.InjectionModal,
-        pipelineSystem: Systems.PipelineSystem,
-        orchestrationSystem: Systems.OrchestrationSystem,
-        logger: Systems.Logger,
-      });
+      console.log("[TheCouncil] Initializing NavModal...");
+      try {
+        Systems.NavModal.init({
+          agentsModal: Systems.AgentsModal,
+          curationModal: Systems.CurationModal,
+          characterModal: Systems.CharacterModal,
+          pipelineModal: Systems.PipelineModal,
+          gavelModal: Systems.GavelModal,
+          injectionModal: Systems.InjectionModal,
+          pipelineSystem: Systems.PipelineSystem,
+          orchestrationSystem: Systems.OrchestrationSystem,
+          logger: Systems.Logger,
+        });
+        console.log("[TheCouncil] NavModal.init() completed", {
+          initialized: Systems.NavModal._initialized,
+          containerExists: !!Systems.NavModal._elements?.container,
+        });
+      } catch (e) {
+        console.error("[TheCouncil] NavModal.init() FAILED:", e);
+      }
+    } else {
+      console.warn("[TheCouncil] NavModal not available - UI will not show");
     }
 
     logger.log("info", "UI modals initialized");
@@ -947,131 +966,6 @@
     }
   }
 
-  // ===== PUBLIC API =====
-
-  /**
-   * The Council public API
-   */
-  const TheCouncil = {
-    VERSION,
-    EXTENSION_NAME,
-
-    /**
-     * Get initialization status
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Get a specific system
-     * @param {string} name - System name
-     * @returns {Object|null}
-     */
-    getSystem(name) {
-      return Systems[name] || null;
-    },
-
-    /**
-     * Get all systems
-     * @returns {Object}
-     */
-    getSystems() {
-      return { ...Systems };
-    },
-
-    /**
-     * Get settings
-     * @returns {Object}
-     */
-    getSettings() {
-      return { ...extensionSettings };
-    },
-
-    /**
-     * Update settings
-     * @param {Object} updates - Settings updates
-     */
-    updateSettings(updates) {
-      extensionSettings = { ...extensionSettings, ...updates };
-      saveSettings();
-    },
-
-    /**
-     * Show navigation modal
-     */
-    showNav() {
-      Systems.NavModal?.show();
-    },
-
-    /**
-     * Hide navigation modal
-     */
-    hideNav() {
-      Systems.NavModal?.hide();
-    },
-
-    /**
-     * Show agents modal
-     */
-    showAgents() {
-      Systems.AgentsModal?.show();
-    },
-
-    /**
-     * Show curation modal
-     */
-    showCuration() {
-      Systems.CurationModal?.show();
-    },
-
-    /**
-     * Show pipeline modal
-     * @param {Object} options - Show options
-     */
-    showPipeline(options) {
-      Systems.PipelineModal?.show(options);
-    },
-
-    /**
-     * Run a pipeline
-     * @param {string} pipelineId - Pipeline ID
-     * @param {Object} options - Run options
-     * @returns {Promise}
-     */
-    async runPipeline(pipelineId, options = {}) {
-      if (!Systems.PipelineSystem) {
-        throw new Error("Pipeline System not initialized");
-      }
-      return Systems.PipelineSystem.startRun(pipelineId, options);
-    },
-
-    /**
-     * Get summary of all systems
-     * @returns {Object}
-     */
-    getSummary() {
-      return {
-        version: VERSION,
-        initialized: isInitialized,
-        systems: {
-          AgentsSystem: Systems.AgentsSystem?.getSummary?.() || null,
-          CurationSystem: Systems.CurationSystem?.getSummary?.() || null,
-          PipelineSystem: Systems.PipelineSystem?.getSummary?.() || null,
-        },
-        ui: {
-          NavModal: Systems.NavModal?.getSummary?.() || null,
-          AgentsModal: !!Systems.AgentsModal,
-          CurationModal: !!Systems.CurationModal,
-          PipelineModal: !!Systems.PipelineModal,
-          GavelModal: Systems.GavelModal?.getSummary?.() || null,
-          InjectionModal: Systems.InjectionModal?.getSummary?.() || null,
-        },
-      };
-    },
-  };
-
   // ===== MAIN INITIALIZATION =====
 
   /**
@@ -1148,26 +1042,8 @@
 
   // ===== EXPORT & AUTO-INIT =====
 
-  // Note: window.TheCouncil is exposed by the Kernel
-  // We just keep a reference to the legacy TheCouncil object for backwards compatibility
-  const TheCouncil = {
-    VERSION,
-    EXTENSION_NAME,
-    isInitialized: () => isInitialized,
-    getSystem: (name) => window.TheCouncil?.getSystem?.(name) || Systems[name] || null,
-    getSystems: () => window.TheCouncil?.getAllSystems?.() || { ...Systems },
-    getSettings: () => window.TheCouncil?.getSettings?.() || extensionSettings,
-    updateSettings: (updates) => window.TheCouncil?.updateSettings?.(updates),
-    showNav: () => Systems.NavModal?.show(),
-    hideNav: () => Systems.NavModal?.hide(),
-    showAgents: () => Systems.AgentsModal?.show(),
-    showCuration: () => Systems.CurationModal?.show(),
-    showPipeline: (options) => Systems.PipelineModal?.show(options),
-    runPipeline: (pipelineId, options) => window.TheCouncil?.runPipeline?.(pipelineId, options),
-    getSummary: () => window.TheCouncil?.getSummary?.(),
-  };
-
-  // Expose individual systems for convenience (legacy)
+  // Note: window.TheCouncil is exposed by the Kernel (core/kernel.js)
+  // Expose Systems for legacy access
   window.CouncilSystems = Systems;
 
   // Auto-initialize when DOM is ready, but wait for ST to be available
@@ -1197,4 +1073,72 @@
   initWhenReady().catch((e) => {
     logger.error("Failed to initialize TheCouncil:", e);
   });
+
+  // ===== DEBUG: Add manual trigger if UI doesn't show =====
+  // This adds a floating button that can be used to manually trigger the UI
+  // if automatic initialization fails
+  setTimeout(() => {
+    // Check if NavModal container exists and is visible
+    const navContainer = document.querySelector(".council-nav-container");
+    const hasVisibleUI =
+      navContainer && navContainer.classList.contains("visible");
+
+    if (!hasVisibleUI) {
+      logger.warn(
+        "NavModal not visible after initialization - adding debug trigger",
+      );
+
+      // Add a floating debug button
+      const debugBtn = document.createElement("div");
+      debugBtn.id = "council-debug-trigger";
+      debugBtn.innerHTML = "🏛️";
+      debugBtn.title = "Open TheCouncil (Debug Trigger)";
+      debugBtn.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 50px;
+        height: 50px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        cursor: pointer;
+        z-index: 99999;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        transition: transform 0.2s;
+      `;
+      debugBtn.addEventListener("mouseenter", () => {
+        debugBtn.style.transform = "scale(1.1)";
+      });
+      debugBtn.addEventListener("mouseleave", () => {
+        debugBtn.style.transform = "scale(1)";
+      });
+      debugBtn.addEventListener("click", () => {
+        // Try to show NavModal
+        if (Systems.NavModal) {
+          Systems.NavModal.show();
+          logger.log("debug", "NavModal.show() called via debug trigger");
+        } else {
+          logger.error("NavModal not available");
+          alert(
+            "TheCouncil NavModal not initialized. Check browser console for errors.",
+          );
+        }
+
+        // Log debug info
+        console.log("[TheCouncil Debug Info]", {
+          initialized: isInitialized,
+          navModalExists: !!Systems.NavModal,
+          navModalInitialized: Systems.NavModal?._initialized,
+          navContainerExists: !!document.querySelector(".council-nav-container"),
+          systems: Object.keys(Systems).filter((k) => Systems[k] !== null),
+        });
+      });
+
+      document.body.appendChild(debugBtn);
+    }
+  }, 3000); // Wait 3 seconds after page load
 })();
