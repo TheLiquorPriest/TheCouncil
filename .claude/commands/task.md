@@ -1,4 +1,4 @@
-# Task Runner
+# Single Task Runner
 
 You are implementing **Task $ARGUMENTS** from The Council development plan.
 
@@ -9,6 +9,7 @@ You are implementing **Task $ARGUMENTS** from The Council development plan.
 3. **Read the context docs** listed in your task
 4. **Implement the deliverables** exactly as specified
 5. **Test your work** against the success criteria
+6. **Commit your changes** (do NOT push or merge)
 
 ## Context Budget
 
@@ -41,6 +42,12 @@ When you reach 70% context, create a file `.claude/handoffs/task-$ARGUMENTS.md` 
 ## Next Task
 Task [X.X] - [Name] is ready to start.
 ```
+
+## On Completion
+
+Commit with message: `Task $ARGUMENTS: [brief description]`
+
+Do NOT push. Do NOT merge. The phase runner handles that.
 
 ## Constraints
 
