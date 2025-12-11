@@ -23,6 +23,18 @@ Based on docs/DEVELOPMENT_PLAN.md:
 
 You are running **Phase $ARGUMENTS** tasks.
 
+### Step 0: Check for Completed Tasks
+
+Before running any task, check if a handoff file already exists:
+`.claude/handoffs/task-X.X.md`
+
+If the handoff exists and shows `Status: COMPLETE`, **skip that task** and report:
+```
+Task X.X: Already complete (see .claude/handoffs/task-X.X.md)
+```
+
+Continue to the next task in the phase.
+
 ### Step 1: Branch Setup
 
 ```bash
