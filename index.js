@@ -326,12 +326,11 @@
       logger.log("info", "AgentsSystem initialized");
     }
 
-    // Initialize Curation System
+    // Initialize Curation System (with Kernel pattern)
     if (Systems.CurationSystem) {
-      Systems.CurationSystem.init({
-        logger: Kernel.getModule("logger"),
+      Systems.CurationSystem.init(Kernel, {
+        // CurationSystem will register itself with Kernel
       });
-      Kernel.registerSystem("curationSystem", Systems.CurationSystem);
       logger.log("info", "CurationSystem initialized");
     }
 

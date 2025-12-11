@@ -67,10 +67,22 @@ const CurationSystem = {
   _positionAssignments: new Map(),
 
   /**
-   * Storage backend adapter
+   * Kernel reference
    * @type {Object|null}
    */
-  _storage: null,
+  _kernel: null,
+
+  /**
+   * Logger reference (from Kernel)
+   * @type {Object|null}
+   */
+  _logger: null,
+
+  /**
+   * EventBus reference (from Kernel)
+   * @type {Object|null}
+   */
+  _eventBus: null,
 
   /**
    * API client reference
@@ -83,18 +95,6 @@ const CurationSystem = {
    * @type {Object|null}
    */
   _tokenResolver: null,
-
-  /**
-   * Logger reference
-   * @type {Object|null}
-   */
-  _logger: null,
-
-  /**
-   * Event listeners
-   * @type {Map<string, Function[]>}
-   */
-  _listeners: new Map(),
 
   /**
    * Initialization flag
@@ -151,30 +151,32 @@ const CurationSystem = {
   // ===== INITIALIZATION =====
 
   /**
-   * Initialize the Curation System
+   * Initialize the Curation System (Kernel pattern)
+   * @param {Object} kernel - Kernel instance
    * @param {Object} options - Configuration options
-   * @param {Object} options.logger - Logger instance
-   * @param {Object} options.apiClient - API client instance
-   * @param {Object} options.tokenResolver - Token resolver instance
-   * @param {Object} options.storage - Storage backend adapter
+   * @param {Object} options.apiClient - API client instance (optional, can use kernel's)
+   * @param {Object} options.tokenResolver - Token resolver instance (optional)
    * @param {Object} options.initialSchemas - Initial store schemas
    * @param {boolean} options.autoSave - Enable auto-save (default: true)
    * @param {number} options.autoSaveIntervalMs - Auto-save interval (default: 30000)
    * @returns {CurationSystem}
    */
-  init(options = {}) {
+  init(kernel, options = {}) {
     if (this._initialized) {
       this._log("warn", "CurationSystem already initialized");
       return this;
     }
 
-    this._log("info", "Initializing Curation System...");
+    // Store Kernel reference
+    this._kernel = kernel;
 
-    // Set dependencies
-    this._logger = options.logger || null;
-    this._apiClient = options.apiClient || null;
-    this._tokenResolver = options.tokenResolver || null;
-    this._storage = options.storage || this._createDefaultStorage();
+    // Get shared modules from Kernel
+    this._logger = kernel.getModule('logger');
+    this._eventBus = kernel.getModule('eventBus');
+    this._apiClient = options.apiClient || kernel.getModule('apiClient');
+    this._tokenResolver = options.tokenResolver || kernel.getModule('tokenResolver');
+
+    this._log("info", "Initializing Curation System...");
 
     // Clear existing state
     this.clear();
@@ -207,6 +209,9 @@ const CurationSystem = {
     this._initialized = true;
     this._log("info", "Curation System initialized");
     this._emit("system:initialized");
+
+    // Register with Kernel
+    this._kernel.registerSystem('curation', this);
 
     // Load persisted data asynchronously
     if (options.loadPersistedData !== false) {
@@ -243,6 +248,14 @@ const CurationSystem = {
    * @returns {boolean}
    */
   isInitialized() {
+    return this._initialized;
+  },
+
+  /**
+   * Check if system is ready (for Kernel compatibility)
+   * @returns {boolean}
+   */
+  isReady() {
     return this._initialized;
   },
 
@@ -618,6 +631,15 @@ When analyzing content, focus on scene-specific elements and situational context
   },
 
   /**
+   * Create a new curation agent (CRUD wrapper for registerCurationAgent)
+   * @param {Object} agent - Agent configuration
+   * @returns {Object} Created agent
+   */
+  createCurationAgent(agent) {
+    return this.registerCurationAgent(agent);
+  },
+
+  /**
    * Register a curation agent
    * @param {Object} agent - Agent configuration
    * @returns {Object} Registered agent
@@ -810,59 +832,6 @@ When analyzing content, focus on scene-specific elements and situational context
 
     this._initialized = false;
     this._emit("system:shutdown");
-  },
-
-  // ===== DEFAULT STORAGE ADAPTER =====
-
-  /**
-   * Create default localStorage adapter
-   * @returns {Object} Storage adapter
-   */
-  _createDefaultStorage() {
-    const STORAGE_PREFIX = "council_curation_";
-
-    return {
-      async get(key) {
-        try {
-          const raw = localStorage.getItem(STORAGE_PREFIX + key);
-          return raw ? JSON.parse(raw) : null;
-        } catch (e) {
-          console.error(`Storage get error for ${key}:`, e);
-          return null;
-        }
-      },
-
-      async set(key, value) {
-        try {
-          localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
-          return true;
-        } catch (e) {
-          console.error(`Storage set error for ${key}:`, e);
-          return false;
-        }
-      },
-
-      async delete(key) {
-        try {
-          localStorage.removeItem(STORAGE_PREFIX + key);
-          return true;
-        } catch (e) {
-          console.error(`Storage delete error for ${key}:`, e);
-          return false;
-        }
-      },
-
-      async keys(prefix = "") {
-        const keys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith(STORAGE_PREFIX + prefix)) {
-            keys.push(key.substring(STORAGE_PREFIX.length));
-          }
-        }
-        return keys;
-      },
-    };
   },
 
   // ===== DEFAULT SCHEMAS =====
@@ -2413,12 +2382,13 @@ Return list of character IDs/names with relevance reasoning.`,
   },
 
   /**
-   * Save a store to persistence
+   * Save a store to persistence via Kernel storage
    * @param {string} storeId - Store ID
    * @returns {Promise<boolean>} Success
    */
   async saveStore(storeId) {
-    if (!this._storage) {
+    if (!this._kernel) {
+      this._log("warn", "Cannot save store - Kernel not available");
       return false;
     }
 
@@ -2436,7 +2406,7 @@ Return list of character IDs/names with relevance reasoning.`,
       data = Array.from(store.values());
     }
 
-    const success = await this._storage.set(`store_${storeId}`, data);
+    const success = await this._kernel.saveData(`curation_store_${storeId}`, data);
 
     if (success) {
       this._dirtyStores.delete(storeId);
@@ -2447,12 +2417,13 @@ Return list of character IDs/names with relevance reasoning.`,
   },
 
   /**
-   * Load a store from persistence
+   * Load a store from persistence via Kernel storage
    * @param {string} storeId - Store ID
    * @returns {Promise<boolean>} Success
    */
   async loadStore(storeId) {
-    if (!this._storage) {
+    if (!this._kernel) {
+      this._log("warn", "Cannot load store - Kernel not available");
       return false;
     }
 
@@ -2461,7 +2432,7 @@ Return list of character IDs/names with relevance reasoning.`,
       return false;
     }
 
-    const data = await this._storage.get(`store_${storeId}`);
+    const data = await this._kernel.loadData(`curation_store_${storeId}`);
 
     if (data === null) {
       return false;
@@ -2518,11 +2489,12 @@ Return list of character IDs/names with relevance reasoning.`,
   // ===== PIPELINE PERSISTENCE =====
 
   /**
-   * Save all pipelines to persistence
+   * Save all pipelines to persistence via Kernel storage
    * @returns {Promise<boolean>} Success
    */
   async savePipelines() {
-    if (!this._storage) {
+    if (!this._kernel) {
+      this._log("warn", "Cannot save pipelines - Kernel not available");
       return false;
     }
 
@@ -2531,7 +2503,7 @@ Return list of character IDs/names with relevance reasoning.`,
       rag: Array.from(this._ragPipelines.values()),
     };
 
-    const success = await this._storage.set("curation_pipelines", pipelineData);
+    const success = await this._kernel.saveData("curation_pipelines", pipelineData);
 
     if (success) {
       this._log("debug", "Saved curation pipelines");
@@ -2541,15 +2513,16 @@ Return list of character IDs/names with relevance reasoning.`,
   },
 
   /**
-   * Load all pipelines from persistence
+   * Load all pipelines from persistence via Kernel storage
    * @returns {Promise<boolean>} Success
    */
   async loadPipelines() {
-    if (!this._storage) {
+    if (!this._kernel) {
+      this._log("warn", "Cannot load pipelines - Kernel not available");
       return false;
     }
 
-    const data = await this._storage.get("curation_pipelines");
+    const data = await this._kernel.loadData("curation_pipelines");
 
     if (!data) {
       this._log("debug", "No saved pipelines found");
@@ -3059,50 +3032,58 @@ Return list of character IDs/names with relevance reasoning.`,
   // ===== EVENT SYSTEM =====
 
   /**
-   * Subscribe to events
-   * @param {string} event - Event name
+   * Subscribe to curation events via Kernel's EventBus
+   * @param {string} event - Event name (will be prefixed with "curation:")
    * @param {Function} callback - Callback function
    * @returns {Function} Unsubscribe function
    */
   on(event, callback) {
-    if (!this._listeners.has(event)) {
-      this._listeners.set(event, []);
+    if (!this._kernel) {
+      this._log("warn", `Cannot subscribe to event "${event}" - Kernel not available`);
+      return () => {};
     }
-    this._listeners.get(event).push(callback);
-    return () => this.off(event, callback);
+
+    // Add curation: namespace prefix if not already present
+    const namespacedEvent = event.startsWith('curation:') ? event : `curation:${event}`;
+
+    // Subscribe via Kernel's EventBus
+    return this._kernel.on(namespacedEvent, callback);
   },
 
   /**
-   * Unsubscribe from events
-   * @param {string} event - Event name
+   * Unsubscribe from curation events
+   * @param {string} event - Event name (will be prefixed with "curation:")
    * @param {Function} callback - Callback function
    */
   off(event, callback) {
-    const listeners = this._listeners.get(event);
-    if (listeners) {
-      const idx = listeners.indexOf(callback);
-      if (idx > -1) {
-        listeners.splice(idx, 1);
-      }
+    if (!this._kernel) {
+      this._log("warn", `Cannot unsubscribe from event "${event}" - Kernel not available`);
+      return;
     }
+
+    // Add curation: namespace prefix if not already present
+    const namespacedEvent = event.startsWith('curation:') ? event : `curation:${event}`;
+
+    // Unsubscribe via Kernel's EventBus
+    this._kernel.off(namespacedEvent, callback);
   },
 
   /**
-   * Emit an event
-   * @param {string} event - Event name
+   * Emit an event via Kernel's EventBus with curation:* namespacing
+   * @param {string} event - Event name (will be prefixed with "curation:")
    * @param {Object} data - Event data
    */
   _emit(event, data = {}) {
-    const listeners = this._listeners.get(event);
-    if (listeners) {
-      for (const callback of listeners) {
-        try {
-          callback(data);
-        } catch (e) {
-          this._log("error", `Event handler error for ${event}:`, e);
-        }
-      }
+    if (!this._kernel) {
+      this._log("warn", `Cannot emit event "${event}" - Kernel not available`);
+      return;
     }
+
+    // Add curation: namespace prefix if not already present
+    const namespacedEvent = event.startsWith('curation:') ? event : `curation:${event}`;
+
+    // Emit via Kernel's EventBus
+    this._kernel.emit(namespacedEvent, data);
   },
 
   // ===== LOGGING =====
