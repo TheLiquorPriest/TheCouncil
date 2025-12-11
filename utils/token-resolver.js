@@ -1,11 +1,25 @@
 /**
  * TheCouncil - Token Resolution Utility
  *
+ * @deprecated This module is deprecated and will be removed in a future version.
+ * Use PromptBuilderSystem instead:
+ *
+ *   const pb = window.TheCouncil.getSystem('promptBuilder');
+ *   pb.resolveTemplate(template, context);
+ *   pb.resolveToken(tokenId, context);
+ *   pb.getAllTokens(category);
+ *
+ * This file is kept temporarily for backward compatibility.
+ * All token resolution logic has been migrated to core/prompt-builder-system.js
+ *
+ * @see core/prompt-builder-system.js - New source of truth for token resolution
+ *
  * Resolves tokens/macros in prompts, templates, and first messages.
  * Supports ST native macros, pipeline/phase/action scope tokens,
  * global variables, team context, store access, and more.
  *
  * @version 2.0.0
+ * @deprecated Use PromptBuilderSystem instead
  */
 
 const TokenResolver = {

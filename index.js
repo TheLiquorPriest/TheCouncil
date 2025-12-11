@@ -25,6 +25,7 @@
   // ===== SYSTEM REFERENCES =====
   const Systems = {
     // Core Systems
+    PromptBuilderSystem: null,
     AgentsSystem: null,
     CurationSystem: null,
     CharacterSystem: null,
@@ -147,6 +148,7 @@
       "schemas/systems.js",
 
       // Core Systems
+      "core/prompt-builder-system.js",
       "core/agents-system.js",
       "core/curation-system.js",
       "core/character-system.js",
@@ -192,6 +194,7 @@
     Systems.ApiClient = window.ApiClient || null;
     Systems.SystemSchemas = window.SystemSchemas || null;
 
+    Systems.PromptBuilderSystem = window.PromptBuilderSystem || null;
     Systems.AgentsSystem = window.AgentsSystem || null;
     Systems.CurationSystem = window.CurationSystem || null;
     Systems.CharacterSystem = window.CharacterSystem || null;
@@ -221,6 +224,7 @@
       TokenResolver: !!Systems.TokenResolver,
       ApiClient: !!Systems.ApiClient,
       SystemSchemas: !!Systems.SystemSchemas,
+      PromptBuilderSystem: !!Systems.PromptBuilderSystem,
       AgentsSystem: !!Systems.AgentsSystem,
       CurationSystem: !!Systems.CurationSystem,
       CharacterSystem: !!Systems.CharacterSystem,
@@ -314,6 +318,12 @@
    */
   async function initializeSystems(Kernel) {
     logger.log("info", "Initializing core systems...");
+
+    // Initialize Prompt Builder System (first - other systems may depend on it)
+    if (Systems.PromptBuilderSystem) {
+      Systems.PromptBuilderSystem.init(Kernel);
+      logger.log("info", "PromptBuilderSystem initialized");
+    }
 
     // Initialize Agents System
     if (Systems.AgentsSystem) {
