@@ -39,6 +39,24 @@ const CharacterSystem = {
   // ===== STATE =====
 
   /**
+   * Kernel reference
+   * @type {Object|null}
+   */
+  _kernel: null,
+
+  /**
+   * Logger instance (from Kernel)
+   * @type {Object|null}
+   */
+  _logger: null,
+
+  /**
+   * EventBus instance (from Kernel)
+   * @type {Object|null}
+   */
+  _eventBus: null,
+
+  /**
    * Character agents registry
    * @type {Map<string, Object>}
    */
@@ -75,30 +93,6 @@ const CharacterSystem = {
   _spawnedAgents: new Set(),
 
   /**
-   * Reference to CurationSystem for character data
-   * @type {Object|null}
-   */
-  _curationSystem: null,
-
-  /**
-   * Reference to storage system
-   * @type {Object|null}
-   */
-  _storage: null,
-
-  /**
-   * Logger instance
-   * @type {Object|null}
-   */
-  _logger: null,
-
-  /**
-   * Event listeners
-   * @type {Map<string, Function[]>}
-   */
-  _listeners: new Map(),
-
-  /**
    * Initialization flag
    * @type {boolean}
    */
@@ -107,28 +101,27 @@ const CharacterSystem = {
   // ===== INITIALIZATION =====
 
   /**
-   * Initialize the Character System
-   * @param {Object} options - Configuration options
-   * @param {Object} options.curationSystem - Reference to CurationSystem
-   * @param {Object} options.logger - Logger instance
+   * Initialize the Character System (Kernel pattern)
+   * @param {Object} kernel - Kernel instance
    * @returns {CharacterSystem}
    */
-  init(options = {}) {
+  init(kernel) {
     if (this._initialized) {
       this._log("warn", "CharacterSystem already initialized");
       return this;
     }
 
-    this._log("info", "Initializing Character System...");
+    // Store Kernel reference
+    this._kernel = kernel;
 
-    this._curationSystem = options.curationSystem || null;
-    this._logger = options.logger || null;
+    // Get shared modules from Kernel
+    this._logger = kernel.getModule("logger");
+    this._eventBus = kernel;
+
+    this._log("info", "Initializing Character System...");
 
     // Clear state
     this.clear();
-
-    // Create default storage adapter
-    this._storage = this._createDefaultStorage();
 
     // Initialize Character Director
     this._initializeCharacterDirector();
@@ -136,9 +129,12 @@ const CharacterSystem = {
     // Load persisted data
     this._loadPersistedData();
 
+    // Register with Kernel
+    kernel.registerSystem("character", this);
+
     this._initialized = true;
     this._log("info", "Character System initialized");
-    this._emit("system:initialized");
+    this._emit("character:initialized", {});
 
     return this;
   },
@@ -148,6 +144,14 @@ const CharacterSystem = {
    * @returns {boolean}
    */
   isInitialized() {
+    return this._initialized;
+  },
+
+  /**
+   * Check if system is ready (for Kernel.isSystemReady)
+   * @returns {boolean}
+   */
+  isReady() {
     return this._initialized;
   },
 
@@ -178,69 +182,26 @@ const CharacterSystem = {
     this._initialized = false;
 
     this._log("info", "Character System shut down");
-    this._emit("system:shutdown");
+    this._emit("character:shutdown", {});
   },
 
   // ===== STORAGE =====
 
   /**
-   * Create default localStorage adapter
-   * @returns {Object} Storage adapter
-   */
-  _createDefaultStorage() {
-    const STORAGE_PREFIX = "thecouncil_characters_";
-
-    return {
-      async get(key) {
-        try {
-          const raw = localStorage.getItem(STORAGE_PREFIX + key);
-          return raw ? JSON.parse(raw) : null;
-        } catch (e) {
-          console.error(`[CharacterSystem] Storage get error:`, e);
-          return null;
-        }
-      },
-
-      async set(key, value) {
-        try {
-          localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
-          return true;
-        } catch (e) {
-          console.error(`[CharacterSystem] Storage set error:`, e);
-          return false;
-        }
-      },
-
-      async delete(key) {
-        try {
-          localStorage.removeItem(STORAGE_PREFIX + key);
-          return true;
-        } catch (e) {
-          console.error(`[CharacterSystem] Storage delete error:`, e);
-          return false;
-        }
-      },
-
-      async keys() {
-        const keys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith(STORAGE_PREFIX)) {
-            keys.push(key.substring(STORAGE_PREFIX.length));
-          }
-        }
-        return keys;
-      },
-    };
-  },
-
-  /**
-   * Load persisted data
+   * Load persisted data (uses Kernel storage)
    */
   async _loadPersistedData() {
+    if (!this._kernel) {
+      this._log("warn", "Kernel not available for data loading");
+      return;
+    }
+
     try {
       // Load character agents
-      const agents = await this._storage.get("agents");
+      const agents = await this._kernel.loadData("character_agents", {
+        scope: "chat",
+        defaultValue: null,
+      });
       if (agents && Array.isArray(agents)) {
         for (const agent of agents) {
           this._characterAgents.set(agent.id, agent);
@@ -249,7 +210,10 @@ const CharacterSystem = {
       }
 
       // Load user overrides
-      const overrides = await this._storage.get("overrides");
+      const overrides = await this._kernel.loadData("character_overrides", {
+        scope: "chat",
+        defaultValue: null,
+      });
       if (overrides && typeof overrides === "object") {
         for (const [characterId, override] of Object.entries(overrides)) {
           this._userOverrides.set(characterId, override);
@@ -261,7 +225,10 @@ const CharacterSystem = {
       }
 
       // Load Character Director config
-      const director = await this._storage.get("director");
+      const director = await this._kernel.loadData("character_director", {
+        scope: "chat",
+        defaultValue: null,
+      });
       if (director) {
         this._characterDirector = director;
         this._log("info", "Loaded Character Director configuration");
@@ -275,25 +242,34 @@ const CharacterSystem = {
   },
 
   /**
-   * Save all data
+   * Save all data (uses Kernel storage)
    */
   async saveAll() {
+    if (!this._kernel) {
+      this._log("warn", "Kernel not available for data saving");
+      return false;
+    }
+
     try {
       // Save character agents
-      await this._storage.set(
-        "agents",
+      await this._kernel.saveData(
+        "character_agents",
         Array.from(this._characterAgents.values()),
+        { scope: "chat" },
       );
 
       // Save user overrides
-      await this._storage.set(
-        "overrides",
+      await this._kernel.saveData(
+        "character_overrides",
         Object.fromEntries(this._userOverrides),
+        { scope: "chat" },
       );
 
       // Save Character Director config
       if (this._characterDirector) {
-        await this._storage.set("director", this._characterDirector);
+        await this._kernel.saveData("character_director", this._characterDirector, {
+          scope: "chat",
+        });
       }
 
       this._log("info", "Saved all character data");
@@ -413,7 +389,7 @@ Always prioritize authenticity to the source material and established character 
       },
     };
 
-    this._emit("director:updated", { director: this._characterDirector });
+    this._emit("character:director:updated", { director: this._characterDirector });
     this.saveAll();
 
     return this._characterDirector;
@@ -457,7 +433,7 @@ Always prioritize authenticity to the source material and established character 
     this._createCharacterPosition(agent);
 
     this._log("info", `Created character agent: ${agent.name}`);
-    this._emit("agent:created", { agent });
+    this._emit("character:created", { agent });
 
     this.saveAll();
 
@@ -672,7 +648,7 @@ Always prioritize authenticity to the source material and established character 
       autoGenerate: updated.systemPromptConfig?.autoGenerate,
     });
 
-    this._emit("agent:updated", { agent: updated });
+    this._emit("character:updated", { agent: updated });
     this.saveAll();
 
     return updated;
@@ -702,7 +678,7 @@ Always prioritize authenticity to the source material and established character 
     // Note: We don't remove user overrides - they persist for re-creation
 
     this._log("info", `Deleted character agent: ${agent.name}`);
-    this._emit("agent:deleted", { agentId, agent });
+    this._emit("character:deleted", { agentId, agent });
 
     this.saveAll();
 
@@ -751,7 +727,7 @@ Always prioritize authenticity to the source material and established character 
     agent.metadata.updatedAt = Date.now();
 
     this._characterAgents.set(agentId, agent);
-    this._emit("agent:synced", { agent });
+    this._emit("character:synced", { agent });
 
     this.saveAll();
 
@@ -769,7 +745,27 @@ Always prioritize authenticity to the source material and established character 
         this._log("error", `Failed to sync ${agentId}:`, error);
       }
     }
-    this._emit("agents:syncedAll");
+    this._emit("character:agents:syncedAll", {});
+  },
+
+  /**
+   * Public API: Sync from Curation (matches Task 2.1 success criteria)
+   * Syncs all character agents with latest Curation data
+   * @returns {Object} Sync result
+   */
+  syncFromCuration() {
+    const before = this._characterAgents.size;
+    this.syncAllWithCuration();
+    const after = this._characterAgents.size;
+
+    const result = {
+      synced: before,
+      total: after,
+      timestamp: Date.now(),
+    };
+
+    this._log("info", `Synced ${result.synced} character agents from Curation`);
+    return result;
   },
 
   // ===== SYSTEM PROMPT GENERATION =====
@@ -893,19 +889,25 @@ Always prioritize authenticity to the source material and established character 
   // ===== CURATION INTEGRATION =====
 
   /**
-   * Get character data from Curation system
+   * Get character data from Curation system (via Kernel)
    * @param {string} characterId - Character ID
    * @returns {Object|null} Character data
    */
   _getCharacterFromCuration(characterId) {
-    if (!this._curationSystem) {
+    if (!this._kernel) {
+      this._log("warn", "Kernel not available for Curation access");
+      return null;
+    }
+
+    const curationSystem = this._kernel.getSystem("curation");
+    if (!curationSystem) {
       this._log("warn", "Curation system not available");
       return null;
     }
 
     try {
       // Try to read from characterSheets store
-      const result = this._curationSystem.read("characterSheets", {
+      const result = curationSystem.read("characterSheets", {
         id: characterId,
       });
 
@@ -914,7 +916,7 @@ Always prioritize authenticity to the source material and established character 
       }
 
       // Try by name as fallback
-      const allCharacters = this._curationSystem.getAll("characterSheets");
+      const allCharacters = curationSystem.getAll("characterSheets");
       if (Array.isArray(allCharacters)) {
         return allCharacters.find(
           (c) => c.id === characterId || c.name === characterId,
@@ -937,13 +939,19 @@ Always prioritize authenticity to the source material and established character 
    * @returns {Object[]} All characters
    */
   getAllCharactersFromCuration() {
-    if (!this._curationSystem) {
+    if (!this._kernel) {
+      this._log("warn", "Kernel not available for Curation access");
+      return [];
+    }
+
+    const curationSystem = this._kernel.getSystem("curation");
+    if (!curationSystem) {
       this._log("warn", "Curation system not available");
       return [];
     }
 
     try {
-      const characters = this._curationSystem.getAll("characterSheets");
+      const characters = curationSystem.getAll("characterSheets");
       return Array.isArray(characters) ? characters : [];
     } catch (error) {
       this._log("error", "Failed to get characters from Curation:", error);
@@ -960,7 +968,13 @@ Always prioritize authenticity to the source material and established character 
    * @returns {Promise<Object>} Character context
    */
   async getCharacterContext(characterName, options = {}) {
-    if (!this._curationSystem) {
+    if (!this._kernel) {
+      this._log("warn", "Kernel not available for context fetch");
+      return null;
+    }
+
+    const curationSystem = this._kernel.getSystem("curation");
+    if (!curationSystem) {
       this._log("warn", "Curation system not available for context fetch");
       return null;
     }
@@ -969,7 +983,7 @@ Always prioritize authenticity to the source material and established character 
 
     try {
       // Try to use the character_context RAG pipeline
-      const ragResult = await this._curationSystem.executeRAG(
+      const ragResult = await curationSystem.executeRAG(
         "character_context",
         {
           characterName,
@@ -1013,7 +1027,7 @@ Always prioritize authenticity to the source material and established character 
       // Get character development
       if (includeDevelopment) {
         try {
-          const development = this._curationSystem.read(
+          const development = curationSystem.read(
             "characterDevelopment",
             { characterId: character.id },
           );
@@ -1026,7 +1040,7 @@ Always prioritize authenticity to the source material and established character 
       // Get recent dialogue
       if (includeDialogue) {
         try {
-          const allDialogue = this._curationSystem.getAll("dialogueHistory");
+          const allDialogue = curationSystem.getAll("dialogueHistory");
           if (Array.isArray(allDialogue)) {
             context.recentDialogue = allDialogue
               .filter((d) => d.speaker === character.name)
@@ -1055,12 +1069,17 @@ Always prioritize authenticity to the source material and established character 
    * @returns {Promise<Object>} Voice reference data
    */
   async getCharacterVoiceReference(characterName, sampleCount = 10) {
-    if (!this._curationSystem) {
+    if (!this._kernel) {
+      return null;
+    }
+
+    const curationSystem = this._kernel.getSystem("curation");
+    if (!curationSystem) {
       return null;
     }
 
     try {
-      const ragResult = await this._curationSystem.executeRAG(
+      const ragResult = await curationSystem.executeRAG(
         "character_voice",
         {
           characterName,
@@ -1098,12 +1117,17 @@ Always prioritize authenticity to the source material and established character 
    * @returns {Promise<Object[]>} Relevant characters
    */
   async getSceneCharacters(sceneContext, options = {}) {
-    if (!this._curationSystem) {
+    if (!this._kernel) {
+      return [];
+    }
+
+    const curationSystem = this._kernel.getSystem("curation");
+    if (!curationSystem) {
       return [];
     }
 
     try {
-      const ragResult = await this._curationSystem.executeRAG(
+      const ragResult = await curationSystem.executeRAG(
         "scene_characters",
         {
           sceneContext,
@@ -1219,7 +1243,7 @@ Always prioritize authenticity to the source material and established character 
     }
 
     this._log("info", `Spawned ${spawned.length} character agents for scene`);
-    this._emit("agents:spawned", { agents: spawned, characterIds });
+    this._emit("character:spawned", { agents: spawned, characterIds });
 
     return spawned;
   },
@@ -1240,7 +1264,7 @@ Always prioritize authenticity to the source material and established character 
     this._spawnedAgents.clear();
 
     this._log("info", `Despawned ${count} character agents`);
-    this._emit("agents:despawned", { count });
+    this._emit("character:despawned", { count });
   },
 
   /**
@@ -1332,7 +1356,7 @@ Always prioritize authenticity to the source material and established character 
       });
     }
 
-    this._emit("overrides:updated", { characterId, overrides });
+    this._emit("character:overrides:updated", { characterId, overrides });
     this.saveAll();
   },
 
@@ -1351,7 +1375,7 @@ Always prioritize authenticity to the source material and established character 
    */
   clearUserOverrides(characterId) {
     this._userOverrides.delete(characterId);
-    this._emit("overrides:cleared", { characterId });
+    this._emit("character:overrides:cleared", { characterId });
     this.saveAll();
   },
 
@@ -1541,7 +1565,7 @@ Always prioritize authenticity to the source material and established character 
       "info",
       `Imported ${data.characterAgents?.length || 0} character agents`,
     );
-    this._emit("system:imported", { data, options });
+    this._emit("character:imported", { data, options });
 
     this.saveAll();
   },
@@ -1581,55 +1605,53 @@ Always prioritize authenticity to the source material and established character 
       },
       byType,
       byStatus,
-      curationConnected: !!this._curationSystem,
+      kernelConnected: !!this._kernel,
+      curationConnected: !!this._kernel?.getSystem("curation"),
     };
   },
 
-  // ===== EVENTS =====
+  // ===== EVENTS (via Kernel EventBus) =====
 
   /**
-   * Subscribe to an event
-   * @param {string} event - Event name
+   * Subscribe to an event (delegates to Kernel EventBus)
+   * @param {string} event - Event name (without namespace prefix)
    * @param {Function} callback - Callback function
+   * @returns {Function} Unsubscribe function
    */
   on(event, callback) {
-    if (!this._listeners.has(event)) {
-      this._listeners.set(event, []);
+    if (!this._kernel) {
+      this._log("warn", "Kernel not available for event subscription");
+      return () => {};
     }
-    this._listeners.get(event).push(callback);
+    // Add character: namespace prefix
+    const namespacedEvent = `character:${event}`;
+    return this._kernel.on(namespacedEvent, callback);
   },
 
   /**
-   * Unsubscribe from an event
-   * @param {string} event - Event name
+   * Unsubscribe from an event (delegates to Kernel EventBus)
+   * @param {string} event - Event name (without namespace prefix)
    * @param {Function} callback - Callback function
    */
   off(event, callback) {
-    const listeners = this._listeners.get(event);
-    if (listeners) {
-      const idx = listeners.indexOf(callback);
-      if (idx !== -1) {
-        listeners.splice(idx, 1);
-      }
+    if (!this._kernel) {
+      return;
     }
+    const namespacedEvent = `character:${event}`;
+    this._kernel.off(namespacedEvent, callback);
   },
 
   /**
-   * Emit an event
-   * @param {string} event - Event name
+   * Emit an event (via Kernel EventBus with namespace)
+   * @param {string} event - Event name (will be prefixed with "character:")
    * @param {Object} data - Event data
    */
   _emit(event, data = {}) {
-    const listeners = this._listeners.get(event);
-    if (listeners) {
-      for (const callback of listeners) {
-        try {
-          callback(data);
-        } catch (error) {
-          this._log("error", `Error in event listener for ${event}:`, error);
-        }
-      }
+    if (!this._kernel) {
+      return;
     }
+    // Emit with character: namespace
+    this._kernel.emit(event, data);
   },
 
   // ===== LOGGING =====
