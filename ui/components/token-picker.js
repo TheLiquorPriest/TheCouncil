@@ -427,6 +427,12 @@ const TokenPicker = {
   _logger: null,
 
   /**
+   * PromptBuilderSystem reference
+   * @type {Object|null}
+   */
+  _promptBuilderSystem: null,
+
+  /**
    * Recent tokens (persisted in localStorage)
    * @type {string[]}
    */
@@ -501,9 +507,20 @@ const TokenPicker = {
   /**
    * Initialize the TokenPicker
    * @param {Object} options - Configuration options
+   * @param {Object} options.promptBuilderSystem - PromptBuilderSystem reference
+   * @param {Object} options.kernel - Kernel reference for accessing the system
    * @param {Object} options.logger - Logger instance
    */
   init(options = {}) {
+    // Get PromptBuilderSystem from options or kernel
+    if (options.promptBuilderSystem) {
+      this._promptBuilderSystem = options.promptBuilderSystem;
+    } else if (options.kernel) {
+      this._promptBuilderSystem = options.kernel.getSystem('promptBuilder');
+    } else if (window.TheCouncil) {
+      this._promptBuilderSystem = window.TheCouncil.getSystem('promptBuilder');
+    }
+
     this._logger = options.logger || null;
     this._loadRecentTokens();
     this._injectStyles();
@@ -890,6 +907,25 @@ const TokenPicker = {
    * @returns {Object[]} Filtered tokens
    */
   _getFilteredTokens(instance, categoryId) {
+    // Try to get tokens from PromptBuilderSystem first
+    if (this._promptBuilderSystem) {
+      try {
+        const systemTokens = this._promptBuilderSystem.getAllTokens(categoryId);
+        if (systemTokens && systemTokens.length > 0) {
+          // Convert system tokens to TokenPicker format
+          const converted = systemTokens.map(t => ({
+            token: t.syntax || `{{${t.id}}}`,
+            name: t.name || t.id,
+            description: t.description || "",
+          }));
+          return this._filterTokens(converted, instance._searchQuery);
+        }
+      } catch (e) {
+        this._log("debug", `Failed to get tokens from PromptBuilderSystem for category ${categoryId}:`, e);
+      }
+    }
+
+    // Fallback to static TOKENS
     const tokens = this.TOKENS[categoryId] || [];
     return this._filterTokens(tokens, instance._searchQuery);
   },

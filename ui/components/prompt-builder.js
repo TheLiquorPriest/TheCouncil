@@ -236,11 +236,22 @@ const PromptBuilder = {
   /**
    * Initialize the Prompt Builder
    * @param {Object} options - Configuration options
-   * @param {Object} options.tokenResolver - Token resolver reference
+   * @param {Object} options.promptBuilderSystem - PromptBuilderSystem reference
+   * @param {Object} options.kernel - Kernel reference for accessing the system
+   * @param {Object} options.tokenResolver - Token resolver reference (fallback)
    * @param {Object} options.logger - Logger instance
    * @returns {PromptBuilder}
    */
   init(options = {}) {
+    // Get PromptBuilderSystem from options or kernel
+    if (options.promptBuilderSystem) {
+      this._promptBuilderSystem = options.promptBuilderSystem;
+    } else if (options.kernel) {
+      this._promptBuilderSystem = options.kernel.getSystem('promptBuilder');
+    } else if (window.TheCouncil) {
+      this._promptBuilderSystem = window.TheCouncil.getSystem('promptBuilder');
+    }
+
     this._tokenResolver = options.tokenResolver || window.TokenResolver;
     this._logger = options.logger || window.Logger;
 
@@ -1543,6 +1554,7 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
 
       item.addEventListener("dragover", (e) => {
         e.preventDefault();
+        e.stopPropagation();
 
         // Determine if dragging from available tokens or reordering
         if (instance._dragState.isFromAvailable) {
@@ -1599,10 +1611,10 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
             instance._dragState.tokenData,
             insertIndex,
           );
-        } else {
+        } else if (instance._dragState.draggedIndex !== null) {
           // Reordering within stack
           const fromIndex = instance._dragState.draggedIndex;
-          if (fromIndex !== null && fromIndex !== toIndex) {
+          if (fromIndex !== toIndex) {
             // Calculate actual target index based on drop position
             const rect = item.getBoundingClientRect();
             const midY = rect.top + rect.height / 2;
@@ -1766,7 +1778,26 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
   _resolveTokensForPreview(prompt) {
     if (!prompt) return "";
 
-    // Try to use TokenResolver if available
+    // Try PromptBuilderSystem first
+    if (this._promptBuilderSystem?.resolveTemplate) {
+      try {
+        // Create a basic context for preview
+        const previewContext = {
+          pipeline: { id: "[Pipeline]", name: "[Pipeline]" },
+          phase: { id: "[Phase]", name: "[Phase]" },
+          action: { id: "[Action]", name: "[Action]" },
+          input: "[Input]",
+          output: "[Output]",
+          char: "[Character]",
+          user: "[User]",
+        };
+        return this._promptBuilderSystem.resolveTemplate(prompt, previewContext);
+      } catch (e) {
+        this._log("debug", "PromptBuilderSystem resolution failed:", e);
+      }
+    }
+
+    // Fallback to TokenResolver if available
     if (this._tokenResolver?.resolve) {
       try {
         return this._tokenResolver.resolve(prompt);
@@ -1775,7 +1806,7 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
       }
     }
 
-    // Fallback: show tokens as placeholders
+    // Last fallback: show tokens as placeholders
     return prompt.replace(/\{\{(\w+)\}\}/g, (match, name) => {
       return `[${name}]`;
     });
