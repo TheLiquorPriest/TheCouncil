@@ -19,6 +19,45 @@ Based on docs/DEVELOPMENT_PLAN.md:
 - **Phase 6**: Tasks 6.1, 6.2, 6.3 (Integration)
 - **Phase 7**: Tasks 7.1 (Documentation)
 
+## Model Tiers
+
+Select model based on task complexity to optimize cost/capability:
+
+| Model | Use When | Tasks |
+|-------|----------|-------|
+| **opus** | New system architecture, complex integration, multi-file refactors | 0.1, 3.1, 4.1, 5.1, 5.3, 6.1 |
+| **sonnet** | Standard implementation, moderate complexity, existing patterns | 0.2, 1.1, 2.1, 4.2, 5.2, 5.4 |
+| **haiku** | Simple refactors, UI updates, cleanup, documentation | 0.3, 1.2, 3.2, 4.3, 6.2, 6.3, 7.1 |
+
+### Task → Model Mapping
+
+```
+OPUS (complex/architectural):
+  0.1 - Kernel Core (new architecture)
+  3.1 - PromptBuilder Core (new system)
+  4.1 - Pipeline Builder Core (major consolidation)
+  5.1 - Orchestration Core (new system)
+  5.3 - Mode 3 Injection (ST API integration)
+  6.1 - Integration Test (cross-system validation)
+
+SONNET (standard implementation):
+  0.2 - Kernel Storage & Presets
+  1.1 - Curation Kernel Integration
+  2.1 - Character Kernel Integration
+  4.2 - Pipeline Threads/Context
+  5.2 - Orchestration Modes 1&2
+  5.4 - Gavel Integration
+
+HAIKU (simple/mechanical):
+  0.3 - Kernel UI Infrastructure
+  1.2 - Curation Agents Isolation
+  3.2 - PromptBuilder UI Integration
+  4.3 - Pipeline Builder UI Updates
+  6.2 - Cleanup & Deprecation Removal
+  6.3 - Default Preset Validation
+  7.1 - Update Documentation
+```
+
 ## Instructions
 
 You are running **Phase $ARGUMENTS** tasks.
@@ -61,17 +100,21 @@ For example, if $ARGUMENTS is "0", the tasks are:
 
 ### Step 3: Run Each Task
 
-For each task in the phase, spawn a Sonnet agent using the Task tool:
+For each task in the phase, spawn an agent using the Task tool with the appropriate model from the Model Tiers section above:
 
 ```
 subagent_type: "general-purpose"
-model: "sonnet"
+model: [LOOKUP FROM MODEL MAPPING - opus/sonnet/haiku]
 ```
 
 **Prompt for each agent:**
 
 ```
 You are implementing Task [TASK_ID] for The Council project.
+
+## Agent Info
+Model: [MODEL_USED]
+Task Complexity: [opus=architectural | sonnet=standard | haiku=simple]
 
 ## Branch
 You are working on branch: phase-[PHASE_NUM]
@@ -86,6 +129,15 @@ You are working on branch: phase-[PHASE_NUM]
 2. Implement ALL deliverables
 3. Test against success criteria
 4. Write handoff to .claude/handoffs/task-[TASK_ID].md
+
+## Handoff Format
+Your handoff file MUST include:
+- Status: COMPLETE | PARTIAL | BLOCKED
+- Model Used: [MODEL_USED]
+- What Was Implemented
+- Files Modified
+- Issues Encountered
+- Next Task
 
 ## On Completion
 Commit your changes with message:
