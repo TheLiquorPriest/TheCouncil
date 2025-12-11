@@ -26,7 +26,8 @@
   const Systems = {
     // Core Systems
     PromptBuilderSystem: null,
-    AgentsSystem: null,
+    PipelineBuilderSystem: null, // New consolidated system (Task 4.1)
+    AgentsSystem: null, // DEPRECATED - use PipelineBuilderSystem
     CurationSystem: null,
     CharacterSystem: null,
     PipelineSystem: null,
@@ -149,7 +150,8 @@
 
       // Core Systems
       "core/prompt-builder-system.js",
-      "core/agents-system.js",
+      "core/pipeline-builder-system.js", // New consolidated system (Task 4.1)
+      "core/agents-system.js", // DEPRECATED - functionality moved to pipeline-builder-system.js
       "core/curation-system.js",
       "core/character-system.js",
       "core/context-manager.js",
@@ -195,6 +197,7 @@
     Systems.SystemSchemas = window.SystemSchemas || null;
 
     Systems.PromptBuilderSystem = window.PromptBuilderSystem || null;
+    Systems.PipelineBuilderSystem = window.PipelineBuilderSystem || null;
     Systems.AgentsSystem = window.AgentsSystem || null;
     Systems.CurationSystem = window.CurationSystem || null;
     Systems.CharacterSystem = window.CharacterSystem || null;
@@ -225,6 +228,7 @@
       ApiClient: !!Systems.ApiClient,
       SystemSchemas: !!Systems.SystemSchemas,
       PromptBuilderSystem: !!Systems.PromptBuilderSystem,
+      PipelineBuilderSystem: !!Systems.PipelineBuilderSystem,
       AgentsSystem: !!Systems.AgentsSystem,
       CurationSystem: !!Systems.CurationSystem,
       CharacterSystem: !!Systems.CharacterSystem,
@@ -325,7 +329,13 @@
       logger.log("info", "PromptBuilderSystem initialized");
     }
 
-    // Initialize Agents System
+    // Initialize Pipeline Builder System (Task 4.1 - consolidated agent/team/pipeline management)
+    if (Systems.PipelineBuilderSystem) {
+      Systems.PipelineBuilderSystem.init(Kernel);
+      logger.log("info", "PipelineBuilderSystem initialized");
+    }
+
+    // Initialize Agents System (DEPRECATED - kept for backwards compatibility)
     if (Systems.AgentsSystem) {
       Systems.AgentsSystem.init({
         logger: Kernel.getModule("logger"),
