@@ -134,7 +134,8 @@
       "Bash(*&&*)",
       "Bash(*||*)",
       "Bash(*;*)",
-      "Bash(git: *)"
+      "Bash(git: *)",
+      "Task"
     ],
     "deny": [],
     "ask": []
