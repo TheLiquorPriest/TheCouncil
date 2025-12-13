@@ -4,7 +4,9 @@
 
 **The Council** is a SillyTavern browser extension (v2.1.0-alpha) that transforms response generation into a multi-agent editorial production pipeline. The goal is producing responses and prompts that achieve quality and accuracy far beyond single-LLM, single-prompt approaches.
 
-**Status:** Alpha Complete - All 6 systems implemented and integrated. Ready for user testing.
+**Status:** Alpha 3 Development - Bug fixes, Curation enhancements, Kernel preset system.
+
+**Current Development Plan:** `docs/ALPHA3_DEVELOPMENT_PLAN.md`
 
 ## Architecture: Six Systems
 
@@ -106,6 +108,7 @@ TheCouncil/
 │   └── standard-pipeline.json  # Standard multi-phase pipeline
 │
 ├── docs/                       # Documentation
+│   ├── ALPHA3_DEVELOPMENT_PLAN.md # Active Alpha 3 development plan ⬅️
 │   ├── SYSTEM_DEFINITIONS.md   # Comprehensive system definitions
 │   ├── DEFAULT_PIPELINE.md     # Pipeline structure documentation
 │   ├── VIEWS.md                # Exhaustive UI views map & testing checklist
@@ -216,19 +219,21 @@ const SystemName = {
 
 | Document | Purpose |
 |----------|---------|
+| `docs/ALPHA3_DEVELOPMENT_PLAN.md` | **Active development plan with tasks** |
 | `docs/SYSTEM_DEFINITIONS.md` | Comprehensive system definitions |
 | `docs/VIEWS.md` | Exhaustive UI views map and testing checklist |
 | `docs/UI_TESTING.md` | Browser automation testing guide |
 | `docs/UI_BEHAVIOR.md` | Expected UI behavior spec (test reference) |
-| `docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md` | Current development tasks |
+| `docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md` | UI test-generated task suggestions |
 
 ## Quick Reference
 
 | What | Where |
 |------|-------|
+| **Development plan** | `docs/ALPHA3_DEVELOPMENT_PLAN.md` |
 | System definitions | `docs/SYSTEM_DEFINITIONS.md` |
 | UI views & testing | `docs/VIEWS.md` |
-| Current tasks | `docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md` |
+| UI test tasks | `docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md` |
 | All schemas | `schemas/systems.js` |
 | Presets | `data/presets/*.json` |
 | Archived plans | `docs/archive/*.md` |
