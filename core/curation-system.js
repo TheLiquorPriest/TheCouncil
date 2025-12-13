@@ -193,6 +193,14 @@ const CurationSystem = {
     // Register default character pipelines
     this._registerDefaultCharacterPipelines();
 
+    // Register default RAG pipelines
+    this._registerDefaultRAGPipelines();
+
+    // Register default CRUD pipelines (async)
+    this._registerDefaultCRUDPipelines().catch((err) => {
+      this._log("warn", `Failed to load default CRUD pipelines: ${err.message}`);
+    });
+
     // Load initial schemas if provided
     if (options.initialSchemas) {
       for (const schema of options.initialSchemas) {
@@ -1477,6 +1485,208 @@ Return list of character IDs/names with relevance reasoning.`,
     });
 
     this._log("debug", "Registered default character pipelines");
+  },
+
+  /**
+   * Register default RAG pipelines for all stores
+   * @private
+   */
+  _registerDefaultRAGPipelines() {
+    // ===== RAG PIPELINES FOR ALL 14 STORES =====
+
+    const ragPipelines = [
+      {
+        id: "rag-storyDraft",
+        name: "Story Draft RAG",
+        description: "Retrieval-Augmented Generation for Story Draft",
+        targetStores: ["storyDraft"],
+        positionId: "story_topologist",
+      },
+      {
+        id: "rag-storyOutline",
+        name: "Story Outline RAG",
+        description: "Retrieval-Augmented Generation for Story Outline",
+        targetStores: ["storyOutline"],
+        positionId: "story_topologist",
+      },
+      {
+        id: "rag-storySynopsis",
+        name: "Story Synopsis RAG",
+        description: "Retrieval-Augmented Generation for Story Synopsis",
+        targetStores: ["storySynopsis"],
+        positionId: "story_topologist",
+      },
+      {
+        id: "rag-plotLines",
+        name: "Plot Lines RAG",
+        description: "Retrieval-Augmented Generation for Plot Lines",
+        targetStores: ["plotLines"],
+        positionId: "plot_topologist",
+      },
+      {
+        id: "rag-scenes",
+        name: "Scenes RAG",
+        description: "Retrieval-Augmented Generation for Scenes",
+        targetStores: ["scenes"],
+        positionId: "scene_topologist",
+      },
+      {
+        id: "rag-dialogueHistory",
+        name: "Dialogue History RAG",
+        description: "Retrieval-Augmented Generation for Dialogue History",
+        targetStores: ["dialogueHistory"],
+        positionId: "dialogue_topologist",
+      },
+      {
+        id: "rag-characterSheets",
+        name: "Character Sheets RAG",
+        description: "Retrieval-Augmented Generation for Character Sheets",
+        targetStores: ["characterSheets"],
+        positionId: "character_topologist",
+      },
+      {
+        id: "rag-characterDevelopment",
+        name: "Character Development RAG",
+        description: "Retrieval-Augmented Generation for Character Development",
+        targetStores: ["characterDevelopment"],
+        positionId: "character_topologist",
+      },
+      {
+        id: "rag-characterInventory",
+        name: "Character Inventory RAG",
+        description: "Retrieval-Augmented Generation for Character Inventory",
+        targetStores: ["characterInventory"],
+        positionId: "character_topologist",
+      },
+      {
+        id: "rag-characterPositions",
+        name: "Character Positions RAG",
+        description: "Retrieval-Augmented Generation for Character Positions",
+        targetStores: ["characterPositions"],
+        positionId: "character_topologist",
+      },
+      {
+        id: "rag-factionSheets",
+        name: "Faction Sheets RAG",
+        description: "Retrieval-Augmented Generation for Faction Sheets",
+        targetStores: ["factionSheets"],
+        positionId: "faction_topologist",
+      },
+      {
+        id: "rag-locationSheets",
+        name: "Location Sheets RAG",
+        description: "Retrieval-Augmented Generation for Location Sheets",
+        targetStores: ["locationSheets"],
+        positionId: "location_topologist",
+      },
+      {
+        id: "rag-currentSituation",
+        name: "Current Situation RAG",
+        description: "Retrieval-Augmented Generation for Current Situation",
+        targetStores: ["currentSituation"],
+        positionId: "story_topologist",
+      },
+      {
+        id: "rag-agentCommentary",
+        name: "Agent Commentary RAG",
+        description: "Retrieval-Augmented Generation for Agent Commentary",
+        targetStores: ["agentCommentary"],
+        positionId: "archivist",
+      },
+    ];
+
+    // Register each RAG pipeline with standard 4-step structure
+    for (const pipeline of ragPipelines) {
+      this._ragPipelines.set(pipeline.id, {
+        id: pipeline.id,
+        name: pipeline.name,
+        description: pipeline.description,
+        targetStores: pipeline.targetStores,
+        canTriggerFromPipeline: true,
+        canTriggerManually: true,
+        actions: [
+          {
+            id: "parse-query",
+            name: "Parse Query",
+            positionId: "archivist",
+            promptTemplate:
+              "Parse the following query to extract search terms:\n{{query}}\n\nIdentify key entities, attributes, and relationships to search for.",
+          },
+          {
+            id: "search-store",
+            name: "Search Store",
+            positionId: pipeline.positionId,
+            promptTemplate: `Search ${pipeline.name.replace(" RAG", "")} for entries matching:\n{{parsedQuery}}\n\nReturn the most relevant results.`,
+          },
+          {
+            id: "rank-results",
+            name: "Rank Results",
+            positionId: "archivist",
+            promptTemplate:
+              "Rank the following results by relevance to the original query:\n\nQuery: {{query}}\nResults: {{searchResults}}\n\nReturn top {{maxResults}} results.",
+          },
+          {
+            id: "format-output",
+            name: "Format Output",
+            positionId: "archivist",
+            promptTemplate:
+              "Format the ranked results for context injection:\n{{rankedResults}}\n\nProvide clear, concise context.",
+          },
+        ],
+        inputSchema: {
+          query: { type: "string", required: true },
+          maxResults: { type: "number", default: 5 },
+        },
+        outputSchema: {
+          results: { type: "array" },
+          formatted: { type: "string" },
+        },
+      });
+    }
+
+    this._log("debug", `Registered ${ragPipelines.length} default RAG pipelines`);
+  },
+
+  /**
+   * Register default CRUD pipelines for all stores
+   * @private
+   */
+  async _registerDefaultCRUDPipelines() {
+    const pipelineFiles = [
+      // Singleton stores
+      'crud-storyDraft.json',
+      'crud-storyOutline.json',
+      'crud-storySynopsis.json',
+      'crud-currentSituation.json',
+      // Collection stores
+      'crud-plotLines.json',
+      'crud-scenes.json',
+      'crud-dialogueHistory.json',
+      'crud-characterSheets.json',
+      'crud-characterDevelopment.json',
+      'crud-characterInventory.json',
+      'crud-characterPositions.json',
+      'crud-factionSheets.json',
+      'crud-locationSheets.json',
+      'crud-agentCommentary.json'
+    ];
+
+    for (const filename of pipelineFiles) {
+      try {
+        const response = await fetch(`scripts/extensions/third-party/TheCouncil/data/pipelines/crud/${filename}`);
+        if (!response.ok) {
+          this._log('warn', `Failed to load CRUD pipeline: ${filename}`);
+          continue;
+        }
+        const pipeline = await response.json();
+        this._crudPipelines.set(pipeline.id, pipeline);
+        this._log('debug', `Registered CRUD pipeline: ${pipeline.id}`);
+      } catch (error) {
+        this._log('error', `Error loading CRUD pipeline ${filename}: ${error.message}`);
+      }
+    }
+
+    this._log("info", `Registered ${this._crudPipelines.size} default CRUD pipelines`);
   },
 
   _registerDefaultPositions() {
@@ -2838,6 +3048,158 @@ Return list of character IDs/names with relevance reasoning.`,
    */
   getAllCRUDPipelines() {
     return Array.from(this._crudPipelines.values());
+  },
+
+  /**
+   * Get all pipelines (both CRUD and RAG)
+   * @returns {Object[]} Array of all pipelines with type field
+   */
+  getAllPipelines() {
+    const allPipelines = [];
+
+    // Add CRUD pipelines with type
+    for (const pipeline of this._crudPipelines.values()) {
+      allPipelines.push({ ...pipeline, type: 'crud' });
+    }
+
+    // Add RAG pipelines with type
+    for (const pipeline of this._ragPipelines.values()) {
+      allPipelines.push({ ...pipeline, type: 'rag' });
+    }
+
+    return allPipelines;
+  },
+
+  /**
+   * Get a pipeline by ID (checks both CRUD and RAG)
+   * @param {string} pipelineId - Pipeline ID
+   * @returns {Object|null} Pipeline with type field or null
+   */
+  getPipeline(pipelineId) {
+    // Check CRUD pipelines first
+    const crudPipeline = this._crudPipelines.get(pipelineId);
+    if (crudPipeline) {
+      return { ...crudPipeline, type: 'crud' };
+    }
+
+    // Check RAG pipelines
+    const ragPipeline = this._ragPipelines.get(pipelineId);
+    if (ragPipeline) {
+      return { ...ragPipeline, type: 'rag' };
+    }
+
+    return null;
+  },
+
+  /**
+   * Execute a pipeline (CRUD or RAG)
+   * @param {string} pipelineId - Pipeline ID
+   * @param {Object} options - Execution options
+   * @param {string} options.source - Execution source ('manual', 'auto', 'pipeline')
+   * @param {boolean} options.preview - Preview mode (non-destructive)
+   * @param {Object} options.input - Input data for the pipeline
+   * @returns {Promise<Object>} Execution result
+   */
+  async executePipeline(pipelineId, options = {}) {
+    const pipeline = this.getPipeline(pipelineId);
+
+    if (!pipeline) {
+      throw new Error(this.ValidationErrors.PIPELINE_NOT_FOUND(pipelineId));
+    }
+
+    const { source = 'manual', preview = false, input = {} } = options;
+
+    this._log('info', `[CurationSystem] Pipeline executed: ${pipelineId} (type: ${pipeline.type}, source: ${source}, preview: ${preview})`);
+    this._emit('pipeline:executing', { pipelineId, type: pipeline.type, source, preview });
+
+    const startTime = Date.now();
+
+    try {
+      let result;
+
+      if (pipeline.type === 'crud') {
+        // Execute CRUD pipeline
+        result = await this._executeCRUDPipeline(pipeline, input, { preview });
+      } else if (pipeline.type === 'rag') {
+        // Execute RAG pipeline
+        result = await this.executeRAG(pipelineId, input);
+      } else {
+        throw new Error(`Unknown pipeline type: ${pipeline.type}`);
+      }
+
+      const duration = Date.now() - startTime;
+
+      this._emit('pipeline:completed', {
+        pipelineId,
+        type: pipeline.type,
+        source,
+        preview,
+        result,
+        duration
+      });
+
+      this._log('info', `[CurationSystem] Pipeline ${pipelineId} completed in ${duration}ms`);
+
+      return {
+        success: true,
+        pipelineId,
+        type: pipeline.type,
+        duration,
+        result,
+        preview
+      };
+    } catch (error) {
+      const duration = Date.now() - startTime;
+
+      this._emit('pipeline:error', {
+        pipelineId,
+        type: pipeline.type,
+        source,
+        error,
+        duration
+      });
+
+      this._log('error', `[CurationSystem] Pipeline ${pipelineId} failed:`, error.message);
+
+      return {
+        success: false,
+        pipelineId,
+        type: pipeline.type,
+        duration,
+        error: error.message,
+        preview
+      };
+    }
+  },
+
+  /**
+   * Execute a CRUD pipeline
+   * @param {Object} pipeline - CRUD pipeline definition
+   * @param {Object} input - Input data
+   * @param {Object} options - Execution options
+   * @returns {Promise<Object>} Execution result
+   */
+  async _executeCRUDPipeline(pipeline, input, options = {}) {
+    const { preview = false } = options;
+
+    // For now, simple implementation
+    // Future: implement full action execution with agents
+
+    const result = {
+      operation: pipeline.operation,
+      storeId: pipeline.storeId,
+      affectedRecords: [],
+      changes: {},
+      message: `CRUD pipeline executed: ${pipeline.name}`
+    };
+
+    // If preview mode, don't actually modify data
+    if (preview) {
+      result.message += ' (preview mode - no changes made)';
+      result.preview = true;
+    }
+
+    return result;
   },
 
   // ===== CURATION POSITIONS =====
