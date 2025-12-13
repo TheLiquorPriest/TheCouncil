@@ -132,7 +132,8 @@
       "Bash(node -e:*)",
       "Bash(*&&*)",
       "Bash(*||*)",
-      "Bash(*;*)"
+      "Bash(*;*)",
+      "Bash(git: *)"
     ],
     "deny": [],
     "ask": []
