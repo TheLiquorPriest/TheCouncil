@@ -1,5 +1,101 @@
 # CLAUDE.md - The Council
 
+## Session Context (memory-keeper)
+
+**Start every session** by initializing memory-keeper context:
+
+```
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-Dev",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+```
+
+### Automatic Context Saving
+
+**Save context automatically when:**
+
+| Event | Category | Priority | Example |
+|-------|----------|----------|---------|
+| Architectural decision made | `decision` | `high` | "Using event bus pattern for X" |
+| Bug identified | `error` | `high` | "Issue: modal not closing properly" |
+| Task completed | `progress` | `normal` | "Completed: injection edit functionality" |
+| Important finding during exploration | `note` | `normal` | "Found: 15 event emissions in curation-system" |
+| Potential issue spotted | `warning` | `normal` | "Warning: no error handling in async function" |
+
+```javascript
+// After making a decision
+mcp__memory-keeper__context_save({
+  key: "decision-event-pattern",
+  value: "Using Kernel event bus for modal communication instead of direct calls",
+  category: "decision",
+  priority: "high"
+})
+
+// After completing a task
+mcp__memory-keeper__context_save({
+  key: "task-injection-edit",
+  value: "Implemented edit functionality for token mappings in injection-modal.js",
+  category: "progress",
+  priority: "normal"
+})
+
+// When finding a bug
+mcp__memory-keeper__context_save({
+  key: "bug-nav-modal-reappear",
+  value: "Nav modal doesn't auto-show after closing other modals. Need to add modal:hidden listener.",
+  category: "error",
+  priority: "high"
+})
+```
+
+### Checkpoints (Before Risky Operations)
+
+**Create checkpoints before:**
+- Major refactoring
+- Multi-file changes
+- Deleting code
+- Changing system APIs
+
+```javascript
+mcp__memory-keeper__context_checkpoint({
+  name: "before-event-refactor",
+  description: "Before refactoring event emission pattern across all systems"
+})
+```
+
+### Retrieving Context
+
+**At session start or when context is needed:**
+
+```javascript
+// Get recent decisions
+mcp__memory-keeper__context_get({ category: "decision" })
+
+// Get all high-priority items
+mcp__memory-keeper__context_get({ priorities: ["high"] })
+
+// Search for specific topic
+mcp__memory-keeper__context_search({ query: "injection modal" })
+
+// Get session summary
+mcp__memory-keeper__context_summarize()
+```
+
+### For Agentic Tasks
+
+**Include in agent prompts:**
+```
+prompt: |
+  Before starting, retrieve relevant context:
+  mcp__memory-keeper__context_search({ query: "relevant topic" })
+
+  Save important findings:
+  mcp__memory-keeper__context_save({ key: "finding-X", value: "...", category: "note" })
+```
+
+---
+
 ## Project Overview
 
 **The Council** is a SillyTavern browser extension (v2.1.0-alpha) that transforms response generation into a multi-agent editorial production pipeline. The goal is producing responses and prompts that achieve quality and accuracy far beyond single-LLM, single-prompt approaches.
