@@ -1707,10 +1707,107 @@ const CurationModal = {
   // ===== PIPELINES TAB =====
 
   _renderPipelinesTab() {
-    const positions = this._curationSystem.getCurationPositions();
+    const pipelines = this._curationSystem.getAllPipelines();
+
+    // Group pipelines by type
+    const crudPipelines = pipelines.filter(p => p.type === 'crud');
+    const ragPipelines = pipelines.filter(p => p.type === 'rag');
 
     this._elements.content.innerHTML = `
       <div class="council-pipelines-view">
+        <!-- Pipeline List Section -->
+        <div class="council-pipelines-section">
+          <h3 class="council-section-title">⚡ Available Pipelines</h3>
+          <p class="council-section-description">
+            Execute CRUD and RAG pipelines manually. Results will be displayed below.
+          </p>
+
+          ${pipelines.length === 0 ? `
+            <div class="council-empty-state">
+              <div class="council-empty-icon">📋</div>
+              <div class="council-empty-text">No pipelines created yet</div>
+              <div class="council-empty-hint">Use the Pipeline Builder below to create your first pipeline</div>
+            </div>
+          ` : `
+            <div class="council-pipeline-lists">
+              ${crudPipelines.length > 0 ? `
+                <div class="council-pipeline-group">
+                  <h4 class="council-pipeline-group-title">CRUD Pipelines (${crudPipelines.length})</h4>
+                  <div class="council-pipeline-items">
+                    ${crudPipelines.map(pipeline => `
+                      <div class="council-pipeline-item" data-pipeline-id="${pipeline.id}">
+                        <div class="council-pipeline-info">
+                          <div class="council-pipeline-name">${pipeline.name}</div>
+                          <div class="council-pipeline-meta">
+                            <span class="council-badge council-badge-primary">${pipeline.operation || 'CRUD'}</span>
+                            <span class="council-pipeline-store">${pipeline.storeId || 'N/A'}</span>
+                            ${pipeline.description ? `<span class="council-pipeline-desc">${pipeline.description}</span>` : ''}
+                          </div>
+                        </div>
+                        <div class="council-pipeline-actions">
+                          <button class="council-btn council-btn-secondary council-btn-sm"
+                                  data-action="preview-pipeline"
+                                  data-pipeline-id="${pipeline.id}"
+                                  title="Preview changes without applying">
+                            Preview
+                          </button>
+                          <button class="council-btn council-btn-primary council-btn-sm"
+                                  data-action="run-pipeline"
+                                  data-pipeline-id="${pipeline.id}"
+                                  title="Execute pipeline">
+                            ▶ Run
+                          </button>
+                        </div>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              ${ragPipelines.length > 0 ? `
+                <div class="council-pipeline-group">
+                  <h4 class="council-pipeline-group-title">RAG Pipelines (${ragPipelines.length})</h4>
+                  <div class="council-pipeline-items">
+                    ${ragPipelines.map(pipeline => `
+                      <div class="council-pipeline-item" data-pipeline-id="${pipeline.id}">
+                        <div class="council-pipeline-info">
+                          <div class="council-pipeline-name">${pipeline.name}</div>
+                          <div class="council-pipeline-meta">
+                            <span class="council-badge council-badge-success">RAG</span>
+                            ${pipeline.targetStores && pipeline.targetStores.length > 0 ?
+                              `<span class="council-pipeline-store">Stores: ${pipeline.targetStores.join(', ')}</span>` : ''}
+                            ${pipeline.description ? `<span class="council-pipeline-desc">${pipeline.description}</span>` : ''}
+                          </div>
+                        </div>
+                        <div class="council-pipeline-actions">
+                          <button class="council-btn council-btn-secondary council-btn-sm"
+                                  data-action="preview-pipeline"
+                                  data-pipeline-id="${pipeline.id}"
+                                  title="Preview results (read-only)">
+                            Preview
+                          </button>
+                          <button class="council-btn council-btn-primary council-btn-sm"
+                                  data-action="run-pipeline"
+                                  data-pipeline-id="${pipeline.id}"
+                                  title="Execute pipeline">
+                            ▶ Run
+                          </button>
+                        </div>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `}
+        </div>
+
+        <!-- Execution Results Section -->
+        <div id="council-pipeline-execution-results" class="council-pipelines-section" style="display: none;">
+          <!-- Results will be rendered here -->
+        </div>
+
+        <!-- Pipeline Builder Section -->
         <div class="council-pipelines-section council-pipeline-builder-section">
           <h3 class="council-section-title">📊 Pipeline Builder</h3>
           <p class="council-section-description">
@@ -1901,9 +1998,501 @@ const CurationModal = {
         this._refreshCurrentTab();
         break;
 
+      case "run-pipeline":
+        const pipelineId = event.currentTarget?.dataset?.pipelineId || params.pipelineId;
+        this._runPipeline(pipelineId);
+        break;
+
+      case "preview-pipeline":
+        const previewPipelineId = event.currentTarget?.dataset?.pipelineId || params.pipelineId;
+        this._previewPipeline(previewPipelineId);
+        break;
+
+      case "apply-preview":
+        this._applyPreviewChanges();
+        break;
+
+      case "discard-preview":
+        this._discardPreviewChanges();
+        break;
+
       default:
         this._log("warn", `Unknown action: ${action}`);
     }
+  },
+
+  // ===== PIPELINE EXECUTION =====
+
+  /**
+   * Run a pipeline manually
+   * @param {string} pipelineId - Pipeline ID
+   */
+  async _runPipeline(pipelineId) {
+    const pipeline = this._curationSystem.getPipeline(pipelineId);
+    if (!pipeline) {
+      this._showToast(`Pipeline not found: ${pipelineId}`, "error");
+      return;
+    }
+
+    this._log("info", `Running pipeline: ${pipeline.name} (${pipeline.type})`);
+
+    // Show execution progress
+    this._showPipelineExecution(pipeline);
+
+    try {
+      // Execute via Curation System
+      const result = await this._curationSystem.executePipeline(pipelineId, {
+        source: 'manual',
+        preview: false,
+        input: {} // Could prompt user for input in future
+      });
+
+      // Show results
+      this._showPipelineResult(result);
+      this._showToast(`Pipeline "${pipeline.name}" completed`, "success");
+    } catch (error) {
+      this._showPipelineError(pipeline, error);
+      this._showToast(`Pipeline "${pipeline.name}" failed: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Show pipeline execution progress
+   * @param {Object} pipeline - Pipeline definition
+   */
+  _showPipelineExecution(pipeline) {
+    const resultsSection = document.getElementById('council-pipeline-execution-results');
+    if (!resultsSection) return;
+
+    resultsSection.style.display = 'block';
+    resultsSection.innerHTML = `
+      <h3 class="council-section-title">⚡ Executing Pipeline</h3>
+      <div class="council-pipeline-execution">
+        <div class="council-pipeline-exec-header">
+          <div class="council-pipeline-exec-name">${pipeline.name}</div>
+          <div class="council-pipeline-exec-type">
+            <span class="council-badge ${pipeline.type === 'crud' ? 'council-badge-primary' : 'council-badge-success'}">
+              ${pipeline.type.toUpperCase()}
+            </span>
+          </div>
+        </div>
+        <div class="council-pipeline-exec-progress">
+          <div class="council-spinner"></div>
+          <div class="council-pipeline-exec-status">Executing pipeline...</div>
+        </div>
+      </div>
+    `;
+
+    // Scroll to results
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  /**
+   * Show pipeline execution result
+   * @param {Object} result - Execution result
+   */
+  _showPipelineResult(result) {
+    const resultsSection = document.getElementById('council-pipeline-execution-results');
+    if (!resultsSection) return;
+
+    const pipeline = this._curationSystem.getPipeline(result.pipelineId);
+    const pipelineName = pipeline ? pipeline.name : result.pipelineId;
+
+    resultsSection.innerHTML = `
+      <h3 class="council-section-title">✅ Pipeline Completed</h3>
+      <div class="council-pipeline-result council-pipeline-result-success">
+        <div class="council-pipeline-result-header">
+          <div class="council-pipeline-result-name">${pipelineName}</div>
+          <div class="council-pipeline-result-meta">
+            <span class="council-badge ${result.type === 'crud' ? 'council-badge-primary' : 'council-badge-success'}">
+              ${result.type.toUpperCase()}
+            </span>
+            <span class="council-pipeline-result-time">${result.duration}ms</span>
+          </div>
+        </div>
+
+        <div class="council-pipeline-result-body">
+          ${result.type === 'crud' ? `
+            <div class="council-pipeline-result-section">
+              <h4>CRUD Operation</h4>
+              <p><strong>Operation:</strong> ${result.result.operation}</p>
+              <p><strong>Store:</strong> ${result.result.storeId}</p>
+              <p><strong>Message:</strong> ${result.result.message}</p>
+              ${result.preview ? '<p class="council-warning">⚠️ Preview mode - no changes were made</p>' : ''}
+            </div>
+          ` : result.type === 'rag' ? `
+            <div class="council-pipeline-result-section">
+              <h4>RAG Results</h4>
+              <p><strong>Query:</strong> ${result.result.query || 'N/A'}</p>
+              <p><strong>Results:</strong> ${result.result.count} items found</p>
+              ${result.result.results && result.result.results.length > 0 ? `
+                <div class="council-pipeline-result-items">
+                  ${result.result.results.slice(0, 5).map(item => `
+                    <div class="council-result-item">
+                      <pre>${JSON.stringify(item, null, 2)}</pre>
+                    </div>
+                  `).join('')}
+                  ${result.result.results.length > 5 ? `
+                    <div class="council-result-more">
+                      ... and ${result.result.results.length - 5} more results
+                    </div>
+                  ` : ''}
+                </div>
+              ` : '<p class="council-info">No results found</p>'}
+            </div>
+          ` : `
+            <div class="council-pipeline-result-section">
+              <pre>${JSON.stringify(result.result, null, 2)}</pre>
+            </div>
+          `}
+        </div>
+
+        <div class="council-pipeline-result-actions">
+          <button class="council-btn council-btn-secondary"
+                  onclick="this.closest('#council-pipeline-execution-results').style.display='none'">
+            Close Results
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  /**
+   * Show pipeline execution error
+   * @param {Object} pipeline - Pipeline definition
+   * @param {Error} error - Error object
+   */
+  _showPipelineError(pipeline, error) {
+    const resultsSection = document.getElementById('council-pipeline-execution-results');
+    if (!resultsSection) return;
+
+    resultsSection.innerHTML = `
+      <h3 class="council-section-title">❌ Pipeline Failed</h3>
+      <div class="council-pipeline-result council-pipeline-result-error">
+        <div class="council-pipeline-result-header">
+          <div class="council-pipeline-result-name">${pipeline.name}</div>
+          <div class="council-pipeline-result-meta">
+            <span class="council-badge ${pipeline.type === 'crud' ? 'council-badge-primary' : 'council-badge-success'}">
+              ${pipeline.type.toUpperCase()}
+            </span>
+          </div>
+        </div>
+
+        <div class="council-pipeline-result-body">
+          <div class="council-error-message">
+            <strong>Error:</strong> ${error.message}
+          </div>
+          ${error.stack ? `
+            <details class="council-error-details">
+              <summary>Stack Trace</summary>
+              <pre>${error.stack}</pre>
+            </details>
+          ` : ''}
+        </div>
+
+        <div class="council-pipeline-result-actions">
+          <button class="council-btn council-btn-primary"
+                  data-action="run-pipeline"
+                  data-pipeline-id="${pipeline.id}">
+            ↻ Retry
+          </button>
+          <button class="council-btn council-btn-secondary"
+                  onclick="this.closest('#council-pipeline-execution-results').style.display='none'">
+            Close
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Re-bind event handlers
+    this._bindContentEvents();
+  },
+
+
+  // ===== PIPELINE PREVIEW =====
+
+  /**
+   * Current preview result for apply/discard
+   * @type {Object|null}
+   */
+  _currentPreviewResult: null,
+
+  /**
+   * Preview a pipeline without executing
+   * @param {string} pipelineId - Pipeline ID
+   */
+  async _previewPipeline(pipelineId) {
+    const pipeline = this._curationSystem.getPipeline(pipelineId);
+    if (!pipeline) {
+      this._showToast(`Pipeline not found: ${pipelineId}`, "error");
+      return;
+    }
+
+    this._log("info", `Previewing pipeline: ${pipeline.name} (${pipeline.type})`);
+
+    // Show preview progress
+    this._showPipelinePreviewProgress(pipeline);
+
+    try {
+      // Execute preview via Curation System
+      const result = await this._curationSystem.executePipelinePreview(pipelineId, {
+        input: {} // Could prompt user for input in future
+      });
+
+      // Store result for apply/discard
+      this._currentPreviewResult = result;
+
+      // Show preview results
+      this._showPipelinePreviewResult(result);
+      this._showToast(`Pipeline "${pipeline.name}" preview complete`, "success");
+    } catch (error) {
+      this._showPipelineError(pipeline, error);
+      this._showToast(`Pipeline "${pipeline.name}" preview failed: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Show pipeline preview progress
+   * @param {Object} pipeline - Pipeline definition
+   */
+  _showPipelinePreviewProgress(pipeline) {
+    const resultsSection = document.getElementById('council-pipeline-execution-results');
+    if (!resultsSection) return;
+
+    resultsSection.style.display = 'block';
+    resultsSection.innerHTML = `
+      <h3 class="council-section-title">Previewing Pipeline</h3>
+      <div class="council-pipeline-execution">
+        <div class="council-pipeline-exec-header">
+          <div class="council-pipeline-exec-name">${pipeline.name}</div>
+          <div class="council-pipeline-exec-type">
+            <span class="council-badge council-badge-warning">PREVIEW</span>
+            <span class="council-badge ${pipeline.type === 'crud' ? 'council-badge-primary' : 'council-badge-success'}">
+              ${pipeline.type.toUpperCase()}
+            </span>
+          </div>
+        </div>
+        <div class="council-pipeline-exec-progress">
+          <div class="council-spinner"></div>
+          <div class="council-pipeline-exec-status">Calculating preview changes...</div>
+        </div>
+      </div>
+    `;
+
+    // Scroll to results
+    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  /**
+   * Show pipeline preview result with before/after comparison
+   * @param {Object} result - Preview result
+   */
+  _showPipelinePreviewResult(result) {
+    const resultsSection = document.getElementById('council-pipeline-execution-results');
+    if (!resultsSection) return;
+
+    const pipeline = this._curationSystem.getPipeline(result.pipelineId);
+    const pipelineName = pipeline ? pipeline.name : result.pipelineId;
+
+    // Build changes summary HTML
+    let changesHtml = '';
+    if (result.success && result.changes) {
+      const { changes } = result;
+
+      if (changes.totalChanges === 0) {
+        changesHtml = `
+          <div class="council-preview-no-changes">
+            <div class="council-info">No changes would be made by this pipeline.</div>
+          </div>
+        `;
+      } else {
+        // Build detailed changes view
+        changesHtml = `
+          <div class="council-preview-summary">
+            <strong>${changes.totalChanges} change(s) detected</strong>
+            ${changes.summary.length > 0 ? `<ul>${changes.summary.map(s => `<li>${s}</li>`).join('')}</ul>` : ''}
+          </div>
+          <div class="council-preview-details">
+        `;
+
+        // Show changes for each store
+        for (const [storeId, storeDiff] of Object.entries(changes.stores)) {
+          const hasChanges = storeDiff.added.length > 0 || storeDiff.modified.length > 0 || storeDiff.deleted.length > 0;
+
+          if (hasChanges) {
+            changesHtml += `
+              <div class="council-preview-store">
+                <h5 class="council-preview-store-title">${storeId}</h5>
+            `;
+
+            // Added items
+            if (storeDiff.added.length > 0) {
+              changesHtml += `
+                <div class="council-preview-section council-preview-added">
+                  <h6>+ Added (${storeDiff.added.length})</h6>
+                  ${storeDiff.added.slice(0, 3).map(item => `
+                    <div class="council-preview-item">
+                      <code>${item.id}</code>
+                      <pre>${JSON.stringify(item.data, null, 2).substring(0, 200)}...</pre>
+                    </div>
+                  `).join('')}
+                  ${storeDiff.added.length > 3 ? `<div class="council-preview-more">...and ${storeDiff.added.length - 3} more</div>` : ''}
+                </div>
+              `;
+            }
+
+            // Modified items
+            if (storeDiff.modified.length > 0) {
+              changesHtml += `
+                <div class="council-preview-section council-preview-modified">
+                  <h6>~ Modified (${storeDiff.modified.length})</h6>
+                  ${storeDiff.modified.slice(0, 3).map(item => `
+                    <div class="council-preview-item">
+                      <code>${item.id}</code>
+                      ${item.changes ? `
+                        <div class="council-preview-diff">
+                          ${item.changes.slice(0, 3).map(change => `
+                            <div class="council-diff-field">
+                              <span class="council-diff-label">${change.field}:</span>
+                              <span class="council-diff-before">${JSON.stringify(change.before)}</span>
+                              <span class="council-diff-arrow">&rarr;</span>
+                              <span class="council-diff-after">${JSON.stringify(change.after)}</span>
+                            </div>
+                          `).join('')}
+                          ${item.changes.length > 3 ? `<div class="council-preview-more">...and ${item.changes.length - 3} more fields</div>` : ''}
+                        </div>
+                      ` : ''}
+                    </div>
+                  `).join('')}
+                  ${storeDiff.modified.length > 3 ? `<div class="council-preview-more">...and ${storeDiff.modified.length - 3} more</div>` : ''}
+                </div>
+              `;
+            }
+
+            // Deleted items
+            if (storeDiff.deleted.length > 0) {
+              changesHtml += `
+                <div class="council-preview-section council-preview-deleted">
+                  <h6>- Deleted (${storeDiff.deleted.length})</h6>
+                  ${storeDiff.deleted.slice(0, 3).map(item => `
+                    <div class="council-preview-item">
+                      <code>${item.id}</code>
+                    </div>
+                  `).join('')}
+                  ${storeDiff.deleted.length > 3 ? `<div class="council-preview-more">...and ${storeDiff.deleted.length - 3} more</div>` : ''}
+                </div>
+              `;
+            }
+
+            changesHtml += `</div>`; // close council-preview-store
+          }
+        }
+
+        changesHtml += `</div>`; // close council-preview-details
+      }
+    } else if (!result.success) {
+      changesHtml = `
+        <div class="council-error-message">
+          <strong>Preview failed:</strong> ${result.error}
+        </div>
+      `;
+    }
+
+    resultsSection.innerHTML = `
+      <h3 class="council-section-title">Pipeline Preview</h3>
+      <div class="council-pipeline-result council-pipeline-result-preview">
+        <div class="council-pipeline-result-header">
+          <div class="council-pipeline-result-name">${pipelineName}</div>
+          <div class="council-pipeline-result-meta">
+            <span class="council-badge council-badge-warning">PREVIEW</span>
+            <span class="council-badge ${result.type === 'crud' ? 'council-badge-primary' : 'council-badge-success'}">
+              ${result.type.toUpperCase()}
+            </span>
+            <span class="council-pipeline-result-time">${result.duration}ms</span>
+          </div>
+        </div>
+
+        <div class="council-pipeline-result-body">
+          <div class="council-preview-notice">
+            <strong>Preview Mode</strong> - No changes have been applied yet.
+            Review the changes below and choose to apply or discard.
+          </div>
+          ${changesHtml}
+        </div>
+
+        <div class="council-pipeline-result-actions">
+          ${result.success && result.hasChanges ? `
+            <button class="council-btn council-btn-success"
+                    data-action="apply-preview"
+                    title="Apply these changes to the actual stores">
+              Apply Changes
+            </button>
+          ` : ''}
+          <button class="council-btn council-btn-secondary"
+                  data-action="discard-preview"
+                  title="Discard preview and close">
+            ${result.hasChanges ? 'Discard' : 'Close'}
+          </button>
+        </div>
+      </div>
+    `;
+
+    // Re-bind event handlers
+    this._bindContentEvents();
+  },
+
+  /**
+   * Apply preview changes to actual stores
+   */
+  async _applyPreviewChanges() {
+    if (!this._currentPreviewResult || !this._currentPreviewResult.applyChanges) {
+      this._showToast("No preview to apply", "error");
+      return;
+    }
+
+    const result = this._currentPreviewResult;
+    this._log("info", `Applying preview changes for pipeline: ${result.pipelineId}`);
+
+    try {
+      const applyResult = await result.applyChanges();
+
+      if (applyResult.success) {
+        this._showToast(`Changes applied: ${applyResult.message}`, "success");
+        this._currentPreviewResult = null;
+
+        // Close results and refresh view
+        const resultsSection = document.getElementById('council-pipeline-execution-results');
+        if (resultsSection) {
+          resultsSection.style.display = 'none';
+        }
+
+        // Refresh to show updated data
+        this._refreshCurrentTab();
+      } else {
+        this._showToast(`Failed to apply changes: ${applyResult.error}`, "error");
+      }
+    } catch (error) {
+      this._showToast(`Error applying changes: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Discard preview changes
+   */
+  _discardPreviewChanges() {
+    if (this._currentPreviewResult && this._currentPreviewResult.discardChanges) {
+      this._currentPreviewResult.discardChanges();
+    }
+
+    this._currentPreviewResult = null;
+
+    // Close results section
+    const resultsSection = document.getElementById('council-pipeline-execution-results');
+    if (resultsSection) {
+      resultsSection.style.display = 'none';
+    }
+
+    this._showToast("Preview discarded", "info");
   },
 
   // ===== IMPORT / EXPORT =====

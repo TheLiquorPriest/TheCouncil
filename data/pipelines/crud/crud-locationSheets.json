@@ -1,0 +1,60 @@
+{
+  "id": "crud-locationSheets",
+  "name": "Location Sheets CRUD",
+  "description": "Create, Read, Update, Delete operations for Location Sheets",
+  "storeId": "locationSheets",
+  "operations": {
+    "create": {
+      "actions": [
+        {
+          "id": "validate-input",
+          "name": "Validate Input",
+          "positionId": "archivist",
+          "promptTemplate": "Validate the following data for Location Sheets:\n{{input}}\n\nEnsure all required fields are present and valid."
+        },
+        {
+          "id": "create-entry",
+          "name": "Create Entry",
+          "positionId": "locationSheetsTopologist",
+          "promptTemplate": "Create a new Location Sheets entry with the validated data."
+        }
+      ]
+    },
+    "read": {
+      "actions": [
+        {
+          "id": "query-store",
+          "name": "Query Store",
+          "positionId": "archivist",
+          "promptTemplate": "Retrieve Location Sheets data matching: {{query}}"
+        }
+      ]
+    },
+    "update": {
+      "actions": [
+        {
+          "id": "validate-update",
+          "name": "Validate Update",
+          "positionId": "archivist",
+          "promptTemplate": "Validate the update for Location Sheets entry {{id}}:\n{{changes}}"
+        },
+        {
+          "id": "apply-update",
+          "name": "Apply Update",
+          "positionId": "locationSheetsTopologist",
+          "promptTemplate": "Apply the validated changes to Location Sheets entry {{id}}."
+        }
+      ]
+    },
+    "delete": {
+      "actions": [
+        {
+          "id": "confirm-delete",
+          "name": "Confirm Delete",
+          "positionId": "archivist",
+          "promptTemplate": "Confirm deletion of Location Sheets entry {{id}}. Check for dependencies."
+        }
+      ]
+    }
+  }
+}

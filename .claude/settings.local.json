@@ -52,6 +52,21 @@
       "Bash(docker info:*)",
       "Bash(claude plugin marketplace list:*)",
       "Bash(ast-grep:*)",
+      "Bash(mkdir:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(rm:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(touch:*)",
+      "Bash(pwd:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(node:*)",
+      "Bash(sed:*)",
       "Edit",
       "Write",
       "WebSearch",
@@ -114,7 +129,12 @@
       "mcp__memory-keeper__context_batch_delete",
       "mcp__memory-keeper__context_batch_update",
       "mcp__memory-keeper__context_link",
-      "mcp__memory-keeper__context_get_related"
+      "mcp__memory-keeper__context_get_related",
+      "Bash(node -e:*)",
+      "Bash(*&&*)",
+      "Bash(*||*)",
+      "Bash(*;*)",
+      "Bash(git: *)"
     ],
     "deny": [],
     "ask": []
@@ -122,9 +142,7 @@
   "mcpServers": {
     "browsermcp": {
       "command": "npx",
-      "args": [
-        "@browsermcp/mcp@latest"
-      ]
+      "args": ["@browsermcp/mcp@latest"]
     }
   }
 }

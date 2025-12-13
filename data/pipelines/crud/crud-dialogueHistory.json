@@ -1,0 +1,60 @@
+{
+  "id": "crud-dialogueHistory",
+  "name": "Dialogue History CRUD",
+  "description": "Create, Read, Update, Delete operations for Dialogue History",
+  "storeId": "dialogueHistory",
+  "operations": {
+    "create": {
+      "actions": [
+        {
+          "id": "validate-input",
+          "name": "Validate Input",
+          "positionId": "archivist",
+          "promptTemplate": "Validate the following data for Dialogue History:\n{{input}}\n\nEnsure all required fields are present and valid."
+        },
+        {
+          "id": "create-entry",
+          "name": "Create Entry",
+          "positionId": "dialogueHistoryTopologist",
+          "promptTemplate": "Create a new Dialogue History entry with the validated data."
+        }
+      ]
+    },
+    "read": {
+      "actions": [
+        {
+          "id": "query-store",
+          "name": "Query Store",
+          "positionId": "archivist",
+          "promptTemplate": "Retrieve Dialogue History data matching: {{query}}"
+        }
+      ]
+    },
+    "update": {
+      "actions": [
+        {
+          "id": "validate-update",
+          "name": "Validate Update",
+          "positionId": "archivist",
+          "promptTemplate": "Validate the update for Dialogue History entry {{id}}:\n{{changes}}"
+        },
+        {
+          "id": "apply-update",
+          "name": "Apply Update",
+          "positionId": "dialogueHistoryTopologist",
+          "promptTemplate": "Apply the validated changes to Dialogue History entry {{id}}."
+        }
+      ]
+    },
+    "delete": {
+      "actions": [
+        {
+          "id": "confirm-delete",
+          "name": "Confirm Delete",
+          "positionId": "archivist",
+          "promptTemplate": "Confirm deletion of Dialogue History entry {{id}}. Check for dependencies."
+        }
+      ]
+    }
+  }
+}
