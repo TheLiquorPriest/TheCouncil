@@ -1,6 +1,29 @@
 {
   "permissions": {
     "allow": [
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_hover",
+      "mcp__playwright__browser_select_option",
+      "mcp__playwright__browser_press_key",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_close",
+      "mcp__playwright__browser_tabs",
+      "mcp__browsermcp__browser_navigate",
+      "mcp__browsermcp__browser_snapshot",
+      "mcp__browsermcp__browser_click",
+      "mcp__browsermcp__browser_type",
+      "mcp__browsermcp__browser_hover",
+      "mcp__browsermcp__browser_select_option",
+      "mcp__browsermcp__browser_press_key",
+      "mcp__browsermcp__browser_wait",
+      "mcp__browsermcp__browser_get_console_logs",
+      "mcp__browsermcp__browser_screenshot",
       "Bash(git add:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nAdd comprehensive architecture documentation for 6-system design\n\n- CLAUDE.md: Quick reference for the codebase with architecture overview\n- docs/SYSTEM_DEFINITIONS.md: Complete definitions for all 6 systems\n  - Curation, Character, Prompt Builder, Pipeline Builder, Orchestration, Kernel\n  - Public APIs, events, data flows, resolved architectural decisions\n- docs/ACTION_PLAN_v2.md: Implementation roadmap mapping current → target\n- docs/DEVELOPMENT_PLAN.md: Session-based dev plan for Sonnet agents\n  - 18-19 tasks across 7 phases\n  - Context budget guidelines, handoff checkpoints, success criteria\n  - Session prompt template for agent workflow\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git worktree:*)",
@@ -11,7 +34,12 @@
       "Bash(node -c:*)",
       "Bash(dir:*)",
       "Bash(find:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(claude mcp list:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(npm search:*)",
+      "Bash(claude mcp remove browser)",
+      "Bash(claude mcp remove:*)"
     ],
     "deny": [],
     "ask": []

@@ -107,9 +107,19 @@ TheCouncil/
 │
 ├── docs/                       # Documentation
 │   ├── SYSTEM_DEFINITIONS.md   # Comprehensive system definitions
-│   ├── ACTION_PLAN_v2.md       # Implementation roadmap
-│   ├── DEVELOPMENT_PLAN.md     # Session-based development plan
-│   └── DEFAULT_PIPELINE.md     # Pipeline structure documentation
+│   ├── DEFAULT_PIPELINE.md     # Pipeline structure documentation
+│   ├── VIEWS.md                # Exhaustive UI views map & testing checklist
+│   ├── UI_TESTING.md           # Browser automation testing guide
+│   ├── UI_BEHAVIOR.md          # Expected UI behavior spec (generated)
+│   ├── UI_BEHAVIOR_REPORT.md   # UI test results (generated)
+│   ├── archive/                # Archived development plans
+│   │   ├── ACTION_PLAN_v2.md   # Alpha 2 implementation roadmap
+│   │   └── DEVELOPMENT_PLAN.md # Alpha 2 session-based plan
+│   ├── testing/                # Test reports
+│   │   └── UI_REPORT-*.md      # Timestamped test reports
+│   └── tasks/                  # Development tasks
+│       └── alpha3/             # Alpha 3 tasks
+│           └── CURRENT_SUGGESTED_TASKS.md
 │
 ├── tests/                      # Test files
 │   ├── integration-test.js     # Integration tests
@@ -122,7 +132,11 @@ TheCouncil/
 └── .claude/                    # Claude Code configuration
     ├── settings.local.json     # Local settings
     ├── commands/               # Slash commands
+    │   ├── task.md             # Single task runner
+    │   ├── tasks.md            # Phase task runner
+    │   └── ui-test.md          # UI testing pipeline (parallel agents)
     └── handoffs/               # Session handoff documents
+        └── archive/            # Completed handoffs from Alpha 2
 ```
 
 ## Orchestration Modes
@@ -203,19 +217,100 @@ const SystemName = {
 | Document | Purpose |
 |----------|---------|
 | `docs/SYSTEM_DEFINITIONS.md` | Comprehensive system definitions |
-| `docs/ACTION_PLAN_v2.md` | Implementation roadmap |
-| `docs/DEVELOPMENT_PLAN.md` | Session-based development plan |
-| `docs/STATUS_REPORT.md` | Implementation status report |
+| `docs/VIEWS.md` | Exhaustive UI views map and testing checklist |
+| `docs/UI_TESTING.md` | Browser automation testing guide |
+| `docs/UI_BEHAVIOR.md` | Expected UI behavior spec (test reference) |
+| `docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md` | Current development tasks |
 
 ## Quick Reference
 
 | What | Where |
 |------|-------|
 | System definitions | `docs/SYSTEM_DEFINITIONS.md` |
-| Implementation plan | `docs/ACTION_PLAN_v2.md` |
+| UI views & testing | `docs/VIEWS.md` |
+| Current tasks | `docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md` |
 | All schemas | `schemas/systems.js` |
 | Presets | `data/presets/*.json` |
-| Handoff docs | `.claude/handoffs/*.md` |
+| Archived plans | `docs/archive/*.md` |
+| Archived handoffs | `.claude/handoffs/archive/*.md` |
+
+## Slash Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/ui-test` | Run full UI testing pipeline (spawns 6 parallel agents) |
+| `/ui-test [modal]` | Test single modal (nav, curation, character, pipeline, injection, gavel) |
+| `/task [id]` | Run a single development task |
+| `/tasks [phase]` | Run all tasks for a phase |
+
+## Browser Automation (MCP)
+
+This project is configured with browser automation for UI testing via MCP (Model Context Protocol).
+
+### Documentation
+
+| Document | Purpose |
+|----------|---------|
+| `docs/VIEWS.md` | Complete UI map with all views, states, buttons, interactions |
+| `docs/UI_TESTING.md` | MCP setup, tools reference, troubleshooting |
+
+### Quick Start
+
+```bash
+# Verify MCP servers are connected
+claude mcp list
+
+# Expected output:
+# playwright: ✓ Connected
+# browsermcp: ✓ Connected
+```
+
+### Available Tools
+
+| Tool | Purpose |
+|------|---------|
+| `mcp__playwright__browser_navigate` | Navigate to URL |
+| `mcp__playwright__browser_snapshot` | Get accessibility tree (preferred) |
+| `mcp__playwright__browser_click` | Click elements by ref |
+| `mcp__playwright__browser_type` | Type into fields |
+| `mcp__playwright__browser_console_messages` | Get console logs |
+| `mcp__playwright__browser_take_screenshot` | Capture screenshot |
+| `mcp__playwright__browser_evaluate` | Run JavaScript |
+
+### Common Workflow
+
+```
+1. Navigate: mcp__playwright__browser_navigate(url: "http://127.0.0.1:8000/")
+2. Snapshot: mcp__playwright__browser_snapshot() → get element refs
+3. Click: mcp__playwright__browser_click(element: "description", ref: "eXXX")
+4. Verify: Take new snapshot or check console
+```
+
+### UI Testing Checklist
+
+Use `docs/VIEWS.md` as a testing checklist. It documents:
+- **6 modals**: Navigation, Curation, Character, Pipeline, Injection, Gavel
+- **26+ sub-views** across all tabs
+- **150+ UI elements** with expected behavior
+- **Shared components**: Prompt Builder, Token Picker, etc.
+
+### Run Integration Tests
+
+```javascript
+// Via browser_evaluate:
+window.TheCouncil.runIntegrationTests()
+```
+
+### Setup (if not configured)
+
+```bash
+claude mcp add playwright -s user -- npx -y @playwright/mcp@latest
+claude mcp add browsermcp -s user -- npx -y @browsermcp/mcp@latest
+# Restart Claude Code session
+```
+
+**Full MCP documentation:** `docs/UI_TESTING.md`
+**Full UI views map:** `docs/VIEWS.md`
 
 ## Extension Metadata
 
