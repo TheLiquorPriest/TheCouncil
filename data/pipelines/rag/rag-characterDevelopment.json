@@ -1,0 +1,42 @@
+{
+  "id": "rag-characterDevelopment",
+  "name": "Character Development RAG",
+  "description": "Retrieval-Augmented Generation for Character Development",
+  "targetStores": ["characterDevelopment"],
+  "canTriggerFromPipeline": true,
+  "canTriggerManually": true,
+  "actions": [
+    {
+      "id": "parse-query",
+      "name": "Parse Query",
+      "positionId": "archivist",
+      "promptTemplate": "Parse the following query to extract search terms:\n{{query}}\n\nIdentify key entities, attributes, and relationships to search for."
+    },
+    {
+      "id": "search-store",
+      "name": "Search Store",
+      "positionId": "character_topologist",
+      "promptTemplate": "Search Character Development for entries matching:\n{{parsedQuery}}\n\nReturn the most relevant results."
+    },
+    {
+      "id": "rank-results",
+      "name": "Rank Results",
+      "positionId": "archivist",
+      "promptTemplate": "Rank the following results by relevance to the original query:\n\nQuery: {{query}}\nResults: {{searchResults}}\n\nReturn top {{maxResults}} results."
+    },
+    {
+      "id": "format-output",
+      "name": "Format Output",
+      "positionId": "archivist",
+      "promptTemplate": "Format the ranked results for context injection:\n{{rankedResults}}\n\nProvide clear, concise context."
+    }
+  ],
+  "inputSchema": {
+    "query": { "type": "string", "required": true },
+    "maxResults": { "type": "number", "default": 5 }
+  },
+  "outputSchema": {
+    "results": { "type": "array" },
+    "formatted": { "type": "string" }
+  }
+}
