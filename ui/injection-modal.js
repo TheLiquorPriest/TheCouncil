@@ -873,52 +873,62 @@ const InjectionModal = {
 
   /**
    * Show add mapping dialog
+   * @param {Object} preFill - Optional pre-fill data for editing
+   * @param {string} preFill.token - Token name
+   * @param {string} preFill.ragPipelineId - RAG pipeline ID
+   * @param {number} preFill.maxResults - Max results
+   * @param {string} preFill.format - Output format
+   * @param {boolean} preFill.isEdit - Whether this is an edit operation
    */
-  _showAddMappingDialog() {
+  _showAddMappingDialog(preFill = {}) {
     // Get available RAG pipelines
     const ragPipelines = this._orchestrationSystem?.getAvailableRAGPipelines() || [];
     const commonTokens = this._orchestrationSystem?.getCommonSTTokens() || [];
+
+    const isEdit = preFill.isEdit || false;
+    const dialogTitle = isEdit ? "Edit Token Mapping" : "Add Token Mapping";
+    const saveButtonText = isEdit ? "Save Changes" : "Add Mapping";
 
     // Create dialog
     const dialog = document.createElement("div");
     dialog.className = "council-add-mapping-dialog";
     dialog.innerHTML = `
-      <h4>Add Token Mapping</h4>
+      <h4>${dialogTitle}</h4>
       <div class="council-dialog-field">
         <label for="council-dialog-token">ST Token</label>
-        <select id="council-dialog-token">
+        <select id="council-dialog-token" ${isEdit ? 'disabled' : ''}>
           <option value="">-- Select or enter token --</option>
-          ${commonTokens.map(t => `<option value="${t.token}">${t.token} - ${t.description}</option>`).join('')}
+          ${commonTokens.map(t => `<option value="${t.token}"${preFill.token === t.token ? ' selected' : ''}>${t.token} - ${t.description}</option>`).join('')}
         </select>
       </div>
       <div class="council-dialog-field">
         <label for="council-dialog-custom-token">Or enter custom token</label>
-        <input type="text" id="council-dialog-custom-token" placeholder="e.g., my_custom_token" />
+        <input type="text" id="council-dialog-custom-token" placeholder="e.g., my_custom_token" value="${preFill.token && !commonTokens.find(t => t.token === preFill.token) ? preFill.token : ''}" ${isEdit ? 'disabled' : ''} />
       </div>
       <div class="council-dialog-field">
         <label for="council-dialog-pipeline">RAG Pipeline</label>
         <select id="council-dialog-pipeline">
           <option value="">-- Select RAG pipeline --</option>
-          ${ragPipelines.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+          ${ragPipelines.map(p => `<option value="${p.id}"${preFill.ragPipelineId === p.id ? ' selected' : ''}>${p.name}</option>`).join('')}
           ${ragPipelines.length === 0 ? '<option value="" disabled>No RAG pipelines available</option>' : ''}
         </select>
       </div>
       <div class="council-dialog-field">
         <label for="council-dialog-max-results">Max Results</label>
-        <input type="number" id="council-dialog-max-results" value="5" min="1" max="50" />
+        <input type="number" id="council-dialog-max-results" value="${preFill.maxResults || 5}" min="1" max="50" />
       </div>
       <div class="council-dialog-field">
         <label for="council-dialog-format">Output Format</label>
         <select id="council-dialog-format">
-          <option value="default">Default (JSON)</option>
-          <option value="compact">Compact (Summary)</option>
-          <option value="detailed">Detailed (Formatted)</option>
-          <option value="json">Raw JSON</option>
+          <option value="default"${preFill.format === 'default' || !preFill.format ? ' selected' : ''}>Default (JSON)</option>
+          <option value="compact"${preFill.format === 'compact' ? ' selected' : ''}>Compact (Summary)</option>
+          <option value="detailed"${preFill.format === 'detailed' ? ' selected' : ''}>Detailed (Formatted)</option>
+          <option value="json"${preFill.format === 'json' ? ' selected' : ''}>Raw JSON</option>
         </select>
       </div>
       <div class="council-dialog-actions">
         <button class="council-btn council-btn-secondary" id="council-dialog-cancel">Cancel</button>
-        <button class="council-btn council-btn-primary" id="council-dialog-save">Add Mapping</button>
+        <button class="council-btn council-btn-primary" id="council-dialog-save">${saveButtonText}</button>
       </div>
     `;
 
@@ -943,7 +953,7 @@ const InjectionModal = {
     dialog.querySelector("#council-dialog-save").addEventListener("click", () => {
       const tokenSelect = dialog.querySelector("#council-dialog-token").value;
       const customToken = dialog.querySelector("#council-dialog-custom-token").value.trim();
-      const token = customToken || tokenSelect;
+      const token = isEdit ? preFill.token : (customToken || tokenSelect);
       const pipelineId = dialog.querySelector("#council-dialog-pipeline").value;
       const maxResults = parseInt(dialog.querySelector("#council-dialog-max-results").value) || 5;
       const format = dialog.querySelector("#council-dialog-format").value;
@@ -958,13 +968,15 @@ const InjectionModal = {
         return;
       }
 
-      // Add the mapping
+      // Add or update the mapping
       this._orchestrationSystem.mapToken(token, {
         ragPipelineId: pipelineId,
         maxResults,
         format,
         enabled: true,
       });
+
+      this._log("info", `${isEdit ? 'Updated' : 'Added'} mapping for token: ${token}`);
 
       // Close dialog
       dialog.remove();
@@ -1016,9 +1028,27 @@ const InjectionModal = {
    * @param {string} token - Token to edit
    */
   _editMapping(token) {
-    // For now, just show the add dialog - could be enhanced
-    this._deleteMapping(token);
-    this._showAddMappingDialog();
+    if (!this._orchestrationSystem) return;
+
+    // Get existing mapping configuration
+    const mappings = this._orchestrationSystem.getInjectionMappings();
+    const existingConfig = mappings[token];
+
+    if (!existingConfig) {
+      this._log("warn", `No mapping found for token: ${token}`);
+      return;
+    }
+
+    this._log("info", `Editing mapping for token: ${token}`);
+
+    // Show dialog with pre-filled values
+    this._showAddMappingDialog({
+      token: token,
+      ragPipelineId: existingConfig.ragPipelineId,
+      maxResults: existingConfig.maxResults || 5,
+      format: existingConfig.format || 'default',
+      isEdit: true
+    });
   },
 
   /**
@@ -1026,11 +1056,18 @@ const InjectionModal = {
    * @param {string} token - Token to delete
    */
   _deleteMapping(token) {
-    if (this._orchestrationSystem) {
-      this._orchestrationSystem.unmapToken(token);
-      this._refreshMappings();
-      this._renderQuickAddButtons();
+    if (!this._orchestrationSystem) return;
+
+    // Show confirmation dialog
+    if (!confirm(`Are you sure you want to delete the mapping for {{${token}}}?`)) {
+      this._log("debug", `Delete cancelled for token: ${token}`);
+      return;
     }
+
+    this._log("info", `Deleting mapping for token: ${token}`);
+    this._orchestrationSystem.unmapToken(token);
+    this._refreshMappings();
+    this._renderQuickAddButtons();
   },
 
   /**
