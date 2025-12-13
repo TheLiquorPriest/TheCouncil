@@ -66,6 +66,7 @@
       "Bash(head:*)",
       "Bash(tail:*)",
       "Bash(node:*)",
+      "Bash(sed:*)",
       "Edit",
       "Write",
       "WebSearch",
