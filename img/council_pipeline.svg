@@ -1,0 +1,33 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+  <!-- Pipeline stages as connected boxes -->
+
+  <!-- Stage 1 (Input) -->
+  <rect x="4" y="20" width="12" height="24" fill="#667eea" stroke="#4c3aa8" stroke-width="2" rx="2"/>
+  <text x="10" y="36" font-size="8" fill="white" text-anchor="middle" font-weight="bold">IN</text>
+
+  <!-- Connection line 1 -->
+  <line x1="16" y1="32" x2="20" y2="32" stroke="#667eea" stroke-width="2"/>
+
+  <!-- Stage 2 (Process) -->
+  <circle cx="28" cy="32" r="8" fill="#764ba2" stroke="#5a3582" stroke-width="2"/>
+  <text x="28" y="35" font-size="10" fill="white" text-anchor="middle" font-weight="bold">⚙</text>
+
+  <!-- Connection line 2 -->
+  <line x1="36" y1="32" x2="40" y2="32" stroke="#764ba2" stroke-width="2"/>
+
+  <!-- Stage 3 (Process 2) -->
+  <circle cx="48" cy="32" r="8" fill="#f093fb" stroke="#d972e3" stroke-width="2"/>
+  <text x="48" y="35" font-size="10" fill="white" text-anchor="middle" font-weight="bold">⚙</text>
+
+  <!-- Connection line 3 -->
+  <line x1="56" y1="32" x2="60" y2="32" stroke="#f093fb" stroke-width="2"/>
+
+  <!-- Stage 4 (Output) -->
+  <rect x="60" y="20" width="12" height="24" fill="#4dd0e1" stroke="#2ca5ad" stroke-width="2" rx="2"/>
+  <text x="66" y="36" font-size="8" fill="white" text-anchor="middle" font-weight="bold">OUT</text>
+
+  <!-- Flow indicators (small arrows above) -->
+  <polygon points="21,26 25,28 21,30" fill="#667eea"/>
+  <polygon points="41,26 45,28 41,30" fill="#764ba2"/>
+  <polygon points="61,26 63,28 61,30" fill="#f093fb"/>
+</svg>
