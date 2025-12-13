@@ -108,7 +108,7 @@ After ALL tasks in the phase are done:
 ```
 ## Phase $ARGUMENTS Complete
 
-### Branch: [TARGET_BRANCH]
+### Branch: 
 
 ### Tasks Completed:
 - Task X.X.X: [status] - [summary]
@@ -123,10 +123,10 @@ After ALL tasks in the phase are done:
 Please review the changes on branch `[TARGET_BRANCH]`:
 
 \`\`\`bash
-git diff main..[TARGET_BRANCH]
+git diff [TARGET_BRANCH]..BRANCH_NAME
 \`\`\`
 
-**Merge to main?**
+**Merge to [TARGET_BRANCH]?**
 - Reply "merge" to merge and continue
 - Reply "changes needed" to describe what needs fixing
 ```
@@ -135,8 +135,8 @@ git diff main..[TARGET_BRANCH]
 
 If user says "merge":
 ```bash
-git checkout main
-git merge [TARGET_BRANCH] -m "Merge [TARGET_BRANCH]: Phase $ARGUMENTS complete"
+git checkout [TARGET_BRANCH]
+git merge BRANCH_NAME -m "Merge : Phase $ARGUMENTS complete"
 ```
 
 ---
