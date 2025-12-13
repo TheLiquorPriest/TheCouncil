@@ -317,6 +317,142 @@ claude mcp add browsermcp -s user -- npx -y @browsermcp/mcp@latest
 **Full MCP documentation:** `docs/UI_TESTING.md`
 **Full UI views map:** `docs/VIEWS.md`
 
+## Structural Code Search (ast-grep)
+
+This project has the **ast-grep skill** and CLI installed. **Proactively use ast-grep** for structural code searches—don't wait for explicit requests.
+
+### Decision Tree: Which Tool to Use
+
+```
+Is the search about CODE STRUCTURE (functions, methods, patterns)?
+├── YES → Use ast-grep
+│   Examples:
+│   - "Find all event handlers" → ast-grep
+│   - "Find methods that call X" → ast-grep
+│   - "Find async functions" → ast-grep
+│   - "Find where modal.show() is called" → ast-grep
+│
+└── NO → Is it a simple TEXT search?
+    ├── YES → Use grep
+    │   Examples:
+    │   - "Find _initialized" → grep
+    │   - "Find TODO comments" → grep
+    │   - "Find a specific string" → grep
+    │
+    └── NO → Use glob (file paths)
+        Examples:
+        - "Find all modal files" → glob **/*modal*.js
+```
+
+### Automatic ast-grep Triggers
+
+**Use ast-grep automatically when the task involves:**
+
+| Task Type | Trigger Phrases | ast-grep Pattern |
+|-----------|-----------------|------------------|
+| Finding method calls | "find where X is called", "find all calls to" | `$OBJ.$METHOD($$$)` |
+| Finding event handlers | "find event listeners", "find handlers" | `this._kernel.on($EVENT, $$$)` |
+| Finding patterns | "find all functions that", "find methods with" | YAML rule with `has`/`inside` |
+| Refactoring prep | "before I change X", "impact of changing" | Pattern for affected code |
+| Bug investigation | "find all places that", "where does X happen" | Structural pattern |
+| Code review | "find potential issues", "find missing error handling" | YAML rule with `not` |
+
+### For Agentic Tasks (Task Tool / Subagents)
+
+When spawning agents for code exploration or refactoring tasks, **instruct them to use ast-grep**:
+
+```
+prompt: |
+  Investigate where event emissions happen in the codebase.
+
+  Use ast-grep for structural searches:
+  ast-grep run --pattern 'this._kernel.emit($EVENT, $DATA)' --lang javascript .
+
+  Use grep only for simple text searches.
+```
+
+**Include ast-grep in agent prompts when:**
+- Agent needs to find all usages of a pattern
+- Agent is investigating code flow
+- Agent is preparing for refactoring
+- Agent needs to understand system interactions
+
+### Common Patterns for This Codebase
+
+```bash
+# Find all event emissions
+ast-grep run --pattern 'this._kernel.emit($EVENT, $DATA)' --lang javascript .
+
+# Find all Kernel.on() event subscriptions
+ast-grep run --pattern 'this._kernel.on($EVENT, $HANDLER)' --lang javascript .
+
+# Find console.log statements
+ast-grep run --pattern 'console.log($$$ARGS)' --lang javascript .
+
+# Find method calls on _kernel
+ast-grep run --pattern 'this._kernel.$METHOD($$$)' --lang javascript .
+
+# Find getModule calls
+ast-grep run --pattern 'kernel.getModule($NAME)' --lang javascript .
+
+# Find all show() method definitions
+ast-grep run --pattern 'show() { $$$BODY }' --lang javascript ui/
+
+# Find all _handle* methods
+ast-grep run --pattern '_handle$NAME($$$ARGS) { $$$BODY }' --lang javascript .
+```
+
+### Complex Searches (YAML Rules)
+
+For searches with logical conditions (AND, OR, NOT), use YAML rules:
+
+```yaml
+# Find async functions without try-catch
+id: async-no-error-handling
+language: javascript
+rule:
+  all:
+    - kind: function_declaration
+    - has:
+        pattern: await $EXPR
+        stopBy: end
+    - not:
+        has:
+          kind: try_statement
+          stopBy: end
+```
+
+```bash
+# Run a YAML rule
+ast-grep scan --inline-rules "id: test
+language: javascript
+rule:
+  pattern: console.log(\$\$\$)" .
+```
+
+### Key AST Node Kinds (JavaScript)
+
+| Code | Kind |
+|------|------|
+| `function foo() {}` | `function_declaration` |
+| `const foo = () => {}` | `arrow_function` |
+| `class Foo {}` | `class_declaration` |
+| `foo.bar()` | `call_expression` |
+| `{ key: value }` | `object` |
+| `method() {}` | `method_definition` |
+
+### Metavariable Reference
+
+| Metavar | Matches |
+|---------|---------|
+| `$NAME` | Single AST node (identifier, expression) |
+| `$$$ARGS` | Zero or more nodes (variadic) |
+| `$_` | Wildcard (matches anything, unnamed) |
+
+**Skill docs:** `~/.claude/plugins/marketplaces/ast-grep-marketplace/`
+
+---
+
 ## Extension Metadata
 
 - **Author**: The Liquor Priest

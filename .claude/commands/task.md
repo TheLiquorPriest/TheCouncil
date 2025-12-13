@@ -5,11 +5,24 @@ You are implementing **Task $ARGUMENTS** from The Council development plan.
 ## Instructions
 
 1. **Read the development plan**: `docs/DEVELOPMENT_PLAN.md`
-2. **Find your task** by ID (e.g., "Task 0.1", "Task 1.2")
-3. **Read the context docs** listed in your task
-4. **Implement the deliverables** exactly as specified
-5. **Test your work** against the success criteria
-6. **Commit your changes** (do NOT push or merge)
+2. **Find your task** by ID (e.g., "1.1.1", "2.3.1")
+3. **Check the Quick Reference table** for:
+   - Model assignment (opus/sonnet/haiku)
+   - Primary file
+   - Estimated hours
+4. **Read any context docs** referenced in your task description
+5. **Implement the deliverables** exactly as specified
+6. **Test your work** against the acceptance criteria
+7. **Commit your changes** (do NOT push or merge)
+
+## Model Selection
+
+The Quick Reference table in DEVELOPMENT_PLAN.md specifies which model to use:
+- **opus**: Complex architecture, multi-file changes
+- **sonnet**: Standard implementation
+- **haiku**: Simple fixes, docs, cleanup
+
+If you're running this task, use the model specified in the table.
 
 ## Context Budget
 
@@ -27,6 +40,9 @@ When you reach 70% context, create a file `.claude/handoffs/task-$ARGUMENTS.md` 
 
 ## Status: [COMPLETE | PARTIAL | BLOCKED]
 
+## Model Used
+[opus | sonnet | haiku]
+
 ## What Was Implemented
 - [list of completed items]
 
@@ -40,7 +56,7 @@ When you reach 70% context, create a file `.claude/handoffs/task-$ARGUMENTS.md` 
 - [any blockers or concerns]
 
 ## Next Task
-Task [X.X] - [Name] is ready to start.
+Task [X.X.X] - [Name] is ready to start.
 ```
 
 ## On Completion

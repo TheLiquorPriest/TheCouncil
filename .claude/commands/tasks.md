@@ -3,78 +3,34 @@
 Run all tasks for a phase, with branch management and review gates.
 
 ## Usage
-`/tasks 0` - Run all Phase 0 tasks (0.1, 0.2, 0.3)
-`/tasks 1` - Run all Phase 1 tasks (1.1, 1.2)
-
-## Phase Definitions
-
-Based on docs/DEVELOPMENT_PLAN.md:
-
-- **Phase 0**: Tasks 0.1, 0.2, 0.3 (Kernel Foundation)
-- **Phase 1**: Tasks 1.1, 1.2 (Curation Refactor)
-- **Phase 2**: Tasks 2.1 (Character Refactor)
-- **Phase 3**: Tasks 3.1, 3.2 (Prompt Builder)
-- **Phase 4**: Tasks 4.1, 4.2, 4.3 (Pipeline Builder)
-- **Phase 5**: Tasks 5.1, 5.2, 5.3, 5.4 (Orchestration)
-- **Phase 6**: Tasks 6.1, 6.2, 6.3 (Integration)
-- **Phase 7**: Tasks 7.1 (Documentation)
-
-## Model Tiers
-
-Select model based on task complexity to optimize cost/capability:
-
-| Model | Use When | Tasks |
-|-------|----------|-------|
-| **opus** | New system architecture, complex integration, multi-file refactors | 0.1, 3.1, 4.1, 5.1, 5.3, 6.1 |
-| **sonnet** | Standard implementation, moderate complexity, existing patterns | 0.2, 1.1, 2.1, 4.2, 5.2, 5.4 |
-| **haiku** | Simple refactors, UI updates, cleanup, documentation | 0.3, 1.2, 3.2, 4.3, 6.2, 6.3, 7.1 |
-
-### Task → Model Mapping
-
-```
-OPUS (complex/architectural):
-  0.1 - Kernel Core (new architecture)
-  3.1 - PromptBuilder Core (new system)
-  4.1 - Pipeline Builder Core (major consolidation)
-  5.1 - Orchestration Core (new system)
-  5.3 - Mode 3 Injection (ST API integration)
-  6.1 - Integration Test (cross-system validation)
-  7.1 - Update Documentation
-
-SONNET (standard implementation):
-  0.2 - Kernel Storage & Presets
-  1.1 - Curation Kernel Integration
-  2.1 - Character Kernel Integration
-  4.2 - Pipeline Threads/Context
-  5.2 - Orchestration Modes 1&2
-  5.4 - Gavel Integration
-
-HAIKU (simple/mechanical):
-  0.3 - Kernel UI Infrastructure
-  1.2 - Curation Agents Isolation
-  3.2 - PromptBuilder UI Integration
-  4.3 - Pipeline Builder UI Updates
-  6.2 - Cleanup & Deprecation Removal
-  6.3 - Default Preset Validation
-```
+`/tasks 1` - Run all Phase 1 tasks (Bug Fixes)
+`/tasks 2` - Run all Phase 2 tasks (Curation)
+`/tasks 3` - Run all Phase 3 tasks (Presets)
 
 ## Instructions
 
 You are running **Phase $ARGUMENTS** tasks.
 
-### Step 0: Check for Completed Tasks
+### Step 0: Read Development Plan
+
+Read `docs/DEVELOPMENT_PLAN.md` to get:
+
+2. **Phase Tasks** - Find all tasks for Phase $ARGUMENTS
+3. **Model Assignments** - Check the Quick Reference table for each task's assigned model
+
+### Step 1: Check for Completed Tasks
 
 Before running any task, check if a handoff file already exists:
-`.claude/handoffs/task-X.X.md`
+`.claude/handoffs/task-X.X.X.md`
 
 If the handoff exists and shows `Status: COMPLETE`, **skip that task** and report:
 ```
-Task X.X: Already complete (see .claude/handoffs/task-X.X.md)
+Task X.X.X: Already complete (see .claude/handoffs/task-X.X.X.md)
 ```
 
 Continue to the next task in the phase.
 
-### Step 1: Branch Setup
+### Step 2: Branch Setup
 
 ```bash
 # Branch naming convention
@@ -84,27 +40,13 @@ BRANCH_NAME="phase-$ARGUMENTS"
 git checkout -b $BRANCH_NAME 2>/dev/null || git checkout $BRANCH_NAME
 ```
 
-Create or checkout the branch:
-- Phase 0 → `phase-0`
-- Phase 1 → `phase-1`
-- etc.
-
-### Step 2: Determine Tasks
-
-Read `docs/DEVELOPMENT_PLAN.md` and identify all tasks for Phase $ARGUMENTS.
-
-For example, if $ARGUMENTS is "0", the tasks are:
-- Task 0.1: Create Kernel Core
-- Task 0.2: Kernel Storage & Presets
-- Task 0.3: Kernel UI Infrastructure
-
 ### Step 3: Run Each Task
 
-For each task in the phase, spawn an agent using the Task tool with the appropriate model from the Model Tiers section above:
+For each task in the phase, spawn an agent using the Task tool with the model specified in the Quick Reference table:
 
 ```
 subagent_type: "general-purpose"
-model: [LOOKUP FROM MODEL MAPPING - opus/sonnet/haiku]
+model: [MODEL FROM QUICK REFERENCE TABLE - opus/sonnet/haiku]
 ```
 
 **Prompt for each agent:**
@@ -117,7 +59,7 @@ Model: [MODEL_USED]
 Task Complexity: [opus=architectural | sonnet=standard | haiku=simple]
 
 ## Branch
-You are working on branch: phase-[PHASE_NUM]
+You are working on branch: [TARGET_BRANCH]
 
 ## Required Reading
 1. CLAUDE.md
@@ -125,9 +67,9 @@ You are working on branch: phase-[PHASE_NUM]
 3. docs/DEVELOPMENT_PLAN.md - Find Task [TASK_ID]
 
 ## Your Mission
-1. Read the task's "Context docs to load"
+1. Read the task description in DEVELOPMENT_PLAN.md
 2. Implement ALL deliverables
-3. Test against success criteria
+3. Test against acceptance criteria
 4. Write handoff to .claude/handoffs/task-[TASK_ID].md
 
 ## Handoff Format
@@ -166,11 +108,11 @@ After ALL tasks in the phase are done:
 ```
 ## Phase $ARGUMENTS Complete
 
-### Branch: phase-$ARGUMENTS
+### Branch: [TARGET_BRANCH]
 
 ### Tasks Completed:
-- Task X.1: [status] - [summary]
-- Task X.2: [status] - [summary]
+- Task X.X.X: [status] - [summary]
+- Task X.X.X: [status] - [summary]
 - ...
 
 ### Files Changed:
@@ -178,10 +120,10 @@ After ALL tasks in the phase are done:
 
 ### Ready for Review
 
-Please review the changes on branch `phase-$ARGUMENTS`:
+Please review the changes on branch `[TARGET_BRANCH]`:
 
 \`\`\`bash
-git diff main..phase-$ARGUMENTS
+git diff main..[TARGET_BRANCH]
 \`\`\`
 
 **Merge to main?**
@@ -194,7 +136,7 @@ git diff main..phase-$ARGUMENTS
 If user says "merge":
 ```bash
 git checkout main
-git merge phase-$ARGUMENTS -m "Merge phase-$ARGUMENTS: [Phase Name]"
+git merge [TARGET_BRANCH] -m "Merge [TARGET_BRANCH]: Phase $ARGUMENTS complete"
 ```
 
 ---

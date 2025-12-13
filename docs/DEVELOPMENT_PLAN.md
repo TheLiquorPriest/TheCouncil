@@ -4,6 +4,7 @@
 **Created:** 2025-12-13
 **Status:** Active Development
 **Context Budget:** ~80k tokens per session
+**Target Branch:** alpha-3.0.0
 
 ---
 
@@ -862,24 +863,36 @@ Phase 3: Kernel Preset System (Sequential)
 
 ---
 
+## Model Assignment Guide
+
+Select model based on task complexity to optimize cost/capability:
+
+| Model | Use When | Rationale |
+|-------|----------|-----------|
+| **opus** | Complex architecture, multi-file refactors, new systems | Highest capability for difficult decisions |
+| **sonnet** | Standard implementation, moderate complexity | Good balance of speed and capability |
+| **haiku** | Simple fixes, docs, cleanup, mechanical tasks | Fast and cost-effective |
+
+---
+
 ## Quick Reference
 
-| Task ID | Priority | Complexity | Primary File | Est. Hours |
-|---------|----------|------------|--------------|------------|
-| injection-edit-functionality | P0 | Moderate | `ui/injection-modal.js` | 2-3 |
-| nav-modal-auto-reappear | P1 | Simple | `ui/nav-modal.js` | 0.5 |
-| prompt-builder-mode-switch-error | P2 | Moderate | `ui/components/prompt-builder.js` | 1-2 |
-| update-injection-docs | P3 | Simple | `docs/UI_BEHAVIOR.md` | 0.25 |
-| add-missing-svg | P3 | Simple | `img/council_pipeline.svg` | 0.5 |
-| curation-pipeline-run-button | P0 | Moderate | `ui/curation-modal.js` | 2-3 |
-| curation-pipeline-preview | P1 | Complex | `core/curation-system.js` | 3-4 |
-| create-default-crud-pipelines | P0 | Complex | `core/curation-system.js` | 3-4 |
-| create-default-rag-pipelines | P0 | Moderate | `core/curation-system.js` | 2-3 |
-| pipeline-testing-integration | P1 | Moderate | `tests/curation-pipelines-test.js` | 2 |
-| define-system-config-schemas | P0 | Moderate | `schemas/config-schemas.js` | 2-3 |
-| kernel-config-manager | P0 | Complex | `core/kernel.js` | 4-5 |
-| migrate-existing-presets | P1 | Moderate | `data/presets/*.json` | 2-3 |
-| create-tiered-presets | P1 | Complex | `data/presets/*.json` | 3-4 |
+| Task ID | Phase | Model | Priority | Primary File | Est. Hours |
+|---------|-------|-------|----------|--------------|------------|
+| 1.1.1 injection-edit-functionality | 1 | sonnet | P0 | `ui/injection-modal.js` | 2-3 |
+| 1.2.1 nav-modal-auto-reappear | 1 | haiku | P1 | `ui/nav-modal.js` | 0.5 |
+| 1.3.1 prompt-builder-mode-switch-error | 1 | sonnet | P2 | `ui/components/prompt-builder.js` | 1-2 |
+| 1.4.1 update-injection-docs | 1 | haiku | P3 | `docs/UI_BEHAVIOR.md` | 0.25 |
+| 1.4.2 add-missing-svg | 1 | haiku | P3 | `img/council_pipeline.svg` | 0.5 |
+| 2.1.1 curation-pipeline-run-button | 2 | sonnet | P0 | `ui/curation-modal.js` | 2-3 |
+| 2.2.1 curation-pipeline-preview | 2 | opus | P1 | `core/curation-system.js` | 3-4 |
+| 2.3.1 create-default-crud-pipelines | 2 | sonnet | P0 | `core/curation-system.js` | 3-4 |
+| 2.3.2 create-default-rag-pipelines | 2 | sonnet | P0 | `core/curation-system.js` | 2-3 |
+| 2.3.3 pipeline-testing-integration | 2 | haiku | P1 | `tests/curation-pipelines-test.js` | 2 |
+| 3.2.1 define-system-config-schemas | 3 | opus | P0 | `schemas/config-schemas.js` | 2-3 |
+| 3.2.2 kernel-config-manager | 3 | opus | P0 | `core/kernel.js` | 4-5 |
+| 3.3.1 migrate-existing-presets | 3 | sonnet | P1 | `data/presets/*.json` | 2-3 |
+| 3.4.1 create-tiered-presets | 3 | opus | P1 | `data/presets/*.json` | 3-4 |
 
 ---
 

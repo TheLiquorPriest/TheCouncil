@@ -39,7 +39,19 @@
       "Bash(claude mcp add:*)",
       "Bash(npm search:*)",
       "Bash(claude mcp remove browser)",
-      "Bash(claude mcp remove:*)"
+      "Bash(claude mcp remove:*)",
+      "Bash(findstr:*)",
+      "Bash(claude plugin --help:*)",
+      "Bash(claude plugin marketplace --help:*)",
+      "Bash(claude plugin marketplace add:*)",
+      "Bash(claude plugin install:*)",
+      "Bash(npm install:*)",
+      "Bash(docker --version:*)",
+      "Bash(curl:*)",
+      "Bash(bash:*)",
+      "Bash(docker info:*)",
+      "Bash(claude plugin marketplace list:*)",
+      "Bash(ast-grep:*)"
     ],
     "deny": [],
     "ask": []
