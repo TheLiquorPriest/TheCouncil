@@ -411,6 +411,15 @@ const NavModal = {
     };
     this._kernel.on("ui:toggle", toggleHandler);
     this._cleanupFns.push(() => this._kernel.off("ui:toggle", toggleHandler));
+
+    // Listen to modal:hidden events and reappear when other modals close
+    const modalHiddenHandler = (data) => {
+      if (['curation', 'character', 'pipeline', 'injection'].includes(data.name)) {
+        this.show();
+      }
+    };
+    this._kernel.on("kernel:modal:hidden", modalHiddenHandler);
+    this._cleanupFns.push(() => this._kernel.off("kernel:modal:hidden", modalHiddenHandler));
   },
 
   // ===== SHOW / HIDE =====
