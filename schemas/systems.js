@@ -1491,6 +1491,50 @@ const SystemSchemas = {
   MandatoryPositions,
 };
 
+// =============================================================================
+// IMPORT CONFIG SCHEMAS
+// =============================================================================
+
+/**
+ * Import SystemConfigSchemas from config-schemas.js
+ * These provide per-system configuration schemas for the Kernel preset system
+ */
+let SystemConfigSchemas = null;
+
+// Browser environment - load from window after script loads
+if (typeof window !== "undefined") {
+  // Check if already loaded (script order dependency)
+  if (window.SystemConfigSchemas) {
+    SystemConfigSchemas = window.SystemConfigSchemas;
+  }
+
+  // Also attach getter to SystemSchemas for dynamic access
+  Object.defineProperty(SystemSchemas, "ConfigSchemas", {
+    get: function () {
+      return window.SystemConfigSchemas || null;
+    },
+    enumerable: true,
+  });
+}
+
+// Node.js environment
+if (typeof module !== "undefined" && module.exports) {
+  try {
+    SystemConfigSchemas = require("./config-schemas.js");
+  } catch (e) {
+    // Config schemas not available in this environment
+  }
+}
+
+// Add ConfigSchemas to exports if available
+if (SystemConfigSchemas) {
+  SystemSchemas.ConfigSchemas = SystemConfigSchemas;
+}
+
+// =============================================================================
+// EXPORTS
+// =============================================================================
+
 // Export for different environments
 if (typeof window !== "undefined") {
   window.SystemSchemas = SystemSchemas;
