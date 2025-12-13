@@ -813,25 +813,25 @@ This document defines the expected behavior for every UI element in The Council 
 
 **Layout:** Row of buttons for common ST tokens
 
-| Button | Token Added | Default Source |
-|--------|-------------|----------------|
-| `{{char}}` | Character name | Store: Character Card |
-| `{{user}}` | User name | Store: Personas |
-| `{{scenario}}` | Scenario | Store: Character Card |
-| `{{personality}}` | Personality | Store: Character Card |
-| `{{persona}}` | User persona | Store: Personas |
-| `{{mesExamples}}` | Message examples | Store: Character Card |
-| `{{system}}` | System prompt | Static |
-| `{{jailbreak}}` | Jailbreak prompt | Static |
-| `{{description}}` | Character description | Store: Character Card |
-| `{{main}}` | Main prompt | Static |
-| `{{nsfw}}` | NSFW prompt | Static |
-| `{{worldInfo}}` | World info | Store: World Info |
+| Button | Token Added | Description |
+|--------|-------------|-------------|
+| `{{char}}` | char | AI character name |
+| `{{user}}` | user | User name |
+| `{{scenario}}` | scenario | Current scenario / situation |
+| `{{personality}}` | personality | AI personality description |
+| `{{persona}}` | persona | User persona / character description |
+| `{{description}}` | description | AI description field |
+| `{{world_info}}` | world_info | World info / lorebook entries |
+| `{{system}}` | system | System prompt content |
+| `{{jailbreak}}` | jailbreak | Jailbreak prompt content |
+| `{{chat}}` | chat | Chat history / conversation context |
+| `{{example_dialogue}}` | example_dialogue | Example dialogue entries |
+| `{{first_message}}` | first_message | First message / greeting |
 
 **Quick Add Behavior:**
 1. Click button
-2. Mapping added with default source
-3. Edit form opens for customization (optional)
+2. Mapping added with pipeline selection dialog
+3. Token is mapped to selected RAG pipeline (or auto-mapped if only one available)
 
 ### 5.5 Add/Edit Mapping Form
 
