@@ -252,6 +252,11 @@ const PromptBuilder = {
 
     this._logger = options.logger || window.Logger;
 
+    // Ensure _stPresets is initialized even if loading fails
+    if (!this._stPresets) {
+      this._stPresets = [];
+    }
+
     // Try to load ST presets (may fail if ST not ready yet)
     this._loadSTPresets().catch(() => {
       this._log("debug", "Initial preset load failed, will retry on demand");
@@ -330,6 +335,11 @@ const PromptBuilder = {
    * Load available SillyTavern presets using multiple methods
    */
   async _loadSTPresets(forceReload = false) {
+    // Ensure _stPresets is initialized
+    if (!this._stPresets) {
+      this._stPresets = [];
+    }
+
     // Skip if already loaded and not forcing reload
     if (this._stPresets.length > 0 && !forceReload) {
       this._log("debug", "Presets already loaded, skipping");
@@ -691,10 +701,19 @@ const PromptBuilder = {
    * @param {HTMLElement} contentEl - Content container
    */
   async _renderPresetMode(instance, contentEl) {
+    // Defensive check: ensure _stPresets is initialized
+    if (!this._stPresets) {
+      this._stPresets = [];
+    }
+
     // Try to load presets if not loaded yet
     if (this._stPresets.length === 0) {
       this._log("debug", "No presets loaded, attempting to load now...");
-      await this._loadSTPresets(true);
+      try {
+        await this._loadSTPresets(true);
+      } catch (error) {
+        this._log("warn", "Failed to load ST presets:", error);
+      }
     }
 
     const presetOptions = this._stPresets
@@ -1150,8 +1169,17 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
       return `<p class="prompt-builder-hint-text">PromptBuilderSystem not available</p>`;
     }
 
+    // Defensive checks for PromptBuilderSystem methods
+    if (typeof this._promptBuilderSystem.getMacrosByCategory !== 'function') {
+      return `<p class="prompt-builder-hint-text">PromptBuilderSystem.getMacrosByCategory not available</p>`;
+    }
+
     const macrosByCategory = this._promptBuilderSystem.getMacrosByCategory();
     const categories = this._promptBuilderSystem.MACRO_CATEGORIES;
+
+    if (!macrosByCategory || !categories) {
+      return `<p class="prompt-builder-hint-text">Unable to load macro categories</p>`;
+    }
 
     if (Object.keys(macrosByCategory).length === 0) {
       return `<p class="prompt-builder-hint-text">No macros registered</p>`;
