@@ -3202,6 +3202,406 @@ Return list of character IDs/names with relevance reasoning.`,
     return result;
   },
 
+  // ===== PIPELINE PREVIEW MODE =====
+
+  /**
+   * Execute pipeline in preview mode (non-destructive)
+   * Creates temporary in-memory store clones
+   * @param {string} pipelineId - Pipeline ID
+   * @param {Object} options - Execution options
+   * @param {Object} options.input - Input data for the pipeline
+   * @returns {Promise<Object>} Preview result with changes diff
+   */
+  async executePipelinePreview(pipelineId, options = {}) {
+    const pipeline = this.getPipeline(pipelineId);
+    if (!pipeline) {
+      throw new Error(this.ValidationErrors.PIPELINE_NOT_FOUND(pipelineId));
+    }
+
+    this._log('info', `[CurationSystem] Pipeline preview: ${pipelineId}`);
+    this._emit('pipeline:preview:start', { pipelineId, type: pipeline.type });
+
+    const startTime = Date.now();
+
+    try {
+      // Get stores affected by this pipeline
+      const targetStoreIds = pipeline.type === 'rag'
+        ? (pipeline.targetStores || [])
+        : [pipeline.storeId].filter(Boolean);
+
+      // Create deep clones of affected stores for preview
+      const originalStoreSnapshots = new Map();
+      const previewStores = new Map();
+
+      for (const storeId of targetStoreIds) {
+        const schema = this._storeSchemas.get(storeId);
+        const store = this._stores.get(storeId);
+
+        if (!store || !schema) continue;
+
+        // Create deep clone for preview
+        const clonedData = this._deepCloneStore(store, schema.isSingleton);
+        previewStores.set(storeId, clonedData);
+
+        // Create snapshot for diff comparison
+        originalStoreSnapshots.set(storeId, this._deepCloneStore(store, schema.isSingleton));
+      }
+
+      // Execute pipeline logic in preview mode
+      let executionResult;
+      if (pipeline.type === 'crud') {
+        executionResult = await this._executeCRUDPipelinePreview(
+          pipeline,
+          options.input || {},
+          previewStores
+        );
+      } else if (pipeline.type === 'rag') {
+        // RAG pipelines are read-only, so preview is same as execution
+        executionResult = await this.executeRAG(pipelineId, options.input || {});
+      } else {
+        throw new Error(`Unknown pipeline type: ${pipeline.type}`);
+      }
+
+      // Calculate changes (what would be different)
+      const changes = this._calculatePreviewDiff(
+        originalStoreSnapshots,
+        previewStores,
+        targetStoreIds
+      );
+
+      const duration = Date.now() - startTime;
+
+      this._emit('pipeline:preview:complete', {
+        pipelineId,
+        type: pipeline.type,
+        changes,
+        duration
+      });
+
+      // Create result with apply/discard functions
+      const result = {
+        success: true,
+        pipelineId,
+        pipelineName: pipeline.name,
+        type: pipeline.type,
+        preview: true,
+        duration,
+        executionResult,
+        changes,
+        hasChanges: changes.totalChanges > 0,
+        previewStores, // Keep reference for potential apply
+
+        /**
+         * Apply the previewed changes to actual stores
+         */
+        applyChanges: async () => {
+          return this._applyPreviewChanges(previewStores, targetStoreIds);
+        },
+
+        /**
+         * Discard the preview (no-op, just for clarity)
+         */
+        discardChanges: () => {
+          this._log('info', `[CurationSystem] Preview discarded: ${pipelineId}`);
+          this._emit('pipeline:preview:discarded', { pipelineId });
+          return { discarded: true };
+        }
+      };
+
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+
+      this._emit('pipeline:preview:error', {
+        pipelineId,
+        type: pipeline.type,
+        error: error.message,
+        duration
+      });
+
+      this._log('error', `[CurationSystem] Pipeline preview failed: ${pipelineId}`, error.message);
+
+      return {
+        success: false,
+        pipelineId,
+        pipelineName: pipeline.name,
+        type: pipeline.type,
+        preview: true,
+        duration,
+        error: error.message
+      };
+    }
+  },
+
+  /**
+   * Execute CRUD pipeline in preview mode using cloned stores
+   * @param {Object} pipeline - Pipeline definition
+   * @param {Object} input - Input data
+   * @param {Map} previewStores - Cloned stores for preview
+   * @returns {Promise<Object>} Execution result
+   */
+  async _executeCRUDPipelinePreview(pipeline, input, previewStores) {
+    // Simulate CRUD operation on preview stores
+    const previewStore = previewStores.get(pipeline.storeId);
+    const schema = this._storeSchemas.get(pipeline.storeId);
+
+    const result = {
+      operation: pipeline.operation,
+      storeId: pipeline.storeId,
+      affectedRecords: [],
+      changes: {},
+      message: `CRUD preview: ${pipeline.name}`
+    };
+
+    // Simulate changes based on operation type
+    if (pipeline.operation === 'create' && input.data) {
+      const id = input.data.id || `preview_${Date.now()}`;
+      if (schema?.isSingleton) {
+        // Singleton update
+        Object.assign(previewStore, input.data);
+        result.affectedRecords.push(id);
+        result.changes = { updated: input.data };
+      } else {
+        // Collection add
+        previewStore.set(id, { ...input.data, id });
+        result.affectedRecords.push(id);
+        result.changes = { added: { id, ...input.data } };
+      }
+    } else if (pipeline.operation === 'update' && input.id && input.data) {
+      if (schema?.isSingleton) {
+        Object.assign(previewStore, input.data);
+        result.affectedRecords.push(input.id);
+        result.changes = { updated: input.data };
+      } else if (previewStore.has(input.id)) {
+        const existing = previewStore.get(input.id);
+        previewStore.set(input.id, { ...existing, ...input.data });
+        result.affectedRecords.push(input.id);
+        result.changes = { updated: { before: existing, after: { ...existing, ...input.data } } };
+      }
+    } else if (pipeline.operation === 'delete' && input.id) {
+      if (!schema?.isSingleton && previewStore.has(input.id)) {
+        const deleted = previewStore.get(input.id);
+        previewStore.delete(input.id);
+        result.affectedRecords.push(input.id);
+        result.changes = { deleted };
+      }
+    }
+
+    return result;
+  },
+
+  /**
+   * Deep clone store data
+   * @param {Map|Object} store - Store to clone
+   * @param {boolean} isSingleton - Whether store is singleton
+   * @returns {Map|Object} Cloned store
+   */
+  _deepCloneStore(store, isSingleton) {
+    if (isSingleton) {
+      // Deep clone singleton object
+      return JSON.parse(JSON.stringify(store));
+    } else {
+      // Clone Map with deep-cloned values
+      const clonedMap = new Map();
+      for (const [key, value] of store.entries()) {
+        clonedMap.set(key, JSON.parse(JSON.stringify(value)));
+      }
+      return clonedMap;
+    }
+  },
+
+  /**
+   * Calculate diff between original and preview stores
+   * @param {Map} originalSnapshots - Original store snapshots
+   * @param {Map} previewStores - Modified preview stores
+   * @param {string[]} storeIds - Store IDs to compare
+   * @returns {Object} Diff summary
+   */
+  _calculatePreviewDiff(originalSnapshots, previewStores, storeIds) {
+    const diff = {
+      stores: {},
+      totalChanges: 0,
+      summary: []
+    };
+
+    for (const storeId of storeIds) {
+      const original = originalSnapshots.get(storeId);
+      const preview = previewStores.get(storeId);
+      const schema = this._storeSchemas.get(storeId);
+
+      if (!original || !preview) continue;
+
+      const storeDiff = {
+        storeId,
+        isSingleton: schema?.isSingleton || false,
+        added: [],
+        modified: [],
+        deleted: [],
+        unchanged: 0
+      };
+
+      if (schema?.isSingleton) {
+        // Compare singleton objects
+        const changes = this._compareObjects(original, preview);
+        if (changes.hasChanges) {
+          storeDiff.modified.push({
+            id: storeId,
+            changes: changes.differences
+          });
+          diff.totalChanges++;
+          diff.summary.push(`${storeId}: modified`);
+        } else {
+          storeDiff.unchanged = 1;
+        }
+      } else {
+        // Compare collection Maps
+        const originalKeys = new Set(original.keys());
+        const previewKeys = new Set(preview.keys());
+
+        // Find added items
+        for (const key of previewKeys) {
+          if (!originalKeys.has(key)) {
+            storeDiff.added.push({
+              id: key,
+              data: preview.get(key)
+            });
+            diff.totalChanges++;
+          }
+        }
+
+        // Find deleted items
+        for (const key of originalKeys) {
+          if (!previewKeys.has(key)) {
+            storeDiff.deleted.push({
+              id: key,
+              data: original.get(key)
+            });
+            diff.totalChanges++;
+          }
+        }
+
+        // Find modified items
+        for (const key of originalKeys) {
+          if (previewKeys.has(key)) {
+            const origItem = original.get(key);
+            const prevItem = preview.get(key);
+            const changes = this._compareObjects(origItem, prevItem);
+
+            if (changes.hasChanges) {
+              storeDiff.modified.push({
+                id: key,
+                before: origItem,
+                after: prevItem,
+                changes: changes.differences
+              });
+              diff.totalChanges++;
+            } else {
+              storeDiff.unchanged++;
+            }
+          }
+        }
+
+        // Generate summary
+        if (storeDiff.added.length > 0) {
+          diff.summary.push(`${storeId}: +${storeDiff.added.length} added`);
+        }
+        if (storeDiff.modified.length > 0) {
+          diff.summary.push(`${storeId}: ${storeDiff.modified.length} modified`);
+        }
+        if (storeDiff.deleted.length > 0) {
+          diff.summary.push(`${storeId}: -${storeDiff.deleted.length} deleted`);
+        }
+      }
+
+      diff.stores[storeId] = storeDiff;
+    }
+
+    return diff;
+  },
+
+  /**
+   * Compare two objects and return differences
+   * @param {Object} obj1 - First object
+   * @param {Object} obj2 - Second object
+   * @returns {Object} Comparison result
+   */
+  _compareObjects(obj1, obj2) {
+    const differences = [];
+    const allKeys = new Set([...Object.keys(obj1 || {}), ...Object.keys(obj2 || {})]);
+
+    for (const key of allKeys) {
+      const val1 = obj1?.[key];
+      const val2 = obj2?.[key];
+
+      // Skip internal/metadata fields
+      if (key.startsWith('_')) continue;
+
+      const val1Str = JSON.stringify(val1);
+      const val2Str = JSON.stringify(val2);
+
+      if (val1Str !== val2Str) {
+        differences.push({
+          field: key,
+          before: val1,
+          after: val2
+        });
+      }
+    }
+
+    return {
+      hasChanges: differences.length > 0,
+      differences
+    };
+  },
+
+  /**
+   * Apply preview changes to actual stores
+   * @param {Map} previewStores - Preview stores with changes
+   * @param {string[]} storeIds - Store IDs to apply
+   * @returns {Promise<Object>} Apply result
+   */
+  async _applyPreviewChanges(previewStores, storeIds) {
+    this._log('info', `[CurationSystem] Applying preview changes to ${storeIds.length} stores`);
+
+    const applied = [];
+
+    try {
+      for (const storeId of storeIds) {
+        const previewStore = previewStores.get(storeId);
+        const schema = this._storeSchemas.get(storeId);
+
+        if (!previewStore) continue;
+
+        if (schema?.isSingleton) {
+          // Replace singleton with preview data
+          this._stores.set(storeId, previewStore);
+        } else {
+          // Replace collection with preview Map
+          this._stores.set(storeId, previewStore);
+        }
+
+        applied.push(storeId);
+        this._emit('store:updated', { storeId, source: 'preview-apply' });
+      }
+
+      this._log('info', `[CurationSystem] Preview changes applied to: ${applied.join(', ')}`);
+      this._emit('pipeline:preview:applied', { storeIds: applied });
+
+      return {
+        success: true,
+        appliedStores: applied,
+        message: `Changes applied to ${applied.length} store(s)`
+      };
+    } catch (error) {
+      this._log('error', `[CurationSystem] Failed to apply preview changes:`, error.message);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  },
+
+
   // ===== CURATION POSITIONS =====
 
   /**
