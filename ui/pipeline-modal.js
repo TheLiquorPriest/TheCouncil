@@ -49,6 +49,24 @@ const PipelineModal = {
   _selectedAction: null,
 
   /**
+   * Currently selected agent
+   * @type {string|null}
+   */
+  _selectedAgent: null,
+
+  /**
+   * Currently selected position
+   * @type {string|null}
+   */
+  _selectedPosition: null,
+
+  /**
+   * Currently selected team
+   * @type {string|null}
+   */
+  _selectedTeam: null,
+
+  /**
    * Live execution view mode
    * @type {boolean}
    */
@@ -120,6 +138,12 @@ const PipelineModal = {
    * @type {Object|null}
    */
   _contextConfigInstance: null,
+
+  /**
+   * Active PromptBuilder instances for agent/action editing
+   * @type {Map<string, Object>}
+   */
+  _promptBuilderInstances: new Map(),
 
   // ===== INITIALIZATION =====
 
@@ -273,6 +297,15 @@ const PipelineModal = {
         <div class="council-pipeline-tabs">
           <button class="council-pipeline-tab active" data-tab="presets">
             📦 Presets
+          </button>
+          <button class="council-pipeline-tab" data-tab="agents">
+            🤖 Agents
+          </button>
+          <button class="council-pipeline-tab" data-tab="positions">
+            🎯 Positions
+          </button>
+          <button class="council-pipeline-tab" data-tab="teams">
+            👥 Teams
           </button>
           <button class="council-pipeline-tab" data-tab="pipelines">
             📋 Pipelines
@@ -589,6 +622,15 @@ const PipelineModal = {
       case "presets":
         this._renderPresetsTab();
         break;
+      case "agents":
+        this._renderAgentsTab();
+        break;
+      case "positions":
+        this._renderPositionsTab();
+        break;
+      case "teams":
+        this._renderTeamsTab();
+        break;
       case "pipelines":
         this._renderPipelinesTab();
         break;
@@ -845,6 +887,562 @@ const PipelineModal = {
             <div>Author: ${this._escapeHtml(preset.metadata?.author || "Unknown")}</div>
             ${preset.metadata?.tags?.length ? `<div>Tags: ${preset.metadata.tags.map((t) => this._escapeHtml(t)).join(", ")}</div>` : ""}
           </div>
+        </div>
+      </div>
+    `;
+  },
+
+  // ===== AGENTS TAB =====
+
+  /**
+   * Render Agents tab - CRUD for editorial agents
+   */
+  _renderAgentsTab() {
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    const agents = pipelineBuilder?.getAllAgents?.() || [];
+    const agentList = Array.isArray(agents) ? agents : Object.values(agents);
+
+    let html = `
+      <div class="council-pipeline-agents-tab">
+        <div class="council-pipeline-toolbar">
+          <button class="council-pipeline-btn council-pipeline-btn-primary" data-action="create-agent">
+            ➕ New Agent
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-action="duplicate-agent" ${!this._selectedAgent ? "disabled" : ""}>
+            📋 Duplicate
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-danger" data-action="delete-agent" ${!this._selectedAgent ? "disabled" : ""}>
+            🗑️ Delete
+          </button>
+        </div>
+
+        <div class="council-pipeline-info-banner">
+          <p>Agents are LLM-backed workers that fill positions in teams. Each agent has its own system prompt and API configuration.</p>
+        </div>
+
+        <div class="council-pipeline-list-container">
+          <div class="council-pipeline-list council-pipeline-agents-list">
+            ${
+              agentList.length === 0
+                ? '<div class="council-pipeline-empty">No agents defined. Create one or apply a preset.</div>'
+                : agentList
+                    .map((a) => this._renderAgentListItem(a))
+                    .join("")
+            }
+          </div>
+
+          <div class="council-pipeline-detail council-pipeline-agent-detail">
+            ${
+              this._selectedAgent
+                ? this._renderAgentDetailForm(this._getAgentById(this._selectedAgent))
+                : '<div class="council-pipeline-empty">Select an agent to view/edit details</div>'
+            }
+          </div>
+        </div>
+      </div>
+    `;
+    this._elements.content.innerHTML = html;
+
+    // Initialize PromptBuilder for agent if selected
+    if (this._selectedAgent) {
+      this._initAgentPromptBuilder(this._selectedAgent);
+    }
+  },
+
+  /**
+   * Initialize PromptBuilder for agent editing
+   * @param {string} agentId - Agent ID
+   */
+  _initAgentPromptBuilder(agentId) {
+    const container = this._elements.content?.querySelector('[data-component="prompt-builder-agent"]');
+    if (!container) return;
+
+    // Destroy existing instance
+    const existingKey = `agent-${agentId}`;
+    if (this._promptBuilderInstances.has(existingKey)) {
+      this._promptBuilderInstances.get(existingKey).destroy?.();
+      this._promptBuilderInstances.delete(existingKey);
+    }
+
+    // Get agent data
+    const agent = this._getAgentById(agentId);
+    if (!agent) return;
+
+    // Check if PromptBuilder is available
+    if (!window.PromptBuilder) {
+      container.innerHTML = `
+        <div class="council-pipeline-component-fallback">
+          <p>PromptBuilder component not available.</p>
+          <textarea class="council-pipeline-textarea council-pipeline-textarea-large" name="agent-prompt-text" rows="6" data-field="systemPrompt.customText">${this._escapeHtml(agent.systemPrompt?.customText || "")}</textarea>
+        </div>
+      `;
+      return;
+    }
+
+    // Parse existing prompt config
+    const promptConfig = agent.systemPrompt?.promptConfig || {
+      mode: "custom",
+      customPrompt: agent.systemPrompt?.customText || "",
+      tokens: [],
+    };
+
+    // Create PromptBuilder instance
+    const instance = window.PromptBuilder.createInstance({
+      initialMode: promptConfig.mode || "custom",
+      initialPrompt: promptConfig.customPrompt || promptConfig.customText || agent.systemPrompt?.customText || "",
+      initialTokens: promptConfig.tokens || [],
+      onChange: (value) => {
+        this._log("debug", "Agent PromptBuilder changed:", value);
+      },
+    });
+
+    // Render and store instance
+    instance.render(container);
+    this._promptBuilderInstances.set(existingKey, instance);
+
+    // Setup source-dependent visibility
+    this._setupPromptSourceToggle(agentId);
+  },
+
+  /**
+   * Setup prompt source toggle for agent
+   * @param {string} agentId - Agent ID
+   */
+  _setupPromptSourceToggle(agentId) {
+    const form = this._elements.content?.querySelector(`[data-agent-id="${agentId}"]`);
+    if (!form) return;
+
+    const sourceSelect = form.querySelector('[name="agent-prompt-source"]');
+    const promptBuilderContainer = form.querySelector('[data-source-dependent="custom"]');
+
+    if (!sourceSelect || !promptBuilderContainer) return;
+
+    const updateVisibility = () => {
+      const source = sourceSelect.value;
+      promptBuilderContainer.style.display = source === "custom" ? "" : "none";
+    };
+
+    sourceSelect.addEventListener("change", updateVisibility);
+    updateVisibility(); // Initial state
+  },
+
+  /**
+   * Get agent by ID
+   */
+  _getAgentById(id) {
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    return pipelineBuilder?.getAgent?.(id) || null;
+  },
+
+  /**
+   * Render agent list item
+   */
+  _renderAgentListItem(agent) {
+    const isSelected = this._selectedAgent === agent.id;
+    const tags = agent.metadata?.tags || [];
+    return `
+      <div class="council-pipeline-list-item ${isSelected ? "selected" : ""}"
+           data-agent-id="${agent.id}"
+           data-action="select-agent">
+        <div class="council-pipeline-list-item-header">
+          <span class="council-pipeline-list-item-icon">🤖</span>
+          <span class="council-pipeline-list-item-name">${this._escapeHtml(agent.name || agent.id)}</span>
+        </div>
+        <div class="council-pipeline-list-item-desc">${this._escapeHtml(agent.description || "No description")}</div>
+        ${tags.length ? `<div class="council-pipeline-list-item-tags">${tags.map(t => `<span class="council-pipeline-tag">${this._escapeHtml(t)}</span>`).join("")}</div>` : ""}
+      </div>
+    `;
+  },
+
+  /**
+   * Render agent detail/edit form
+   */
+  _renderAgentDetailForm(agent) {
+    if (!agent) return '<div class="council-pipeline-empty">Agent not found</div>';
+
+    const apiConfig = agent.apiConfig || {};
+    const systemPrompt = agent.systemPrompt || {};
+
+    return `
+      <div class="council-pipeline-agent-form" data-agent-id="${agent.id}">
+        <h3>Edit Agent: ${this._escapeHtml(agent.name || agent.id)}</h3>
+
+        <div class="council-pipeline-form-group">
+          <label>ID</label>
+          <input type="text" class="council-pipeline-input" name="agent-id" value="${this._escapeHtml(agent.id)}" readonly>
+        </div>
+
+        <div class="council-pipeline-form-group">
+          <label>Name</label>
+          <input type="text" class="council-pipeline-input" name="agent-name" value="${this._escapeHtml(agent.name || "")}" data-field="name">
+        </div>
+
+        <div class="council-pipeline-form-group">
+          <label>Description</label>
+          <textarea class="council-pipeline-textarea" name="agent-description" rows="2" data-field="description">${this._escapeHtml(agent.description || "")}</textarea>
+        </div>
+
+        <div class="council-pipeline-form-section">
+          <h4>System Prompt</h4>
+          <div class="council-pipeline-form-group">
+            <label>Prompt Source</label>
+            <select class="council-pipeline-select" name="agent-prompt-source" data-field="systemPrompt.source">
+              <option value="custom" ${systemPrompt.source === "custom" ? "selected" : ""}>Custom (Prompt Builder)</option>
+              <option value="character" ${systemPrompt.source === "character" ? "selected" : ""}>From Character</option>
+              <option value="curation" ${systemPrompt.source === "curation" ? "selected" : ""}>From Curation Store</option>
+            </select>
+          </div>
+          <div class="council-pipeline-form-group council-pipeline-prompt-builder-container" data-prompt-builder="agent-${agent.id}" data-source-dependent="custom">
+            <label>System Prompt (Prompt Builder)</label>
+            <div class="council-pipeline-prompt-builder-wrapper" data-component="prompt-builder-agent"></div>
+          </div>
+        </div>
+
+        <div class="council-pipeline-form-section">
+          <h4>API Configuration</h4>
+          <div class="council-pipeline-form-group">
+            <label>
+              <input type="checkbox" name="agent-use-current" ${apiConfig.useCurrentConnection ? "checked" : ""} data-field="apiConfig.useCurrentConnection">
+              Use Current ST Connection
+            </label>
+          </div>
+          <div class="council-pipeline-form-row">
+            <div class="council-pipeline-form-group">
+              <label>Temperature</label>
+              <input type="number" class="council-pipeline-input" name="agent-temperature" value="${apiConfig.temperature || 0.7}" min="0" max="2" step="0.1" data-field="apiConfig.temperature">
+            </div>
+            <div class="council-pipeline-form-group">
+              <label>Max Tokens</label>
+              <input type="number" class="council-pipeline-input" name="agent-max-tokens" value="${apiConfig.maxTokens || 2048}" min="1" max="32000" data-field="apiConfig.maxTokens">
+            </div>
+          </div>
+        </div>
+
+        <div class="council-pipeline-form-group">
+          <label>Tags (comma-separated)</label>
+          <input type="text" class="council-pipeline-input" name="agent-tags" value="${(agent.metadata?.tags || []).join(", ")}" data-field="metadata.tags">
+        </div>
+
+        <div class="council-pipeline-form-actions">
+          <button class="council-pipeline-btn council-pipeline-btn-primary" data-action="save-agent">
+            💾 Save Agent
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-action="cancel-agent-edit">
+            Cancel
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  // ===== POSITIONS TAB =====
+
+  /**
+   * Render Positions tab - CRUD for position roles
+   */
+  _renderPositionsTab() {
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    const positions = pipelineBuilder?.getAllPositions?.() || [];
+    const positionList = Array.isArray(positions) ? positions : Object.values(positions);
+
+    let html = `
+      <div class="council-pipeline-positions-tab">
+        <div class="council-pipeline-toolbar">
+          <button class="council-pipeline-btn council-pipeline-btn-primary" data-action="create-position">
+            ➕ New Position
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-action="duplicate-position" ${!this._selectedPosition ? "disabled" : ""}>
+            📋 Duplicate
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-danger" data-action="delete-position" ${!this._selectedPosition ? "disabled" : ""}>
+            🗑️ Delete
+          </button>
+        </div>
+
+        <div class="council-pipeline-info-banner">
+          <p>Positions define roles within teams (e.g., "Prose Lead", "Continuity Specialist"). An agent is assigned to fill each position.</p>
+        </div>
+
+        <div class="council-pipeline-list-container">
+          <div class="council-pipeline-list council-pipeline-positions-list">
+            ${
+              positionList.length === 0
+                ? '<div class="council-pipeline-empty">No positions defined. Create one or apply a preset.</div>'
+                : positionList
+                    .map((p) => this._renderPositionListItem(p))
+                    .join("")
+            }
+          </div>
+
+          <div class="council-pipeline-detail council-pipeline-position-detail">
+            ${
+              this._selectedPosition
+                ? this._renderPositionDetailForm(this._getPositionById(this._selectedPosition))
+                : '<div class="council-pipeline-empty">Select a position to view/edit details</div>'
+            }
+          </div>
+        </div>
+      </div>
+    `;
+    this._elements.content.innerHTML = html;
+  },
+
+  /**
+   * Get position by ID
+   */
+  _getPositionById(id) {
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    return pipelineBuilder?.getPosition?.(id) || null;
+  },
+
+  /**
+   * Render position list item
+   */
+  _renderPositionListItem(position) {
+    const isSelected = this._selectedPosition === position.id;
+    const tierIcon = { executive: "👔", leader: "⭐", member: "👤" }[position.tier] || "👤";
+    return `
+      <div class="council-pipeline-list-item ${isSelected ? "selected" : ""}"
+           data-position-id="${position.id}"
+           data-action="select-position">
+        <div class="council-pipeline-list-item-header">
+          <span class="council-pipeline-list-item-icon">${tierIcon}</span>
+          <span class="council-pipeline-list-item-name">${this._escapeHtml(position.name || position.id)}</span>
+          <span class="council-pipeline-list-item-badge council-pipeline-tier-${position.tier || "member"}">${position.tier || "member"}</span>
+        </div>
+        <div class="council-pipeline-list-item-desc">${this._escapeHtml(position.description || "No description")}</div>
+        ${position.assignedAgent ? `<div class="council-pipeline-list-item-meta">Agent: ${this._escapeHtml(position.assignedAgent)}</div>` : ""}
+        ${position.teamId ? `<div class="council-pipeline-list-item-meta">Team: ${this._escapeHtml(position.teamId)}</div>` : ""}
+      </div>
+    `;
+  },
+
+  /**
+   * Render position detail/edit form
+   */
+  _renderPositionDetailForm(position) {
+    if (!position) return '<div class="council-pipeline-empty">Position not found</div>';
+
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    const agents = pipelineBuilder?.getAllAgents?.() || [];
+    const agentList = Array.isArray(agents) ? agents : Object.values(agents);
+    const teams = pipelineBuilder?.getAllTeams?.() || [];
+    const teamList = Array.isArray(teams) ? teams : Object.values(teams);
+    const modifiers = position.promptModifiers || {};
+
+    return `
+      <div class="council-pipeline-position-form" data-position-id="${position.id}">
+        <h3>Edit Position: ${this._escapeHtml(position.name || position.id)}</h3>
+
+        <div class="council-pipeline-form-group">
+          <label>ID</label>
+          <input type="text" class="council-pipeline-input" name="position-id" value="${this._escapeHtml(position.id)}" readonly>
+        </div>
+
+        <div class="council-pipeline-form-group">
+          <label>Name</label>
+          <input type="text" class="council-pipeline-input" name="position-name" value="${this._escapeHtml(position.name || "")}" data-field="name">
+        </div>
+
+        <div class="council-pipeline-form-group">
+          <label>Description</label>
+          <textarea class="council-pipeline-textarea" name="position-description" rows="2" data-field="description">${this._escapeHtml(position.description || "")}</textarea>
+        </div>
+
+        <div class="council-pipeline-form-row">
+          <div class="council-pipeline-form-group">
+            <label>Tier</label>
+            <select class="council-pipeline-select" name="position-tier" data-field="tier">
+              <option value="executive" ${position.tier === "executive" ? "selected" : ""}>Executive</option>
+              <option value="leader" ${position.tier === "leader" ? "selected" : ""}>Leader</option>
+              <option value="member" ${position.tier === "member" ? "selected" : ""}>Member</option>
+            </select>
+          </div>
+
+          <div class="council-pipeline-form-group">
+            <label>Assigned Agent</label>
+            <select class="council-pipeline-select" name="position-agent" data-field="assignedAgent">
+              <option value="">-- None --</option>
+              ${agentList.map(a => `<option value="${a.id}" ${position.assignedAgent === a.id ? "selected" : ""}>${this._escapeHtml(a.name || a.id)}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+
+        <div class="council-pipeline-form-group">
+          <label>Team</label>
+          <select class="council-pipeline-select" name="position-team" data-field="teamId">
+            <option value="">-- No Team (Executive) --</option>
+            ${teamList.map(t => `<option value="${t.id}" ${position.teamId === t.id ? "selected" : ""}>${this._escapeHtml(t.name || t.id)}</option>`).join("")}
+          </select>
+        </div>
+
+        <div class="council-pipeline-form-section">
+          <h4>Prompt Modifiers</h4>
+          <div class="council-pipeline-form-group">
+            <label>Role Description</label>
+            <input type="text" class="council-pipeline-input" name="position-role-desc" value="${this._escapeHtml(modifiers.roleDescription || "")}" data-field="promptModifiers.roleDescription">
+          </div>
+          <div class="council-pipeline-form-group">
+            <label>Prompt Prefix</label>
+            <textarea class="council-pipeline-textarea" name="position-prefix" rows="2" data-field="promptModifiers.prefix">${this._escapeHtml(modifiers.prefix || "")}</textarea>
+          </div>
+          <div class="council-pipeline-form-group">
+            <label>Prompt Suffix</label>
+            <textarea class="council-pipeline-textarea" name="position-suffix" rows="2" data-field="promptModifiers.suffix">${this._escapeHtml(modifiers.suffix || "")}</textarea>
+          </div>
+        </div>
+
+        <div class="council-pipeline-form-actions">
+          <button class="council-pipeline-btn council-pipeline-btn-primary" data-action="save-position">
+            💾 Save Position
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-action="cancel-position-edit">
+            Cancel
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  // ===== TEAMS TAB =====
+
+  /**
+   * Render Teams tab - CRUD for teams
+   */
+  _renderTeamsTab() {
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    const teams = pipelineBuilder?.getAllTeams?.() || [];
+    const teamList = Array.isArray(teams) ? teams : Object.values(teams);
+
+    let html = `
+      <div class="council-pipeline-teams-tab">
+        <div class="council-pipeline-toolbar">
+          <button class="council-pipeline-btn council-pipeline-btn-primary" data-action="create-team">
+            ➕ New Team
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-action="duplicate-team" ${!this._selectedTeam ? "disabled" : ""}>
+            📋 Duplicate
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-danger" data-action="delete-team" ${!this._selectedTeam ? "disabled" : ""}>
+            🗑️ Delete
+          </button>
+        </div>
+
+        <div class="council-pipeline-info-banner">
+          <p>Teams group positions together (e.g., "Prose Team", "Plot Team"). Each team has a leader and member positions.</p>
+        </div>
+
+        <div class="council-pipeline-list-container">
+          <div class="council-pipeline-list council-pipeline-teams-list">
+            ${
+              teamList.length === 0
+                ? '<div class="council-pipeline-empty">No teams defined. Create one or apply a preset.</div>'
+                : teamList
+                    .map((t) => this._renderTeamListItem(t))
+                    .join("")
+            }
+          </div>
+
+          <div class="council-pipeline-detail council-pipeline-team-detail">
+            ${
+              this._selectedTeam
+                ? this._renderTeamDetailForm(this._getTeamById(this._selectedTeam))
+                : '<div class="council-pipeline-empty">Select a team to view/edit details</div>'
+            }
+          </div>
+        </div>
+      </div>
+    `;
+    this._elements.content.innerHTML = html;
+  },
+
+  /**
+   * Get team by ID
+   */
+  _getTeamById(id) {
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    return pipelineBuilder?.getTeam?.(id) || null;
+  },
+
+  /**
+   * Render team list item
+   */
+  _renderTeamListItem(team) {
+    const isSelected = this._selectedTeam === team.id;
+    const memberCount = team.memberIds?.length || 0;
+    return `
+      <div class="council-pipeline-list-item ${isSelected ? "selected" : ""}"
+           data-team-id="${team.id}"
+           data-action="select-team">
+        <div class="council-pipeline-list-item-header">
+          <span class="council-pipeline-list-item-icon">👥</span>
+          <span class="council-pipeline-list-item-name">${this._escapeHtml(team.name || team.id)}</span>
+          <span class="council-pipeline-list-item-badge">${memberCount} members</span>
+        </div>
+        <div class="council-pipeline-list-item-desc">${this._escapeHtml(team.description || "No description")}</div>
+        ${team.leaderId ? `<div class="council-pipeline-list-item-meta">Leader: ${this._escapeHtml(team.leaderId)}</div>` : ""}
+      </div>
+    `;
+  },
+
+  /**
+   * Render team detail/edit form
+   */
+  _renderTeamDetailForm(team) {
+    if (!team) return '<div class="council-pipeline-empty">Team not found</div>';
+
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    const positions = pipelineBuilder?.getAllPositions?.() || [];
+    const positionList = Array.isArray(positions) ? positions : Object.values(positions);
+    const memberIds = team.memberIds || [];
+
+    return `
+      <div class="council-pipeline-team-form" data-team-id="${team.id}">
+        <h3>Edit Team: ${this._escapeHtml(team.name || team.id)}</h3>
+
+        <div class="council-pipeline-form-group">
+          <label>ID</label>
+          <input type="text" class="council-pipeline-input" name="team-id" value="${this._escapeHtml(team.id)}" readonly>
+        </div>
+
+        <div class="council-pipeline-form-group">
+          <label>Name</label>
+          <input type="text" class="council-pipeline-input" name="team-name" value="${this._escapeHtml(team.name || "")}" data-field="name">
+        </div>
+
+        <div class="council-pipeline-form-group">
+          <label>Description</label>
+          <textarea class="council-pipeline-textarea" name="team-description" rows="2" data-field="description">${this._escapeHtml(team.description || "")}</textarea>
+        </div>
+
+        <div class="council-pipeline-form-group">
+          <label>Team Leader (Position)</label>
+          <select class="council-pipeline-select" name="team-leader" data-field="leaderId">
+            <option value="">-- Select Leader --</option>
+            ${positionList.filter(p => p.tier === "leader" || memberIds.includes(p.id)).map(p => `<option value="${p.id}" ${team.leaderId === p.id ? "selected" : ""}>${this._escapeHtml(p.name || p.id)}</option>`).join("")}
+          </select>
+        </div>
+
+        <div class="council-pipeline-form-section">
+          <h4>Team Members (Positions)</h4>
+          <div class="council-pipeline-member-list">
+            ${positionList.map(p => `
+              <label class="council-pipeline-checkbox-item">
+                <input type="checkbox" name="team-member" value="${p.id}" ${memberIds.includes(p.id) ? "checked" : ""} data-field="memberIds">
+                <span>${this._escapeHtml(p.name || p.id)} (${p.tier || "member"})</span>
+              </label>
+            `).join("")}
+          </div>
+          ${positionList.length === 0 ? '<div class="council-pipeline-empty-inline">No positions available. Create positions first.</div>' : ""}
+        </div>
+
+        <div class="council-pipeline-form-actions">
+          <button class="council-pipeline-btn council-pipeline-btn-primary" data-action="save-team">
+            💾 Save Team
+          </button>
+          <button class="council-pipeline-btn council-pipeline-btn-secondary" data-action="cancel-team-edit">
+            Cancel
+          </button>
         </div>
       </div>
     `;
@@ -2091,6 +2689,73 @@ const PipelineModal = {
     }
 
     switch (action) {
+      // Agent actions
+      case "select-agent":
+        this._selectedAgent = target.dataset.agentId;
+        this._refreshCurrentTab();
+        break;
+      case "create-agent":
+        this._createNewAgent();
+        break;
+      case "save-agent":
+        this._saveAgentFromForm();
+        break;
+      case "delete-agent":
+        this._deleteSelectedAgent();
+        break;
+      case "duplicate-agent":
+        this._duplicateSelectedAgent();
+        break;
+      case "cancel-agent-edit":
+        this._selectedAgent = null;
+        this._refreshCurrentTab();
+        break;
+
+      // Position actions
+      case "select-position":
+        this._selectedPosition = target.dataset.positionId;
+        this._refreshCurrentTab();
+        break;
+      case "create-position":
+        this._createNewPosition();
+        break;
+      case "save-position":
+        this._savePositionFromForm();
+        break;
+      case "delete-position":
+        this._deleteSelectedPosition();
+        break;
+      case "duplicate-position":
+        this._duplicateSelectedPosition();
+        break;
+      case "cancel-position-edit":
+        this._selectedPosition = null;
+        this._refreshCurrentTab();
+        break;
+
+      // Team actions
+      case "select-team":
+        this._selectedTeam = target.dataset.teamId;
+        this._refreshCurrentTab();
+        break;
+      case "create-team":
+        this._createNewTeam();
+        break;
+      case "save-team":
+        this._saveTeamFromForm();
+        break;
+      case "delete-team":
+        this._deleteSelectedTeam();
+        break;
+      case "duplicate-team":
+        this._duplicateSelectedTeam();
+        break;
+      case "cancel-team-edit":
+        this._selectedTeam = null;
+        this._refreshCurrentTab();
+        break;
+
+      // Pipeline actions
       case "select-pipeline":
         this._selectedPipeline = target.dataset.pipelineId;
         this._selectedPhase = null;
@@ -3431,11 +4096,11 @@ const PipelineModal = {
 
           <div class="council-pipeline-dialog-tab-content" data-tab-content="prompt" style="display: none;">
             <div class="council-pipeline-form-group">
-              <label>Prompt Template</label>
+              <label>Prompt Template (Prompt Builder)</label>
               <p class="council-pipeline-form-hint">
-                Use tokens like <code>{{input}}</code>, <code>{{context}}</code>, <code>{{char}}</code>, <code>{{user}}</code>, etc.
+                Build prompts using the Prompt Builder. Supports ST macros, Council macros, conditionals, and tokens.
               </p>
-              <textarea class="council-pipeline-input council-pipeline-code" data-field="promptTemplate" rows="12">${this._escapeHtml(action?.promptTemplate || "You are participating in a collaborative writing session.\n\n{{context}}\n\nUser Input: {{input}}\n\nProvide your response:")}</textarea>
+              <div class="council-pipeline-prompt-builder-wrapper" data-component="prompt-builder-action" data-action-id="${actionId || "new"}"></div>
             </div>
             <div class="council-pipeline-form-group council-pipeline-rag-link">
               <p class="council-pipeline-form-hint">
@@ -3558,6 +4223,48 @@ const PipelineModal = {
       `;
     }
 
+    // Initialize PromptBuilder for action prompt template
+    const promptBuilderContainer = dialog.querySelector('[data-component="prompt-builder-action"]');
+    if (promptBuilderContainer && window.PromptBuilder) {
+      const actionPromptKey = `action-${actionId || "new"}`;
+
+      // Destroy existing instance if any
+      if (this._promptBuilderInstances.has(actionPromptKey)) {
+        this._promptBuilderInstances.get(actionPromptKey).destroy?.();
+        this._promptBuilderInstances.delete(actionPromptKey);
+      }
+
+      // Parse existing prompt config
+      const defaultPrompt = "You are participating in a collaborative writing session.\n\n{{context}}\n\nUser Input: {{input}}\n\nProvide your response:";
+      const promptConfig = action?.promptConfig || {
+        mode: "custom",
+        customPrompt: action?.promptTemplate || defaultPrompt,
+        tokens: [],
+      };
+
+      // Create PromptBuilder instance
+      const pbInstance = window.PromptBuilder.createInstance({
+        initialMode: promptConfig.mode || "custom",
+        initialPrompt: promptConfig.customPrompt || action?.promptTemplate || defaultPrompt,
+        initialTokens: promptConfig.tokens || [],
+        onChange: (value) => {
+          this._log("debug", "Action PromptBuilder changed:", value);
+        },
+      });
+
+      pbInstance.render(promptBuilderContainer);
+      this._promptBuilderInstances.set(actionPromptKey, pbInstance);
+    } else if (promptBuilderContainer) {
+      // Fallback to textarea if PromptBuilder not available
+      const defaultPrompt = "You are participating in a collaborative writing session.\n\n{{context}}\n\nUser Input: {{input}}\n\nProvide your response:";
+      promptBuilderContainer.innerHTML = `
+        <div class="council-pipeline-component-fallback">
+          <p>PromptBuilder component not available.</p>
+          <textarea class="council-pipeline-input council-pipeline-code" data-field="promptTemplate" rows="12">${this._escapeHtml(action?.promptTemplate || defaultPrompt)}</textarea>
+        </div>
+      `;
+    }
+
     // Setup action type change handler to show/hide curation sections
     const actionTypeSelect = dialog.querySelector('[data-field="actionType"]');
     if (actionTypeSelect) {
@@ -3637,6 +4344,12 @@ const PipelineModal = {
       if (this._contextConfigInstance) {
         this._contextConfigInstance.destroy?.();
         this._contextConfigInstance = null;
+      }
+      // Clean up PromptBuilder
+      const actionPromptKey = `action-${actionId || "new"}`;
+      if (this._promptBuilderInstances.has(actionPromptKey)) {
+        this._promptBuilderInstances.get(actionPromptKey).destroy?.();
+        this._promptBuilderInstances.delete(actionPromptKey);
       }
       dialog.remove();
     };
@@ -3960,8 +4673,8 @@ const PipelineModal = {
           },
           output: outputData,
           threads: threadsConfig,
-          promptTemplate: dialog.querySelector('[data-field="promptTemplate"]')
-            .value,
+          promptTemplate: this._getActionPromptValue(dialog, actionId),
+          promptConfig: this._getActionPromptConfig(actionId),
           rag: {
             enabled:
               dialog.querySelector('[data-field="ragEnabled"]')?.checked ||
@@ -4017,6 +4730,45 @@ const PipelineModal = {
     setTimeout(() => {
       dialog.querySelector('[data-field="name"]')?.focus();
     }, 100);
+  },
+
+  /**
+   * Get prompt template value from action dialog
+   * @param {HTMLElement} dialog - The dialog element
+   * @param {string} actionId - Action ID
+   * @returns {string} Prompt template text
+   */
+  _getActionPromptValue(dialog, actionId) {
+    const promptBuilderKey = `action-${actionId || "new"}`;
+
+    // Try to get from PromptBuilder instance
+    if (this._promptBuilderInstances.has(promptBuilderKey)) {
+      const pbInstance = this._promptBuilderInstances.get(promptBuilderKey);
+      const config = pbInstance.getValue?.();
+      if (config) {
+        return config.customPrompt || "";
+      }
+    }
+
+    // Fallback to textarea
+    const textarea = dialog.querySelector('[data-field="promptTemplate"]');
+    return textarea?.value || "";
+  },
+
+  /**
+   * Get prompt config from action PromptBuilder
+   * @param {string} actionId - Action ID
+   * @returns {Object|null} Prompt builder config
+   */
+  _getActionPromptConfig(actionId) {
+    const promptBuilderKey = `action-${actionId || "new"}`;
+
+    if (this._promptBuilderInstances.has(promptBuilderKey)) {
+      const pbInstance = this._promptBuilderInstances.get(promptBuilderKey);
+      return pbInstance.getValue?.() || null;
+    }
+
+    return null;
   },
 
   /**
@@ -6070,6 +6822,381 @@ const PipelineModal = {
           `<option value="${s.id}" ${s.id === selectedId ? "selected" : ""}>${this._escapeHtml(s.name || s.id)}</option>`,
       )
       .join("");
+  },
+
+  // ===== AGENT CRUD OPERATIONS =====
+
+  /**
+   * Create a new agent
+   */
+  _createNewAgent() {
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    if (!pipelineBuilder?.createAgent) {
+      this._showNotification("Pipeline Builder System not available", "error");
+      return;
+    }
+
+    const newId = `agent_${Date.now()}`;
+    const newAgent = {
+      id: newId,
+      name: "New Agent",
+      description: "A new editorial agent",
+      apiConfig: {
+        useCurrentConnection: true,
+        endpoint: "",
+        apiKey: "",
+        model: "",
+        temperature: 0.7,
+        maxTokens: 2048
+      },
+      systemPrompt: {
+        source: "custom",
+        customText: ""
+      },
+      metadata: {
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        tags: []
+      }
+    };
+
+    try {
+      pipelineBuilder.createAgent(newAgent);
+      this._selectedAgent = newId;
+      this._refreshCurrentTab();
+      this._showNotification("Agent created successfully", "success");
+    } catch (error) {
+      this._showNotification(`Failed to create agent: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Save agent from form data
+   */
+  _saveAgentFromForm() {
+    const form = this._elements.content.querySelector(".council-pipeline-agent-form");
+    if (!form) return;
+
+    const agentId = form.dataset.agentId;
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+
+    // Get prompt config from PromptBuilder instance or fallback textarea
+    const promptSource = form.querySelector('[name="agent-prompt-source"]')?.value || "custom";
+    let promptConfig = null;
+    let customText = "";
+
+    const promptBuilderKey = `agent-${agentId}`;
+    if (this._promptBuilderInstances.has(promptBuilderKey)) {
+      const pbInstance = this._promptBuilderInstances.get(promptBuilderKey);
+      promptConfig = pbInstance.getValue?.();
+      // Extract custom text from prompt builder config
+      if (promptConfig) {
+        customText = promptConfig.customPrompt || "";
+      }
+    } else {
+      // Fallback to textarea if PromptBuilder not available
+      customText = form.querySelector('[name="agent-prompt-text"]')?.value || "";
+    }
+
+    const updates = {
+      name: form.querySelector('[name="agent-name"]')?.value || "",
+      description: form.querySelector('[name="agent-description"]')?.value || "",
+      systemPrompt: {
+        source: promptSource,
+        customText: customText,
+        promptConfig: promptConfig // Store full prompt builder config
+      },
+      apiConfig: {
+        useCurrentConnection: form.querySelector('[name="agent-use-current"]')?.checked || false,
+        temperature: parseFloat(form.querySelector('[name="agent-temperature"]')?.value) || 0.7,
+        maxTokens: parseInt(form.querySelector('[name="agent-max-tokens"]')?.value) || 2048
+      },
+      metadata: {
+        updatedAt: Date.now(),
+        tags: (form.querySelector('[name="agent-tags"]')?.value || "").split(",").map(t => t.trim()).filter(t => t)
+      }
+    };
+
+    try {
+      pipelineBuilder.updateAgent(agentId, updates);
+      this._refreshCurrentTab();
+      this._showNotification("Agent saved successfully", "success");
+    } catch (error) {
+      this._showNotification(`Failed to save agent: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Delete selected agent
+   */
+  _deleteSelectedAgent() {
+    if (!this._selectedAgent) return;
+
+    if (!confirm(`Are you sure you want to delete this agent?`)) return;
+
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    try {
+      pipelineBuilder.deleteAgent(this._selectedAgent);
+      this._selectedAgent = null;
+      this._refreshCurrentTab();
+      this._showNotification("Agent deleted", "success");
+    } catch (error) {
+      this._showNotification(`Failed to delete agent: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Duplicate selected agent
+   */
+  _duplicateSelectedAgent() {
+    if (!this._selectedAgent) return;
+
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    const agent = pipelineBuilder?.getAgent?.(this._selectedAgent);
+    if (!agent) return;
+
+    const newId = `${agent.id}_copy_${Date.now()}`;
+    const newAgent = {
+      ...JSON.parse(JSON.stringify(agent)),
+      id: newId,
+      name: `${agent.name} (Copy)`,
+      metadata: {
+        ...agent.metadata,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      }
+    };
+
+    try {
+      pipelineBuilder.createAgent(newAgent);
+      this._selectedAgent = newId;
+      this._refreshCurrentTab();
+      this._showNotification("Agent duplicated", "success");
+    } catch (error) {
+      this._showNotification(`Failed to duplicate agent: ${error.message}`, "error");
+    }
+  },
+
+  // ===== POSITION CRUD OPERATIONS =====
+
+  /**
+   * Create a new position
+   */
+  _createNewPosition() {
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    if (!pipelineBuilder?.createPosition) {
+      this._showNotification("Pipeline Builder System not available", "error");
+      return;
+    }
+
+    const newId = `position_${Date.now()}`;
+    const newPosition = {
+      id: newId,
+      name: "New Position",
+      description: "A new position role",
+      tier: "member",
+      teamId: null,
+      assignedAgent: null,
+      promptModifiers: {
+        prefix: "",
+        suffix: "",
+        roleDescription: ""
+      }
+    };
+
+    try {
+      pipelineBuilder.createPosition(newPosition);
+      this._selectedPosition = newId;
+      this._refreshCurrentTab();
+      this._showNotification("Position created successfully", "success");
+    } catch (error) {
+      this._showNotification(`Failed to create position: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Save position from form data
+   */
+  _savePositionFromForm() {
+    const form = this._elements.content.querySelector(".council-pipeline-position-form");
+    if (!form) return;
+
+    const positionId = form.dataset.positionId;
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+
+    const updates = {
+      name: form.querySelector('[name="position-name"]')?.value || "",
+      description: form.querySelector('[name="position-description"]')?.value || "",
+      tier: form.querySelector('[name="position-tier"]')?.value || "member",
+      teamId: form.querySelector('[name="position-team"]')?.value || null,
+      assignedAgent: form.querySelector('[name="position-agent"]')?.value || null,
+      promptModifiers: {
+        roleDescription: form.querySelector('[name="position-role-desc"]')?.value || "",
+        prefix: form.querySelector('[name="position-prefix"]')?.value || "",
+        suffix: form.querySelector('[name="position-suffix"]')?.value || ""
+      }
+    };
+
+    try {
+      pipelineBuilder.updatePosition(positionId, updates);
+      this._refreshCurrentTab();
+      this._showNotification("Position saved successfully", "success");
+    } catch (error) {
+      this._showNotification(`Failed to save position: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Delete selected position
+   */
+  _deleteSelectedPosition() {
+    if (!this._selectedPosition) return;
+
+    if (!confirm(`Are you sure you want to delete this position?`)) return;
+
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    try {
+      pipelineBuilder.deletePosition(this._selectedPosition);
+      this._selectedPosition = null;
+      this._refreshCurrentTab();
+      this._showNotification("Position deleted", "success");
+    } catch (error) {
+      this._showNotification(`Failed to delete position: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Duplicate selected position
+   */
+  _duplicateSelectedPosition() {
+    if (!this._selectedPosition) return;
+
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    const position = pipelineBuilder?.getPosition?.(this._selectedPosition);
+    if (!position) return;
+
+    const newId = `${position.id}_copy_${Date.now()}`;
+    const newPosition = {
+      ...JSON.parse(JSON.stringify(position)),
+      id: newId,
+      name: `${position.name} (Copy)`
+    };
+
+    try {
+      pipelineBuilder.createPosition(newPosition);
+      this._selectedPosition = newId;
+      this._refreshCurrentTab();
+      this._showNotification("Position duplicated", "success");
+    } catch (error) {
+      this._showNotification(`Failed to duplicate position: ${error.message}`, "error");
+    }
+  },
+
+  // ===== TEAM CRUD OPERATIONS =====
+
+  /**
+   * Create a new team
+   */
+  _createNewTeam() {
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    if (!pipelineBuilder?.createTeam) {
+      this._showNotification("Pipeline Builder System not available", "error");
+      return;
+    }
+
+    const newId = `team_${Date.now()}`;
+    const newTeam = {
+      id: newId,
+      name: "New Team",
+      description: "A new team",
+      leaderId: null,
+      memberIds: []
+    };
+
+    try {
+      pipelineBuilder.createTeam(newTeam);
+      this._selectedTeam = newId;
+      this._refreshCurrentTab();
+      this._showNotification("Team created successfully", "success");
+    } catch (error) {
+      this._showNotification(`Failed to create team: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Save team from form data
+   */
+  _saveTeamFromForm() {
+    const form = this._elements.content.querySelector(".council-pipeline-team-form");
+    if (!form) return;
+
+    const teamId = form.dataset.teamId;
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+
+    // Collect checked member checkboxes
+    const memberCheckboxes = form.querySelectorAll('[name="team-member"]:checked');
+    const memberIds = Array.from(memberCheckboxes).map(cb => cb.value);
+
+    const updates = {
+      name: form.querySelector('[name="team-name"]')?.value || "",
+      description: form.querySelector('[name="team-description"]')?.value || "",
+      leaderId: form.querySelector('[name="team-leader"]')?.value || null,
+      memberIds: memberIds
+    };
+
+    try {
+      pipelineBuilder.updateTeam(teamId, updates);
+      this._refreshCurrentTab();
+      this._showNotification("Team saved successfully", "success");
+    } catch (error) {
+      this._showNotification(`Failed to save team: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Delete selected team
+   */
+  _deleteSelectedTeam() {
+    if (!this._selectedTeam) return;
+
+    if (!confirm(`Are you sure you want to delete this team?`)) return;
+
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    try {
+      pipelineBuilder.deleteTeam(this._selectedTeam);
+      this._selectedTeam = null;
+      this._refreshCurrentTab();
+      this._showNotification("Team deleted", "success");
+    } catch (error) {
+      this._showNotification(`Failed to delete team: ${error.message}`, "error");
+    }
+  },
+
+  /**
+   * Duplicate selected team
+   */
+  _duplicateSelectedTeam() {
+    if (!this._selectedTeam) return;
+
+    const pipelineBuilder = this._pipelineSystem || window.PipelineBuilderSystem;
+    const team = pipelineBuilder?.getTeam?.(this._selectedTeam);
+    if (!team) return;
+
+    const newId = `${team.id}_copy_${Date.now()}`;
+    const newTeam = {
+      ...JSON.parse(JSON.stringify(team)),
+      id: newId,
+      name: `${team.name} (Copy)`
+    };
+
+    try {
+      pipelineBuilder.createTeam(newTeam);
+      this._selectedTeam = newId;
+      this._refreshCurrentTab();
+      this._showNotification("Team duplicated", "success");
+    } catch (error) {
+      this._showNotification(`Failed to duplicate team: ${error.message}`, "error");
+    }
   },
 
   // ===== UTILITIES =====

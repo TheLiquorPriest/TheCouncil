@@ -711,9 +711,11 @@ orch.getOutput() // shows result
    - Reflect final file structure
    - Update system status to "Alpha Complete"
 
-2. Update `docs/SYSTEM_DEFINITIONS.md`:
-   - Mark all decisions as implemented
-   - Update APIs to match implementation
+2. Create `docs/STATUS_REPORT.md`:
+- Contrast what was actually done against: the tasks, the SYSTEM_DEFINITIONS, and the ACTION_PLAN_v2
+- Highlight any discrepancies or areas for improvement
+- Audit each section for completeness and accuracy
+- Seek out contradictions and areas for improvement
 
 3. Update `README.md`:
    - User-facing documentation

@@ -4,16 +4,20 @@
  * A reusable component for building agent prompts with:
  * - Three modes: Custom, ST Preset, Token Builder
  * - SillyTavern macro support
+ * - Council Macros with parameterization
+ * - Conditional blocks (if/unless/else)
+ * - Transform pipelines (uppercase, truncate, etc.)
  * - Drag-and-drop token ordering
  * - Live preview with token resolution
+ * - Validation feedback
  * - Import/export functionality
  *
- * @version 2.0.0
+ * @version 2.1.0
  */
 
 const PromptBuilder = {
   // ===== VERSION =====
-  VERSION: "2.0.0",
+  VERSION: "2.1.0",
 
   // ===== CONSTANTS =====
 
@@ -241,9 +245,9 @@ const PromptBuilder = {
     if (options.promptBuilderSystem) {
       this._promptBuilderSystem = options.promptBuilderSystem;
     } else if (options.kernel) {
-      this._promptBuilderSystem = options.kernel.getSystem('promptBuilder');
+      this._promptBuilderSystem = options.kernel.getSystem("promptBuilder");
     } else if (window.TheCouncil) {
-      this._promptBuilderSystem = window.TheCouncil.getSystem('promptBuilder');
+      this._promptBuilderSystem = window.TheCouncil.getSystem("promptBuilder");
     }
 
     this._logger = options.logger || window.Logger;
@@ -528,11 +532,16 @@ const PromptBuilder = {
     container.innerHTML = "";
     container.className = "prompt-builder";
 
+    // Create unique ID for radio group (stable per instance)
+    const instanceId =
+      instance._instanceId ||
+      (instance._instanceId = `pb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+
     // Create main structure
     const html = `
       <div class="prompt-builder-mode-selector">
         <label class="prompt-builder-mode">
-          <input type="radio" name="prompt-mode-${Date.now()}" value="custom"
+          <input type="radio" name="prompt-mode-${instanceId}" value="custom"
                  ${instance._config.mode === "custom" ? "checked" : ""}>
           <span class="prompt-builder-mode-label">
             <span class="prompt-builder-mode-icon">✏️</span>
@@ -540,7 +549,7 @@ const PromptBuilder = {
           </span>
         </label>
         <label class="prompt-builder-mode">
-          <input type="radio" name="prompt-mode-${Date.now()}" value="preset"
+          <input type="radio" name="prompt-mode-${instanceId}" value="preset"
                  ${instance._config.mode === "preset" ? "checked" : ""}>
           <span class="prompt-builder-mode-label">
             <span class="prompt-builder-mode-icon">📋</span>
@@ -548,7 +557,7 @@ const PromptBuilder = {
           </span>
         </label>
         <label class="prompt-builder-mode">
-          <input type="radio" name="prompt-mode-${Date.now()}" value="tokens"
+          <input type="radio" name="prompt-mode-${instanceId}" value="tokens"
                  ${instance._config.mode === "tokens" ? "checked" : ""}>
           <span class="prompt-builder-mode-label">
             <span class="prompt-builder-mode-icon">🧩</span>
@@ -903,9 +912,28 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
       <div class="prompt-builder-tokens">
         <div class="prompt-builder-tokens-layout">
           <div class="prompt-builder-available-tokens">
-            <h4>Available Tokens</h4>
-            <div class="prompt-builder-token-categories">
-              ${this._renderTokenCategories()}
+            <div class="prompt-builder-tokens-tabs">
+              <button class="prompt-builder-tab active" data-tab="st-macros">ST Macros</button>
+              <button class="prompt-builder-tab" data-tab="council-macros">Council Macros</button>
+              <button class="prompt-builder-tab" data-tab="conditionals">Conditionals</button>
+            </div>
+            <div class="prompt-builder-tab-content" data-content="st-macros">
+              <h4>SillyTavern Macros</h4>
+              <div class="prompt-builder-token-categories">
+                ${this._renderTokenCategories()}
+              </div>
+            </div>
+            <div class="prompt-builder-tab-content hidden" data-content="council-macros">
+              <h4>Council Macros</h4>
+              <div class="prompt-builder-macros-list">
+                ${this._renderCouncilMacros()}
+              </div>
+            </div>
+            <div class="prompt-builder-tab-content hidden" data-content="conditionals">
+              <h4>Conditional Blocks</h4>
+              <div class="prompt-builder-conditionals-list">
+                ${this._renderConditionalHelpers()}
+              </div>
             </div>
           </div>
           <div class="prompt-builder-token-stack">
@@ -917,11 +945,36 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
               <button class="prompt-builder-btn prompt-builder-add-custom">
                 + Add Custom Block
               </button>
+              <button class="prompt-builder-btn prompt-builder-add-conditional">
+                + Add Conditional
+              </button>
+              <button class="prompt-builder-btn prompt-builder-add-macro">
+                + Insert Macro
+              </button>
             </div>
           </div>
         </div>
       </div>
     `;
+
+    // Bind tab switching
+    const tabs = contentEl.querySelectorAll(".prompt-builder-tab");
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        // Update active tab
+        tabs.forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+
+        // Show corresponding content
+        const tabName = tab.dataset.tab;
+        const contents = contentEl.querySelectorAll(
+          ".prompt-builder-tab-content",
+        );
+        contents.forEach((c) => {
+          c.classList.toggle("hidden", c.dataset.content !== tabName);
+        });
+      });
+    });
 
     // Bind category expansion
     const categoryHeaders = contentEl.querySelectorAll(
@@ -946,10 +999,44 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
       });
     });
 
+    // Bind Council macro clicks
+    const macroItems = contentEl.querySelectorAll(".prompt-builder-macro-item");
+    macroItems.forEach((macroEl) => {
+      macroEl.addEventListener("click", () => {
+        const macroId = macroEl.dataset.macroId;
+        this._showMacroInsertDialog(instance, macroId);
+      });
+    });
+
+    // Bind conditional helper clicks
+    const conditionalItems = contentEl.querySelectorAll(
+      ".prompt-builder-conditional-item",
+    );
+    conditionalItems.forEach((condEl) => {
+      condEl.addEventListener("click", () => {
+        const condType = condEl.dataset.condType;
+        this._showConditionalEditor(instance, condType);
+      });
+    });
+
     // Bind add custom block
     const addCustomBtn = contentEl.querySelector(".prompt-builder-add-custom");
     addCustomBtn?.addEventListener("click", () => {
       this._showCustomBlockEditor(instance);
+    });
+
+    // Bind add conditional
+    const addConditionalBtn = contentEl.querySelector(
+      ".prompt-builder-add-conditional",
+    );
+    addConditionalBtn?.addEventListener("click", () => {
+      this._showConditionalEditor(instance);
+    });
+
+    // Bind add macro
+    const addMacroBtn = contentEl.querySelector(".prompt-builder-add-macro");
+    addMacroBtn?.addEventListener("click", () => {
+      this._showMacroPickerDialog(instance);
     });
 
     // Bind stack item actions
@@ -1055,6 +1142,546 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
   },
 
   /**
+   * Render Council macros from PromptBuilderSystem
+   * @returns {string} HTML
+   */
+  _renderCouncilMacros() {
+    if (!this._promptBuilderSystem) {
+      return `<p class="prompt-builder-hint-text">PromptBuilderSystem not available</p>`;
+    }
+
+    const macrosByCategory = this._promptBuilderSystem.getMacrosByCategory();
+    const categories = this._promptBuilderSystem.MACRO_CATEGORIES;
+
+    if (Object.keys(macrosByCategory).length === 0) {
+      return `<p class="prompt-builder-hint-text">No macros registered</p>`;
+    }
+
+    let html = "";
+
+    for (const [catId, catInfo] of Object.entries(categories)) {
+      const macros = macrosByCategory[catId] || [];
+      if (macros.length === 0) continue;
+
+      html += `
+        <div class="prompt-builder-category expanded" data-category="macro-${catId}">
+          <div class="prompt-builder-category-header">
+            <span class="prompt-builder-category-icon">📦</span>
+            <span class="prompt-builder-category-label">${this._escapeHtml(catInfo.name)}</span>
+            <span class="prompt-builder-category-count">${macros.length}</span>
+          </div>
+          <div class="prompt-builder-category-tokens">
+            ${macros
+              .map(
+                (macro) => `
+              <div class="prompt-builder-macro-item"
+                   data-macro-id="${this._escapeHtml(macro.id)}"
+                   title="${this._escapeHtml(macro.description || macro.name)}">
+                <span class="prompt-builder-macro-name">${this._escapeHtml(macro.name)}</span>
+                <span class="prompt-builder-macro-params">
+                  ${
+                    macro.parameters?.length > 0
+                      ? `(${macro.parameters.map((p) => p.name).join(", ")})`
+                      : "(no params)"
+                  }
+                </span>
+              </div>
+            `,
+              )
+              .join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    return (
+      html || `<p class="prompt-builder-hint-text">No macros in categories</p>`
+    );
+  },
+
+  /**
+   * Render conditional block helpers
+   * @returns {string} HTML
+   */
+  _renderConditionalHelpers() {
+    const conditionalTypes = [
+      {
+        type: "if",
+        name: "If Block",
+        syntax: "{{#if condition}}...{{/if}}",
+        description: "Show content if condition is true",
+      },
+      {
+        type: "unless",
+        name: "Unless Block",
+        syntax: "{{#unless condition}}...{{/unless}}",
+        description: "Show content if condition is false",
+      },
+      {
+        type: "if-else",
+        name: "If-Else Block",
+        syntax: "{{#if condition}}...{{else}}...{{/if}}",
+        description: "Show different content based on condition",
+      },
+    ];
+
+    const transformHelpers = [
+      {
+        type: "transform",
+        name: "Transform Pipeline",
+        syntax: "{{token | transform}}",
+        description: "Apply transforms to token values",
+        examples: ["uppercase", "lowercase", "truncate:100", "default:value"],
+      },
+    ];
+
+    let html = `
+      <div class="prompt-builder-conditionals-section">
+        <h5>Conditional Blocks</h5>
+        ${conditionalTypes
+          .map(
+            (cond) => `
+          <div class="prompt-builder-conditional-item" data-cond-type="${cond.type}">
+            <div class="prompt-builder-conditional-name">${this._escapeHtml(cond.name)}</div>
+            <code class="prompt-builder-conditional-syntax">${this._escapeHtml(cond.syntax)}</code>
+            <div class="prompt-builder-conditional-desc">${this._escapeHtml(cond.description)}</div>
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+
+      <div class="prompt-builder-conditionals-section">
+        <h5>Transform Pipelines</h5>
+        ${transformHelpers
+          .map(
+            (helper) => `
+          <div class="prompt-builder-conditional-item" data-cond-type="${helper.type}">
+            <div class="prompt-builder-conditional-name">${this._escapeHtml(helper.name)}</div>
+            <code class="prompt-builder-conditional-syntax">${this._escapeHtml(helper.syntax)}</code>
+            <div class="prompt-builder-conditional-desc">${this._escapeHtml(helper.description)}</div>
+            ${
+              helper.examples
+                ? `
+              <div class="prompt-builder-transform-examples">
+                Available: ${helper.examples.map((e) => `<code>${this._escapeHtml(e)}</code>`).join(", ")}
+              </div>
+            `
+                : ""
+            }
+          </div>
+        `,
+          )
+          .join("")}
+      </div>
+
+      <div class="prompt-builder-conditionals-help">
+        <h5>Condition Examples</h5>
+        <ul>
+          <li><code>phase.isFirst</code> - Check if first phase</li>
+          <li><code>input</code> - Check if input exists</li>
+          <li><code>agent.name == "Writer"</code> - String comparison</li>
+          <li><code>phase.index > 0</code> - Number comparison</li>
+          <li><code>!phase.isLast</code> - Negation</li>
+          <li><code>input && context</code> - AND logic</li>
+          <li><code>error || fallback</code> - OR logic</li>
+        </ul>
+      </div>
+    `;
+
+    return html;
+  },
+
+  /**
+   * Show macro insert dialog with parameter inputs
+   * @param {Object} instance - Instance state
+   * @param {string} macroId - Macro ID to insert
+   */
+  _showMacroInsertDialog(instance, macroId) {
+    if (!this._promptBuilderSystem) {
+      this._log("warn", "PromptBuilderSystem not available");
+      return;
+    }
+
+    const macro = this._promptBuilderSystem.getMacro(macroId);
+    if (!macro) {
+      this._log("warn", `Macro not found: ${macroId}`);
+      return;
+    }
+
+    const hasParams = macro.parameters && macro.parameters.length > 0;
+
+    // Create dialog HTML
+    const dialogHtml = `
+      <div class="prompt-builder-dialog-overlay">
+        <div class="prompt-builder-dialog">
+          <div class="prompt-builder-dialog-header">
+            <h4>Insert Macro: ${this._escapeHtml(macro.name)}</h4>
+            <button class="prompt-builder-dialog-close">✕</button>
+          </div>
+          <div class="prompt-builder-dialog-content">
+            <p class="prompt-builder-dialog-desc">${this._escapeHtml(macro.description || "")}</p>
+
+            ${
+              hasParams
+                ? `
+              <div class="prompt-builder-macro-params-form">
+                <h5>Parameters</h5>
+                ${macro.parameters
+                  .map(
+                    (param) => `
+                  <div class="prompt-builder-param-row">
+                    <label>
+                      <span class="prompt-builder-param-name">
+                        ${this._escapeHtml(param.name)}
+                        ${param.required ? '<span class="required">*</span>' : ""}
+                      </span>
+                      <input type="text"
+                             class="prompt-builder-param-input"
+                             data-param="${this._escapeHtml(param.name)}"
+                             value="${this._escapeHtml(param.default || "")}"
+                             placeholder="${this._escapeHtml(param.description || param.name)}">
+                    </label>
+                  </div>
+                `,
+                  )
+                  .join("")}
+              </div>
+            `
+                : `
+              <p class="prompt-builder-hint-text">This macro has no parameters</p>
+            `
+            }
+
+            <div class="prompt-builder-macro-preview">
+              <h5>Preview</h5>
+              <pre class="prompt-builder-macro-preview-text">${this._escapeHtml(macro.template)}</pre>
+            </div>
+          </div>
+          <div class="prompt-builder-dialog-actions">
+            <button class="prompt-builder-btn prompt-builder-dialog-cancel">Cancel</button>
+            <button class="prompt-builder-btn prompt-builder-btn-primary prompt-builder-dialog-insert">Insert</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Append dialog to body
+    const dialogContainer = document.createElement("div");
+    dialogContainer.innerHTML = dialogHtml;
+    const dialog = dialogContainer.firstElementChild;
+    document.body.appendChild(dialog);
+
+    // Bind events
+    const closeBtn = dialog.querySelector(".prompt-builder-dialog-close");
+    const cancelBtn = dialog.querySelector(".prompt-builder-dialog-cancel");
+    const insertBtn = dialog.querySelector(".prompt-builder-dialog-insert");
+
+    const closeDialog = () => dialog.remove();
+
+    closeBtn?.addEventListener("click", closeDialog);
+    cancelBtn?.addEventListener("click", closeDialog);
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) closeDialog();
+    });
+
+    insertBtn?.addEventListener("click", () => {
+      // Gather params
+      const params = {};
+      dialog
+        .querySelectorAll(".prompt-builder-param-input")
+        .forEach((input) => {
+          const paramName = input.dataset.param;
+          params[paramName] = input.value;
+        });
+
+      // Build macro syntax
+      const paramStr = Object.entries(params)
+        .filter(([, v]) => v)
+        .map(([k, v]) => `${k}="${v}"`)
+        .join(" ");
+
+      const macroSyntax = paramStr
+        ? `{{macro:${macroId} ${paramStr}}}`
+        : `{{macro:${macroId}}}`;
+
+      // Add to stack
+      this._addTokenToStack(instance, {
+        type: "council-macro",
+        token: macroSyntax,
+        label: macro.name,
+        macroId: macroId,
+        params: params,
+      });
+
+      closeDialog();
+    });
+
+    // Update preview when params change
+    const paramInputs = dialog.querySelectorAll(".prompt-builder-param-input");
+    const previewEl = dialog.querySelector(
+      ".prompt-builder-macro-preview-text",
+    );
+
+    paramInputs.forEach((input) => {
+      input.addEventListener("input", () => {
+        // Simple preview - just show the template
+        let preview = macro.template;
+        paramInputs.forEach((inp) => {
+          const paramName = inp.dataset.param;
+          const value = inp.value || `{{${paramName}}}`;
+          preview = preview.replace(
+            new RegExp(`\\{\\{${paramName}\\}\\}`, "g"),
+            value,
+          );
+        });
+        if (previewEl) {
+          previewEl.textContent = preview;
+        }
+      });
+    });
+  },
+
+  /**
+   * Show conditional block editor
+   * @param {Object} instance - Instance state
+   * @param {string} condType - Conditional type (if, unless, if-else, transform)
+   */
+  _showConditionalEditor(instance, condType = "if") {
+    const dialogHtml = `
+      <div class="prompt-builder-dialog-overlay">
+        <div class="prompt-builder-dialog">
+          <div class="prompt-builder-dialog-header">
+            <h4>Add Conditional Block</h4>
+            <button class="prompt-builder-dialog-close">✕</button>
+          </div>
+          <div class="prompt-builder-dialog-content">
+            <div class="prompt-builder-form-row">
+              <label>Type</label>
+              <select class="prompt-builder-select prompt-builder-cond-type">
+                <option value="if" ${condType === "if" ? "selected" : ""}>If (show when true)</option>
+                <option value="unless" ${condType === "unless" ? "selected" : ""}>Unless (show when false)</option>
+                <option value="if-else" ${condType === "if-else" ? "selected" : ""}>If-Else (both branches)</option>
+              </select>
+            </div>
+
+            <div class="prompt-builder-form-row">
+              <label>Condition</label>
+              <input type="text"
+                     class="prompt-builder-input prompt-builder-cond-expr"
+                     placeholder="e.g., phase.isFirst, input, agent.name == 'Writer'"
+                     value="">
+            </div>
+
+            <div class="prompt-builder-form-row">
+              <label>Content (when true)</label>
+              <textarea class="prompt-builder-textarea prompt-builder-cond-then"
+                        rows="3"
+                        placeholder="Content to show when condition is true"></textarea>
+            </div>
+
+            <div class="prompt-builder-form-row prompt-builder-else-row" style="display: none;">
+              <label>Content (when false)</label>
+              <textarea class="prompt-builder-textarea prompt-builder-cond-else"
+                        rows="3"
+                        placeholder="Content to show when condition is false"></textarea>
+            </div>
+
+            <div class="prompt-builder-cond-preview">
+              <h5>Preview</h5>
+              <pre class="prompt-builder-cond-preview-text"></pre>
+            </div>
+          </div>
+          <div class="prompt-builder-dialog-actions">
+            <button class="prompt-builder-btn prompt-builder-dialog-cancel">Cancel</button>
+            <button class="prompt-builder-btn prompt-builder-btn-primary prompt-builder-dialog-insert">Insert</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const dialogContainer = document.createElement("div");
+    dialogContainer.innerHTML = dialogHtml;
+    const dialog = dialogContainer.firstElementChild;
+    document.body.appendChild(dialog);
+
+    const closeDialog = () => dialog.remove();
+
+    // Elements
+    const typeSelect = dialog.querySelector(".prompt-builder-cond-type");
+    const exprInput = dialog.querySelector(".prompt-builder-cond-expr");
+    const thenTextarea = dialog.querySelector(".prompt-builder-cond-then");
+    const elseTextarea = dialog.querySelector(".prompt-builder-cond-else");
+    const elseRow = dialog.querySelector(".prompt-builder-else-row");
+    const previewEl = dialog.querySelector(".prompt-builder-cond-preview-text");
+
+    // Update preview
+    const updatePreview = () => {
+      const type = typeSelect.value;
+      const expr = exprInput.value || "condition";
+      const thenContent = thenTextarea.value || "...";
+      const elseContent = elseTextarea.value || "...";
+
+      let preview = "";
+      if (type === "if") {
+        preview = `{{#if ${expr}}}${thenContent}{{/if}}`;
+      } else if (type === "unless") {
+        preview = `{{#unless ${expr}}}${thenContent}{{/unless}}`;
+      } else if (type === "if-else") {
+        preview = `{{#if ${expr}}}${thenContent}{{else}}${elseContent}{{/if}}`;
+      }
+
+      if (previewEl) previewEl.textContent = preview;
+    };
+
+    // Toggle else row visibility
+    typeSelect.addEventListener("change", () => {
+      elseRow.style.display = typeSelect.value === "if-else" ? "block" : "none";
+      updatePreview();
+    });
+
+    exprInput.addEventListener("input", updatePreview);
+    thenTextarea.addEventListener("input", updatePreview);
+    elseTextarea.addEventListener("input", updatePreview);
+
+    // Initial update
+    updatePreview();
+
+    // Bind close events
+    dialog
+      .querySelector(".prompt-builder-dialog-close")
+      ?.addEventListener("click", closeDialog);
+    dialog
+      .querySelector(".prompt-builder-dialog-cancel")
+      ?.addEventListener("click", closeDialog);
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) closeDialog();
+    });
+
+    // Insert
+    dialog
+      .querySelector(".prompt-builder-dialog-insert")
+      ?.addEventListener("click", () => {
+        const type = typeSelect.value;
+        const expr = exprInput.value;
+        const thenContent = thenTextarea.value;
+        const elseContent = elseTextarea.value;
+
+        if (!expr) {
+          alert("Please enter a condition expression");
+          return;
+        }
+
+        let content = "";
+        if (type === "if") {
+          content = `{{#if ${expr}}}${thenContent}{{/if}}`;
+        } else if (type === "unless") {
+          content = `{{#unless ${expr}}}${thenContent}{{/unless}}`;
+        } else if (type === "if-else") {
+          content = `{{#if ${expr}}}${thenContent}{{else}}${elseContent}{{/if}}`;
+        }
+
+        this._addTokenToStack(instance, {
+          type: "conditional",
+          content: content,
+          label: `Conditional: ${type}`,
+          condType: type,
+          condition: expr,
+        });
+
+        closeDialog();
+      });
+  },
+
+  /**
+   * Show macro picker dialog (list all macros)
+   * @param {Object} instance - Instance state
+   */
+  _showMacroPickerDialog(instance) {
+    if (!this._promptBuilderSystem) {
+      this._log("warn", "PromptBuilderSystem not available");
+      return;
+    }
+
+    const allMacros = this._promptBuilderSystem.getAllMacros();
+
+    const dialogHtml = `
+      <div class="prompt-builder-dialog-overlay">
+        <div class="prompt-builder-dialog prompt-builder-dialog-wide">
+          <div class="prompt-builder-dialog-header">
+            <h4>Select Macro</h4>
+            <button class="prompt-builder-dialog-close">✕</button>
+          </div>
+          <div class="prompt-builder-dialog-content">
+            <input type="text"
+                   class="prompt-builder-input prompt-builder-macro-search"
+                   placeholder="Search macros...">
+            <div class="prompt-builder-macro-list">
+              ${allMacros
+                .map(
+                  (macro) => `
+                <div class="prompt-builder-macro-list-item" data-macro-id="${this._escapeHtml(macro.id)}">
+                  <div class="prompt-builder-macro-list-name">${this._escapeHtml(macro.name)}</div>
+                  <div class="prompt-builder-macro-list-category">${this._escapeHtml(macro.category)}</div>
+                  <div class="prompt-builder-macro-list-desc">${this._escapeHtml(macro.description || "")}</div>
+                </div>
+              `,
+                )
+                .join("")}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const dialogContainer = document.createElement("div");
+    dialogContainer.innerHTML = dialogHtml;
+    const dialog = dialogContainer.firstElementChild;
+    document.body.appendChild(dialog);
+
+    const closeDialog = () => dialog.remove();
+
+    // Bind close events
+    dialog
+      .querySelector(".prompt-builder-dialog-close")
+      ?.addEventListener("click", closeDialog);
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) closeDialog();
+    });
+
+    // Search
+    const searchInput = dialog.querySelector(".prompt-builder-macro-search");
+    searchInput?.addEventListener("input", (e) => {
+      const query = e.target.value.toLowerCase();
+      dialog
+        .querySelectorAll(".prompt-builder-macro-list-item")
+        .forEach((item) => {
+          const name =
+            item
+              .querySelector(".prompt-builder-macro-list-name")
+              ?.textContent?.toLowerCase() || "";
+          const desc =
+            item
+              .querySelector(".prompt-builder-macro-list-desc")
+              ?.textContent?.toLowerCase() || "";
+          item.style.display =
+            name.includes(query) || desc.includes(query) ? "block" : "none";
+        });
+    });
+
+    // Select macro
+    dialog
+      .querySelectorAll(".prompt-builder-macro-list-item")
+      .forEach((item) => {
+        item.addEventListener("click", () => {
+          const macroId = item.dataset.macroId;
+          closeDialog();
+          this._showMacroInsertDialog(instance, macroId);
+        });
+      });
+  },
+
+  /**
    * Render token stack
    * @param {Object} instance - Instance state
    * @returns {string} HTML
@@ -1072,25 +1699,25 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
     return instance._config.tokens
       .map(
         (item, index) => `
-        <div class="prompt-builder-stack-item" data-index="${index}" draggable="true">
+        <div class="prompt-builder-stack-item" data-index="${index}" data-type="${item.type}" draggable="true">
           <div class="prompt-builder-stack-item-handle">⋮⋮</div>
           <div class="prompt-builder-stack-item-content">
-            ${
-              item.type === "macro"
-                ? `
-              <span class="prompt-builder-stack-item-label">${this._escapeHtml(item.label || item.token)}</span>
-              <code class="prompt-builder-stack-item-code">${this._escapeHtml(item.token)}</code>
-            `
-                : `
-              <span class="prompt-builder-stack-item-label">📝 Custom Block</span>
-              <span class="prompt-builder-stack-item-preview">${this._escapeHtml(item.content?.substring(0, 50) || "")}${(item.content?.length || 0) > 50 ? "..." : ""}</span>
-            `
-            }
+            ${this._renderStackItemContent(item)}
           </div>
           <div class="prompt-builder-stack-item-options">
             ${
               item.prefix || item.suffix
                 ? `<span class="prompt-builder-has-modifiers" title="Has prefix/suffix">⚡</span>`
+                : ""
+            }
+            ${
+              item.type === "conditional"
+                ? `<span class="prompt-builder-item-type-badge" title="Conditional Block">🔀</span>`
+                : ""
+            }
+            ${
+              item.type === "council-macro"
+                ? `<span class="prompt-builder-item-type-badge" title="Council Macro">📦</span>`
                 : ""
             }
           </div>
@@ -1102,6 +1729,43 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
       `,
       )
       .join("");
+  },
+
+  /**
+   * Render content for a stack item based on type
+   * @param {Object} item - Stack item
+   * @returns {string} HTML
+   */
+  _renderStackItemContent(item) {
+    switch (item.type) {
+      case "macro":
+        return `
+          <span class="prompt-builder-stack-item-label">${this._escapeHtml(item.label || item.token)}</span>
+          <code class="prompt-builder-stack-item-code">${this._escapeHtml(item.token)}</code>
+        `;
+
+      case "council-macro":
+        return `
+          <span class="prompt-builder-stack-item-label">📦 ${this._escapeHtml(item.label || item.macroId)}</span>
+          <code class="prompt-builder-stack-item-code">${this._escapeHtml(item.token)}</code>
+        `;
+
+      case "conditional":
+        const condLabel = item.condition
+          ? `${item.condType}: ${item.condition.substring(0, 20)}${item.condition.length > 20 ? "..." : ""}`
+          : item.label;
+        return `
+          <span class="prompt-builder-stack-item-label">🔀 ${this._escapeHtml(condLabel)}</span>
+          <span class="prompt-builder-stack-item-preview">${this._escapeHtml(item.content?.substring(0, 50) || "")}${(item.content?.length || 0) > 50 ? "..." : ""}</span>
+        `;
+
+      case "custom":
+      default:
+        return `
+          <span class="prompt-builder-stack-item-label">📝 Custom Block</span>
+          <span class="prompt-builder-stack-item-preview">${this._escapeHtml(item.content?.substring(0, 50) || "")}${(item.content?.length || 0) > 50 ? "..." : ""}</span>
+        `;
+    }
   },
 
   /**
@@ -1709,7 +2373,7 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
   },
 
   /**
-   * Update preview display
+   * Update preview display with validation
    * @param {Object} instance - Instance state
    */
   _updatePreview(instance) {
@@ -1719,9 +2383,252 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
     if (!previewEl) return;
 
     const prompt = this._generatePrompt(instance);
-    const resolved = this._resolveTokensForPreview(prompt);
+    const { resolved, validation } = this._resolveAndValidate(prompt);
 
+    // Update preview text
     previewEl.textContent = resolved || "(Empty prompt)";
+
+    // Update validation feedback
+    this._updateValidationFeedback(instance, validation);
+  },
+
+  /**
+   * Resolve template and validate tokens
+   * @param {string} prompt - Prompt to resolve
+   * @returns {Object} { resolved, validation }
+   */
+  _resolveAndValidate(prompt) {
+    if (!prompt) {
+      return {
+        resolved: "",
+        validation: {
+          valid: true,
+          tokens: [],
+          unresolvedTokens: [],
+          macros: [],
+          conditionals: [],
+        },
+      };
+    }
+
+    const validation = {
+      valid: true,
+      tokens: [],
+      unresolvedTokens: [],
+      macros: [],
+      conditionals: [],
+      transforms: [],
+    };
+
+    // Extract all tokens
+    const tokenPattern = /\{\{([^}|]+)(?:\|[^}]+)?\}\}/g;
+    let match;
+    while ((match = tokenPattern.exec(prompt)) !== null) {
+      const tokenName = match[1].trim();
+      validation.tokens.push({ token: tokenName, position: match.index });
+    }
+
+    // Extract macros
+    const macroPattern = /\{\{macro:([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+[^}]+)?\}\}/g;
+    while ((match = macroPattern.exec(prompt)) !== null) {
+      const macroId = match[1];
+      const exists = this._promptBuilderSystem?.hasMacro?.(macroId) || false;
+      validation.macros.push({ id: macroId, position: match.index, exists });
+      if (!exists) {
+        validation.unresolvedTokens.push({
+          token: `macro:${macroId}`,
+          reason: "Macro not found",
+        });
+        validation.valid = false;
+      }
+    }
+
+    // Extract conditionals
+    const conditionalPattern = /\{\{#(if|unless)\s+([^}]+)\}\}/g;
+    while ((match = conditionalPattern.exec(prompt)) !== null) {
+      validation.conditionals.push({
+        type: match[1],
+        condition: match[2].trim(),
+        position: match.index,
+      });
+    }
+
+    // Extract transforms
+    const transformPattern = /\{\{[^|}]+\|([^}]+)\}\}/g;
+    while ((match = transformPattern.exec(prompt)) !== null) {
+      validation.transforms.push({
+        transforms: match[1].trim(),
+        position: match.index,
+      });
+    }
+
+    // Resolve the prompt
+    let resolved = prompt;
+    if (this._promptBuilderSystem?.resolveTemplate) {
+      try {
+        const previewContext = {
+          pipeline: { id: "[Pipeline]", name: "[Pipeline]" },
+          phase: {
+            id: "[Phase]",
+            name: "[Phase]",
+            index: 0,
+            isFirst: true,
+            isLast: false,
+          },
+          action: { id: "[Action]", name: "[Action]", index: 0 },
+          input: "[Input]",
+          output: "[Output]",
+          context: "[Context]",
+          char: "[Character]",
+          user: "[User]",
+          agent: {
+            id: "[Agent]",
+            name: "[Agent]",
+            description: "[Agent Description]",
+          },
+          position: {
+            id: "[Position]",
+            name: "[Position]",
+            roleDescription: "[Role]",
+          },
+          team: {
+            id: "[Team]",
+            name: "[Team]",
+            members: ["[Member1]", "[Member2]"],
+          },
+        };
+        resolved = this._promptBuilderSystem.resolveTemplate(
+          prompt,
+          previewContext,
+          {
+            preserveUnresolved: true,
+            passSTMacros: true,
+          },
+        );
+
+        // Check for remaining unresolved tokens (excluding ST macros)
+        const unresolvedPattern =
+          /\{\{([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)(?::([^}]*))?\}\}/g;
+        while ((match = unresolvedPattern.exec(resolved)) !== null) {
+          const tokenName = match[1];
+          // Check if it's an ST macro (should be preserved)
+          if (
+            !this._promptBuilderSystem?.ST_NATIVE_MACROS?.includes(
+              tokenName.split(".")[0],
+            )
+          ) {
+            // It's unresolved if still in template syntax
+            validation.unresolvedTokens.push({
+              token: tokenName,
+              reason: "Not resolved",
+            });
+          }
+        }
+      } catch (e) {
+        this._log("debug", "PromptBuilderSystem resolution failed:", e);
+        resolved = prompt.replace(
+          /\{\{(\w+)\}\}/g,
+          (match, name) => `[${name}]`,
+        );
+      }
+    } else {
+      resolved = prompt.replace(/\{\{(\w+)\}\}/g, (match, name) => `[${name}]`);
+    }
+
+    return { resolved, validation };
+  },
+
+  /**
+   * Update validation feedback UI
+   * @param {Object} instance - Instance state
+   * @param {Object} validation - Validation results
+   */
+  _updateValidationFeedback(instance, validation) {
+    const container = instance._container;
+    if (!container) return;
+
+    // Find or create validation container
+    let validationEl = container.querySelector(".prompt-builder-validation");
+    const previewHeader = container.querySelector(
+      ".prompt-builder-preview-header",
+    );
+
+    if (!validationEl && previewHeader) {
+      validationEl = document.createElement("div");
+      validationEl.className = "prompt-builder-validation";
+      previewHeader.parentNode.insertBefore(
+        validationEl,
+        previewHeader.nextSibling,
+      );
+    }
+
+    if (!validationEl) return;
+
+    // Generate validation feedback
+    const issues = [];
+
+    if (validation.unresolvedTokens.length > 0) {
+      issues.push({
+        type: "warning",
+        message: `${validation.unresolvedTokens.length} unresolved token(s)`,
+        details: validation.unresolvedTokens
+          .map((t) => `{{${t.token}}}`)
+          .join(", "),
+      });
+    }
+
+    const missingMacros = validation.macros.filter((m) => !m.exists);
+    if (missingMacros.length > 0) {
+      issues.push({
+        type: "error",
+        message: `${missingMacros.length} missing macro(s)`,
+        details: missingMacros.map((m) => m.id).join(", "),
+      });
+    }
+
+    // Update UI
+    if (issues.length === 0) {
+      const stats = [];
+      if (validation.tokens.length)
+        stats.push(
+          `${validation.tokens.length} token${validation.tokens.length !== 1 ? "s" : ""}`,
+        );
+      if (validation.macros.length)
+        stats.push(
+          `${validation.macros.length} macro${validation.macros.length !== 1 ? "s" : ""}`,
+        );
+      if (validation.conditionals.length)
+        stats.push(
+          `${validation.conditionals.length} conditional${validation.conditionals.length !== 1 ? "s" : ""}`,
+        );
+      if (validation.transforms.length)
+        stats.push(
+          `${validation.transforms.length} transform${validation.transforms.length !== 1 ? "s" : ""}`,
+        );
+      const summary = stats.length > 0 ? stats.join(", ") : "No tokens";
+      validationEl.innerHTML = `
+        <div class="prompt-builder-validation-success">
+          <span class="prompt-builder-validation-icon">✓</span>
+          <span>Valid — ${summary}</span>
+        </div>
+      `;
+    } else {
+      validationEl.innerHTML = `
+        <div class="prompt-builder-validation-issues">
+          ${issues
+            .map(
+              (issue) => `
+            <div class="prompt-builder-validation-${issue.type}">
+              <span class="prompt-builder-validation-icon">${issue.type === "error" ? "✕" : "⚠"}</span>
+              <span class="prompt-builder-validation-message">${this._escapeHtml(issue.message)}</span>
+              <span class="prompt-builder-validation-details" title="${this._escapeHtml(issue.details)}">${this._escapeHtml(issue.details.substring(0, 50))}${issue.details.length > 50 ? "..." : ""}</span>
+            </div>
+          `,
+            )
+            .join("")}
+        </div>
+      `;
+    }
   },
 
   /**
@@ -1752,8 +2659,24 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
           .map((item) => {
             const prefix = item.prefix || "";
             const suffix = item.suffix || "";
-            const content =
-              item.type === "macro" ? item.token : item.content || "";
+            let content = "";
+
+            switch (item.type) {
+              case "macro":
+                content = item.token;
+                break;
+              case "council-macro":
+                content = item.token;
+                break;
+              case "conditional":
+                content = item.content || "";
+                break;
+              case "custom":
+              default:
+                content = item.content || "";
+                break;
+            }
+
             return prefix + content + suffix;
           })
           .join("\n");
@@ -1761,39 +2684,6 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
       default:
         return "";
     }
-  },
-
-  /**
-   * Resolve tokens for preview display
-   * @param {string} prompt - Prompt with tokens
-   * @returns {string} Resolved preview
-   */
-  _resolveTokensForPreview(prompt) {
-    if (!prompt) return "";
-
-    // Try PromptBuilderSystem first
-    if (this._promptBuilderSystem?.resolveTemplate) {
-      try {
-        // Create a basic context for preview
-        const previewContext = {
-          pipeline: { id: "[Pipeline]", name: "[Pipeline]" },
-          phase: { id: "[Phase]", name: "[Phase]" },
-          action: { id: "[Action]", name: "[Action]" },
-          input: "[Input]",
-          output: "[Output]",
-          char: "[Character]",
-          user: "[User]",
-        };
-        return this._promptBuilderSystem.resolveTemplate(prompt, previewContext);
-      } catch (e) {
-        this._log("debug", "PromptBuilderSystem resolution failed:", e);
-      }
-    }
-
-    // Fallback: show tokens as placeholders
-    return prompt.replace(/\{\{(\w+)\}\}/g, (match, name) => {
-      return `[${name}]`;
-    });
   },
 
   // ===== INSTANCE VALUE MANAGEMENT =====
@@ -2403,7 +3293,7 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 10000;
+        z-index: 11000;
       }
 
       .prompt-builder-editor-modal {
@@ -2572,6 +3462,451 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
         color: #f44;
         padding: 10px;
         text-align: center;
+      }
+
+      /* === NEW: Tabs === */
+      .prompt-builder-tokens-tabs {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+        padding-bottom: 10px;
+      }
+
+      .prompt-builder-tab {
+        padding: 6px 12px;
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        border-radius: 4px 4px 0 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.2s;
+      }
+
+      .prompt-builder-tab:hover {
+        background: var(--SmartThemeBorderColor, #444);
+      }
+
+      .prompt-builder-tab.active {
+        background: var(--SmartThemeQuoteColor, #3a3);
+        border-color: var(--SmartThemeQuoteColor, #3a3);
+        color: #fff;
+      }
+
+      .prompt-builder-tab-content {
+        max-height: 350px;
+        overflow-y: auto;
+      }
+
+      .prompt-builder-tab-content.hidden {
+        display: none;
+      }
+
+      /* === NEW: Council Macros === */
+      .prompt-builder-macro-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        margin-bottom: 4px;
+        border: 1px solid var(--SmartThemeBorderColor, #333);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .prompt-builder-macro-item:hover {
+        background: var(--SmartThemeBorderColor, #444);
+        border-color: var(--SmartThemeQuoteColor, #3a3);
+      }
+
+      .prompt-builder-macro-name {
+        font-weight: 500;
+      }
+
+      .prompt-builder-macro-params {
+        font-size: 11px;
+        color: var(--SmartThemeEmColor, #888);
+      }
+
+      .prompt-builder-category-count {
+        margin-left: auto;
+        padding: 2px 6px;
+        background: var(--SmartThemeBorderColor, #444);
+        border-radius: 10px;
+        font-size: 10px;
+      }
+
+      /* === NEW: Conditionals === */
+      .prompt-builder-conditionals-section {
+        margin-bottom: 15px;
+      }
+
+      .prompt-builder-conditionals-section h5 {
+        margin: 0 0 8px 0;
+        color: var(--SmartThemeEmColor, #aaa);
+        font-size: 12px;
+      }
+
+      .prompt-builder-conditional-item {
+        padding: 10px;
+        margin-bottom: 8px;
+        border: 1px solid var(--SmartThemeBorderColor, #333);
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .prompt-builder-conditional-item:hover {
+        background: var(--SmartThemeBorderColor, #444);
+        border-color: var(--SmartThemeQuoteColor, #3a3);
+      }
+
+      .prompt-builder-conditional-name {
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+
+      .prompt-builder-conditional-syntax {
+        display: block;
+        padding: 4px 8px;
+        background: var(--SmartThemeBlurTintColor, #1a1a1a);
+        border-radius: 4px;
+        font-size: 11px;
+        color: var(--SmartThemeQuoteColor, #3a3);
+        margin-bottom: 4px;
+      }
+
+      .prompt-builder-conditional-desc {
+        font-size: 11px;
+        color: var(--SmartThemeEmColor, #888);
+      }
+
+      .prompt-builder-transform-examples {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--SmartThemeEmColor, #888);
+      }
+
+      .prompt-builder-transform-examples code {
+        margin-right: 5px;
+        padding: 2px 4px;
+        background: var(--SmartThemeBlurTintColor, #2a2a2a);
+        border-radius: 3px;
+      }
+
+      .prompt-builder-conditionals-help {
+        padding: 10px;
+        background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.2));
+        border-radius: 4px;
+        margin-top: 10px;
+      }
+
+      .prompt-builder-conditionals-help h5 {
+        margin: 0 0 8px 0;
+        font-size: 12px;
+      }
+
+      .prompt-builder-conditionals-help ul {
+        margin: 0;
+        padding-left: 20px;
+        font-size: 11px;
+      }
+
+      .prompt-builder-conditionals-help li {
+        margin: 4px 0;
+      }
+
+      .prompt-builder-conditionals-help code {
+        padding: 2px 4px;
+        background: var(--SmartThemeBlurTintColor, #2a2a2a);
+        border-radius: 3px;
+        color: var(--SmartThemeQuoteColor, #3a3);
+      }
+
+      /* === NEW: Dialog Overlay === */
+      .prompt-builder-dialog-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 11000;
+      }
+
+      .prompt-builder-dialog {
+        width: 90%;
+        max-width: 500px;
+        max-height: 80vh;
+        background: var(--SmartThemeBodyColor, #222);
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        border-radius: 8px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .prompt-builder-dialog-wide {
+        max-width: 600px;
+      }
+
+      .prompt-builder-dialog-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        background: var(--SmartThemeBlurTintColor, #2a2a2a);
+        border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+      }
+
+      .prompt-builder-dialog-header h4 {
+        margin: 0;
+      }
+
+      .prompt-builder-dialog-close {
+        padding: 4px 8px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        color: inherit;
+        font-size: 18px;
+      }
+
+      .prompt-builder-dialog-content {
+        padding: 16px;
+        overflow-y: auto;
+        flex: 1;
+      }
+
+      .prompt-builder-dialog-desc {
+        color: var(--SmartThemeEmColor, #888);
+        margin-bottom: 15px;
+      }
+
+      .prompt-builder-dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 12px 16px;
+        background: var(--SmartThemeBlurTintColor, #2a2a2a);
+        border-top: 1px solid var(--SmartThemeBorderColor, #444);
+      }
+
+      /* === NEW: Form Rows === */
+      .prompt-builder-form-row {
+        margin-bottom: 15px;
+      }
+
+      .prompt-builder-form-row label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+      }
+
+      .prompt-builder-input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        border-radius: 4px;
+        background: var(--SmartThemeBlurTintColor, #1a1a1a);
+        color: inherit;
+      }
+
+      /* === NEW: Macro Params Form === */
+      .prompt-builder-macro-params-form h5 {
+        margin: 0 0 10px 0;
+        font-size: 13px;
+      }
+
+      .prompt-builder-param-row {
+        margin-bottom: 10px;
+      }
+
+      .prompt-builder-param-row label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .prompt-builder-param-name {
+        font-weight: 500;
+        font-size: 13px;
+      }
+
+      .prompt-builder-param-name .required {
+        color: #f44;
+      }
+
+      .prompt-builder-param-input {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        border-radius: 4px;
+        background: var(--SmartThemeBlurTintColor, #1a1a1a);
+        color: inherit;
+      }
+
+      /* === NEW: Macro Preview === */
+      .prompt-builder-macro-preview,
+      .prompt-builder-cond-preview {
+        margin-top: 15px;
+        padding: 10px;
+        background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.2));
+        border-radius: 4px;
+      }
+
+      .prompt-builder-macro-preview h5,
+      .prompt-builder-cond-preview h5 {
+        margin: 0 0 8px 0;
+        font-size: 12px;
+        color: var(--SmartThemeEmColor, #888);
+      }
+
+      .prompt-builder-macro-preview-text,
+      .prompt-builder-cond-preview-text {
+        margin: 0;
+        padding: 8px;
+        background: var(--SmartThemeBlurTintColor, #1a1a1a);
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 11px;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 150px;
+        overflow-y: auto;
+      }
+
+      /* === NEW: Macro List (Picker Dialog) === */
+      .prompt-builder-macro-list {
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      .prompt-builder-macro-list-item {
+        padding: 10px;
+        border-bottom: 1px solid var(--SmartThemeBorderColor, #333);
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .prompt-builder-macro-list-item:hover {
+        background: var(--SmartThemeBorderColor, #444);
+      }
+
+      .prompt-builder-macro-list-name {
+        font-weight: 500;
+      }
+
+      .prompt-builder-macro-list-category {
+        display: inline-block;
+        padding: 2px 6px;
+        margin-left: 8px;
+        background: var(--SmartThemeBorderColor, #444);
+        border-radius: 10px;
+        font-size: 10px;
+        color: var(--SmartThemeEmColor, #888);
+      }
+
+      .prompt-builder-macro-list-desc {
+        font-size: 12px;
+        color: var(--SmartThemeEmColor, #888);
+        margin-top: 4px;
+      }
+
+      /* === NEW: Stack Item Type Badge === */
+      .prompt-builder-item-type-badge {
+        font-size: 12px;
+        margin-left: 4px;
+      }
+
+      /* === NEW: Stack Actions (multiple buttons) === */
+      .prompt-builder-stack-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+
+      /* === NEW: Validation Feedback === */
+      .prompt-builder-validation {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+
+      .prompt-builder-validation-success {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--SmartThemeQuoteColor, #3a3);
+      }
+
+      .prompt-builder-validation-success .prompt-builder-validation-icon {
+        font-weight: bold;
+      }
+
+      .prompt-builder-validation-issues {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .prompt-builder-validation-warning {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #f90;
+      }
+
+      .prompt-builder-validation-error {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #f44;
+      }
+
+      .prompt-builder-validation-icon {
+        font-weight: bold;
+      }
+
+      .prompt-builder-validation-message {
+        font-weight: 500;
+      }
+
+      .prompt-builder-validation-details {
+        color: var(--SmartThemeEmColor, #888);
+        font-family: monospace;
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 200px;
+      }
+
+      /* === NEW: Import/Export Toolbar === */
+      .prompt-builder-toolbar {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .prompt-builder-toolbar-btn {
+        padding: 4px 10px;
+        border: 1px solid var(--SmartThemeBorderColor, #444);
+        border-radius: 4px;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        font-size: 12px;
+      }
+
+      .prompt-builder-toolbar-btn:hover {
+        background: var(--SmartThemeBorderColor, #444);
       }
     `;
 

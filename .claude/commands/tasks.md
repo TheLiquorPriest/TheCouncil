@@ -39,6 +39,7 @@ OPUS (complex/architectural):
   5.1 - Orchestration Core (new system)
   5.3 - Mode 3 Injection (ST API integration)
   6.1 - Integration Test (cross-system validation)
+  7.1 - Update Documentation
 
 SONNET (standard implementation):
   0.2 - Kernel Storage & Presets
@@ -55,7 +56,6 @@ HAIKU (simple/mechanical):
   4.3 - Pipeline Builder UI Updates
   6.2 - Cleanup & Deprecation Removal
   6.3 - Default Preset Validation
-  7.1 - Update Documentation
 ```
 
 ## Instructions

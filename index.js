@@ -24,14 +24,16 @@
 
   // ===== SYSTEM REFERENCES =====
   const Systems = {
-    // Core Systems
-    PromptBuilderSystem: null,
-    PipelineBuilderSystem: null,
-    OrchestrationSystem: null,
-    CurationSystem: null,
-    CharacterSystem: null,
-    PipelineSystem: null,
-    OutputManager: null,
+    // Core Systems (6-System Architecture)
+    PromptBuilderSystem: null,    // Token registry, prompt building
+    PipelineBuilderSystem: null,  // Pipeline/phase/action CRUD, agent/team/position management
+    OrchestrationSystem: null,    // Pipeline execution, output routing (3 modes)
+    CurationSystem: null,         // Knowledge base, CRUD/RAG pipelines
+    CharacterSystem: null,        // Character avatars from Curation data
+
+    // LEGACY (removed in Phase 6 cleanup):
+    // PipelineSystem: null,      // -> absorbed into OrchestrationSystem
+    // OutputManager: null,       // -> absorbed into OrchestrationSystem
 
     // Utilities
     Logger: null,
@@ -150,14 +152,15 @@
       // Schemas
       "schemas/systems.js",
 
-      // Core Systems
+      // Core Systems (6-System Architecture)
       "core/prompt-builder-system.js",
       "core/pipeline-builder-system.js", // Consolidated system with agent/team/pipeline management
-      "core/orchestration-system.js", // Response Orchestration
+      "core/orchestration-system.js", // Response Orchestration (3 modes: Synthesis, Compilation, Injection)
       "core/curation-system.js",
       "core/character-system.js",
-      "core/output-manager.js",
-      "core/pipeline-system.js",
+      // LEGACY (removed in Phase 6 cleanup):
+      // "core/output-manager.js",   // -> absorbed into OrchestrationSystem
+      // "core/pipeline-system.js",  // -> absorbed into OrchestrationSystem
 
       // UI Components
       "ui/components/prompt-builder.js",
@@ -200,15 +203,17 @@
     Systems.ApiClient = window.ApiClient || null;
     Systems.SystemSchemas = window.SystemSchemas || null;
 
+    // Core Systems (6-System Architecture)
     Systems.PromptBuilderSystem = window.PromptBuilderSystem || null;
     Systems.PipelineBuilderSystem = window.PipelineBuilderSystem || null;
     Systems.OrchestrationSystem = window.OrchestrationSystem || null;
     Systems.CurationSystem = window.CurationSystem || null;
     Systems.CharacterSystem = window.CharacterSystem || null;
-    Systems.PipelineSystem = window.PipelineSystem || null;
-    Systems.OutputManager = window.OutputManager || null;
+    // LEGACY (removed in Phase 6 cleanup):
+    // Systems.PipelineSystem = window.PipelineSystem || null;   // -> absorbed into OrchestrationSystem
+    // Systems.OutputManager = window.OutputManager || null;      // -> absorbed into OrchestrationSystem
 
-    // Systems.AgentsModal removed - agents managed via PipelineModal
+    // UI Modals (AgentsModal removed - agents managed via PipelineModal)
     Systems.CurationModal = window.CurationModal || null;
     Systems.CharacterModal = window.CharacterModal || null;
     Systems.PipelineModal = window.PipelineModal || null;
@@ -348,30 +353,10 @@
       logger.log("info", "CharacterSystem initialized");
     }
 
-    // Initialize Output Manager
-    if (Systems.OutputManager) {
-      Systems.OutputManager.init({
-        logger: Kernel.getModule("logger"),
-        curationSystem: Systems.CurationSystem,
-        promptBuilder: Kernel.getSystem("promptBuilder"),
-      });
-      Kernel.registerSystem("outputManager", Systems.OutputManager);
-      logger.log("info", "OutputManager initialized");
-    }
-
-    // Initialize Pipeline System (depends on all others)
-    if (Systems.PipelineSystem) {
-      Systems.PipelineSystem.init({
-        pipelineBuilderSystem: Systems.PipelineBuilderSystem,
-        curationSystem: Systems.CurationSystem,
-        characterSystem: Systems.CharacterSystem,
-        outputManager: Systems.OutputManager,
-        apiClient: Kernel.getModule("apiClient"),
-        promptBuilder: Kernel.getSystem("promptBuilder"),
-      });
-      Kernel.registerSystem("pipelineSystem", Systems.PipelineSystem);
-      logger.log("info", "PipelineSystem initialized");
-    }
+    // LEGACY: OutputManager and PipelineSystem have been absorbed into OrchestrationSystem
+    // Their functionality now lives in:
+    // - OrchestrationSystem: Pipeline execution, output routing, consolidation
+    // - PipelineBuilderSystem: Pipeline/phase/action CRUD, agent/team/position management
 
     // Initialize Orchestration System (Task 5.x - Response Orchestration with 3 modes)
     if (Systems.OrchestrationSystem) {
@@ -789,8 +774,13 @@
       }
 
       // Check if there's an active pipeline to run
-      const pipelines = Systems.PipelineSystem.getAllPipelines();
-      if (pipelines.length === 0) {
+      // Use PipelineBuilderSystem for pipeline definitions, OrchestrationSystem for execution
+      const pipelineBuilder = Systems.PipelineBuilderSystem;
+      const orchestration = Systems.OrchestrationSystem;
+      const pipelines = pipelineBuilder?.getAllPipelines?.() || [];
+      const pipelineList = Array.isArray(pipelines) ? pipelines : Object.values(pipelines);
+
+      if (pipelineList.length === 0) {
         logger.warn("No pipelines configured");
         if (Systems.NavModal) {
           Systems.NavModal.show();
@@ -799,14 +789,15 @@
       }
 
       // Run the first (or selected/active) pipeline
-      const activePipeline = pipelines[0]; // Could be enhanced to track "active" pipeline
+      const activePipeline = pipelineList[0]; // Could be enhanced to track "active" pipeline
       logger.log("info", `Running pipeline: ${activePipeline.name}`);
 
       try {
         button.classList.remove("fa-play-circle");
         button.classList.add("fa-spinner", "fa-spin");
 
-        await Systems.PipelineSystem.startRun(activePipeline.id, {
+        // Use OrchestrationSystem for pipeline execution
+        await orchestration.startRun(activePipeline.id, {
           userInput,
         });
 

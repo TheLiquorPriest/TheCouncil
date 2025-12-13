@@ -9,15 +9,15 @@
  * - Template resolution ({{token}} syntax with nested support)
  * - Stack-based prompt assembly
  * - Agent prompt building
- * - Macro system (future)
- * - Preset prompts (future)
+ * - Macro system (parameterized reusable prompt fragments)
+ * - Preset prompts (save/load prompt configurations)
  *
- * @version 2.0.0
+ * @version 2.1.0
  */
 
 const PromptBuilderSystem = {
   // ===== VERSION =====
-  VERSION: "2.0.0",
+  VERSION: "2.1.0",
 
   // ===== STATE =====
   _initialized: false,
@@ -38,6 +38,18 @@ const PromptBuilderSystem = {
    * @type {Map<string, Object>}
    */
   _tokens: new Map(),
+
+  /**
+   * Macro registry - stores all registered macros
+   * @type {Map<string, Object>}
+   */
+  _macros: new Map(),
+
+  /**
+   * Prompt presets registry - stores saved prompt configurations
+   * @type {Map<string, Object>}
+   */
+  _promptPresets: new Map(),
 
   /**
    * Token categories for organization
@@ -98,6 +110,78 @@ const PromptBuilderSystem = {
       priority: 100,
     },
   },
+
+  /**
+   * Macro categories for organization
+   */
+  MACRO_CATEGORIES: {
+    SYSTEM: {
+      id: "system",
+      name: "System Prompts",
+      description: "System prompt macros",
+    },
+    ROLE: {
+      id: "role",
+      name: "Role Prompts",
+      description: "Role definition macros",
+    },
+    ACTION: {
+      id: "action",
+      name: "Action Instructions",
+      description: "Action instruction macros",
+    },
+    COMMON: {
+      id: "common",
+      name: "Common Fragments",
+      description: "Commonly used prompt fragments",
+    },
+    CUSTOM: {
+      id: "custom",
+      name: "Custom Macros",
+      description: "User-defined custom macros",
+    },
+  },
+
+  /**
+   * Prompt preset categories
+   */
+  PRESET_CATEGORIES: {
+    SYSTEM: {
+      id: "system",
+      name: "System Prompts",
+      description: "System prompt presets",
+    },
+    ROLE: {
+      id: "role",
+      name: "Role Prompts",
+      description: "Role prompt presets",
+    },
+    ACTION: {
+      id: "action",
+      name: "Action Instructions",
+      description: "Action instruction presets",
+    },
+    CUSTOM: {
+      id: "custom",
+      name: "Custom Presets",
+      description: "User-defined presets",
+    },
+  },
+
+  /**
+   * Macro pattern: matches {{macro:id param="value"}}
+   */
+  MACRO_PATTERN: /\{\{macro:([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+([^}]+))?\}\}/g,
+
+  /**
+   * Conditional block pattern: {{#if condition}}...{{else}}...{{/if}}
+   */
+  CONDITIONAL_PATTERN: /\{\{#(if|unless)\s+([^}]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/\1\}\}/g,
+
+  /**
+   * Transform pipeline pattern: {{token | transform1 | transform2:arg}}
+   */
+  TRANSFORM_PATTERN: /\{\{([^|}]+)\s*\|([^}]+)\}\}/g,
 
   /**
    * ST native macros that should be passed through to ST's resolver
@@ -176,6 +260,12 @@ const PromptBuilderSystem = {
 
     // Initialize token registry with default tokens
     this._registerDefaultTokens();
+
+    // Initialize macro registry with default macros
+    this._registerDefaultMacros();
+
+    // Load persisted prompt presets from storage
+    this._loadPresets();
 
     this._initialized = true;
     this._log("info", `PromptBuilderSystem v${this.VERSION} initialized`);
@@ -319,6 +409,420 @@ const PromptBuilderSystem = {
     return this._tokens.has(tokenId);
   },
 
+  // ===== MACRO SYSTEM API =====
+
+  /**
+   * Register a macro (reusable prompt fragment)
+   * @param {Object} macro - Macro definition
+   * @param {string} macro.id - Unique macro identifier
+   * @param {string} macro.name - Human-readable name
+   * @param {string} macro.description - Macro description
+   * @param {string} macro.category - Macro category (system, role, action, common, custom)
+   * @param {string} macro.template - Template string with {{param}} placeholders
+   * @param {Array} macro.parameters - Array of parameter definitions
+   * @param {Object} macro.metadata - Additional metadata
+   * @returns {boolean} Success
+   */
+  registerMacro(macro) {
+    if (!macro || !macro.id) {
+      this._log("error", "Macro registration failed: missing id");
+      return false;
+    }
+
+    if (!macro.template) {
+      this._log("error", "Macro registration failed: missing template");
+      return false;
+    }
+
+    const macroDef = {
+      id: macro.id,
+      name: macro.name || macro.id,
+      description: macro.description || "",
+      category: macro.category || "custom",
+      template: macro.template,
+      parameters: this._normalizeParameters(macro.parameters || []),
+      metadata: macro.metadata || {},
+      registeredAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    this._macros.set(macro.id, macroDef);
+    this._log("debug", `Macro registered: ${macro.id}`);
+    this._emit("promptBuilder:macro:registered", { macro: macroDef });
+
+    return true;
+  },
+
+  /**
+   * Normalize parameter definitions
+   * @param {Array} parameters - Raw parameter definitions
+   * @returns {Array} Normalized parameters
+   */
+  _normalizeParameters(parameters) {
+    if (!Array.isArray(parameters)) {
+      return [];
+    }
+
+    return parameters.map((param) => {
+      if (typeof param === "string") {
+        return { name: param, required: false, default: "" };
+      }
+      return {
+        name: param.name || param.id,
+        required: param.required === true,
+        default: param.default !== undefined ? param.default : "",
+        description: param.description || "",
+        type: param.type || "string",
+      };
+    });
+  },
+
+  /**
+   * Unregister a macro
+   * @param {string} macroId - Macro ID to remove
+   * @returns {boolean} Success
+   */
+  unregisterMacro(macroId) {
+    if (!this._macros.has(macroId)) {
+      return false;
+    }
+
+    this._macros.delete(macroId);
+    this._log("debug", `Macro unregistered: ${macroId}`);
+    this._emit("promptBuilder:macro:unregistered", { macroId });
+
+    return true;
+  },
+
+  /**
+   * Get a macro definition by ID
+   * @param {string} macroId - Macro ID
+   * @returns {Object|null} Macro definition or null
+   */
+  getMacro(macroId) {
+    return this._macros.get(macroId) || null;
+  },
+
+  /**
+   * Get all macros, optionally filtered by category
+   * @param {string} category - Category ID to filter by (optional)
+   * @returns {Object[]} Array of macro definitions
+   */
+  getAllMacros(category = null) {
+    const macros = Array.from(this._macros.values());
+
+    if (category) {
+      return macros.filter((m) => m.category === category);
+    }
+
+    return macros;
+  },
+
+  /**
+   * Get macros grouped by category
+   * @returns {Object} Map of category -> macros[]
+   */
+  getMacrosByCategory() {
+    const result = {};
+
+    for (const macro of this._macros.values()) {
+      const cat = macro.category;
+      if (!result[cat]) {
+        result[cat] = [];
+      }
+      result[cat].push(macro);
+    }
+
+    return result;
+  },
+
+  /**
+   * Search macros by name, description, or ID
+   * @param {string} query - Search query
+   * @returns {Object[]} Matching macros
+   */
+  searchMacros(query) {
+    if (!query) {
+      return this.getAllMacros();
+    }
+
+    const lowerQuery = query.toLowerCase();
+    return Array.from(this._macros.values()).filter((macro) => {
+      return (
+        macro.id.toLowerCase().includes(lowerQuery) ||
+        macro.name.toLowerCase().includes(lowerQuery) ||
+        macro.description.toLowerCase().includes(lowerQuery)
+      );
+    });
+  },
+
+  /**
+   * Check if a macro is registered
+   * @param {string} macroId - Macro ID
+   * @returns {boolean}
+   */
+  hasMacro(macroId) {
+    return this._macros.has(macroId);
+  },
+
+  /**
+   * Expand a macro with parameters
+   * @param {string} macroId - Macro ID
+   * @param {Object} params - Parameter values
+   * @param {Object} context - Resolution context for nested tokens
+   * @returns {string} Expanded macro or empty string
+   */
+  expandMacro(macroId, params = {}, context = {}) {
+    const macro = this._macros.get(macroId);
+    if (!macro) {
+      this._log("warn", `Macro not found: ${macroId}`);
+      return "";
+    }
+
+    let result = macro.template;
+
+    // Apply parameter values
+    for (const param of macro.parameters) {
+      const value = params[param.name] !== undefined
+        ? params[param.name]
+        : param.default;
+
+      // Replace {{paramName}} in template
+      const paramPattern = new RegExp(`\\{\\{${param.name}\\}\\}`, "g");
+      result = result.replace(paramPattern, this._stringify(value));
+    }
+
+    // Resolve any remaining tokens in the expanded template
+    result = this.resolveTemplate(result, context);
+
+    this._log("debug", `Macro expanded: ${macroId}`);
+    this._emit("promptBuilder:macro:expanded", { macroId, params, result });
+
+    return result;
+  },
+
+  /**
+   * Update an existing macro
+   * @param {string} macroId - Macro ID
+   * @param {Object} updates - Updates to apply
+   * @returns {boolean} Success
+   */
+  updateMacro(macroId, updates) {
+    const macro = this._macros.get(macroId);
+    if (!macro) {
+      return false;
+    }
+
+    const updatedMacro = {
+      ...macro,
+      ...updates,
+      id: macroId, // Prevent ID change
+      updatedAt: Date.now(),
+    };
+
+    if (updates.parameters) {
+      updatedMacro.parameters = this._normalizeParameters(updates.parameters);
+    }
+
+    this._macros.set(macroId, updatedMacro);
+    this._log("debug", `Macro updated: ${macroId}`);
+    this._emit("promptBuilder:macro:updated", { macro: updatedMacro });
+
+    return true;
+  },
+
+  // ===== PROMPT PRESET API =====
+
+  /**
+   * Save a prompt preset
+   * @param {Object} preset - Preset definition
+   * @param {string} preset.id - Unique preset identifier (auto-generated if not provided)
+   * @param {string} preset.name - Human-readable name
+   * @param {string} preset.description - Preset description
+   * @param {string} preset.category - Preset category (system, role, action, custom)
+   * @param {Object} preset.config - Prompt configuration
+   * @param {Object} preset.metadata - Additional metadata
+   * @returns {Object|null} Saved preset or null on failure
+   */
+  savePromptPreset(preset) {
+    if (!preset || !preset.name) {
+      this._log("error", "Preset save failed: missing name");
+      return null;
+    }
+
+    const id = preset.id || `preset_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    const presetDef = {
+      id,
+      name: preset.name,
+      description: preset.description || "",
+      category: preset.category || "custom",
+      config: preset.config || {
+        mode: "custom",
+        customPrompt: "",
+        tokens: [],
+      },
+      metadata: {
+        ...preset.metadata,
+        createdAt: preset.metadata?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+        tags: preset.metadata?.tags || [],
+      },
+    };
+
+    this._promptPresets.set(id, presetDef);
+    this._log("info", `Prompt preset saved: ${preset.name}`);
+    this._emit("promptBuilder:preset:saved", { preset: presetDef });
+
+    // Persist to storage if kernel is available
+    this._persistPresets();
+
+    return presetDef;
+  },
+
+  /**
+   * Load a prompt preset by ID
+   * @param {string} presetId - Preset ID
+   * @returns {Object|null} Preset definition or null
+   */
+  loadPromptPreset(presetId) {
+    const preset = this._promptPresets.get(presetId);
+    if (preset) {
+      this._emit("promptBuilder:preset:loaded", { preset });
+    }
+    return preset || null;
+  },
+
+  /**
+   * Get all prompt presets, optionally filtered by category
+   * @param {string} category - Category ID to filter by (optional)
+   * @returns {Object[]} Array of preset definitions
+   */
+  getAllPromptPresets(category = null) {
+    const presets = Array.from(this._promptPresets.values());
+
+    if (category) {
+      return presets.filter((p) => p.category === category);
+    }
+
+    return presets;
+  },
+
+  /**
+   * Get prompt presets grouped by category
+   * @returns {Object} Map of category -> presets[]
+   */
+  getPresetsByCategory() {
+    const result = {};
+
+    for (const preset of this._promptPresets.values()) {
+      const cat = preset.category;
+      if (!result[cat]) {
+        result[cat] = [];
+      }
+      result[cat].push(preset);
+    }
+
+    return result;
+  },
+
+  /**
+   * Search prompt presets by name, description, or tags
+   * @param {string} query - Search query
+   * @returns {Object[]} Matching presets
+   */
+  searchPresets(query) {
+    if (!query) {
+      return this.getAllPromptPresets();
+    }
+
+    const lowerQuery = query.toLowerCase();
+    return Array.from(this._promptPresets.values()).filter((preset) => {
+      const matchesName = preset.name.toLowerCase().includes(lowerQuery);
+      const matchesDesc = preset.description.toLowerCase().includes(lowerQuery);
+      const matchesTags = preset.metadata?.tags?.some(
+        (tag) => tag.toLowerCase().includes(lowerQuery)
+      );
+      return matchesName || matchesDesc || matchesTags;
+    });
+  },
+
+  /**
+   * Update an existing prompt preset
+   * @param {string} presetId - Preset ID
+   * @param {Object} updates - Updates to apply
+   * @returns {boolean} Success
+   */
+  updatePromptPreset(presetId, updates) {
+    const preset = this._promptPresets.get(presetId);
+    if (!preset) {
+      return false;
+    }
+
+    const updatedPreset = {
+      ...preset,
+      ...updates,
+      id: presetId, // Prevent ID change
+      metadata: {
+        ...preset.metadata,
+        ...updates.metadata,
+        updatedAt: Date.now(),
+      },
+    };
+
+    this._promptPresets.set(presetId, updatedPreset);
+    this._log("debug", `Preset updated: ${presetId}`);
+    this._emit("promptBuilder:preset:updated", { preset: updatedPreset });
+
+    this._persistPresets();
+
+    return true;
+  },
+
+  /**
+   * Delete a prompt preset
+   * @param {string} presetId - Preset ID to delete
+   * @returns {boolean} Success
+   */
+  deletePromptPreset(presetId) {
+    if (!this._promptPresets.has(presetId)) {
+      return false;
+    }
+
+    this._promptPresets.delete(presetId);
+    this._log("debug", `Preset deleted: ${presetId}`);
+    this._emit("promptBuilder:preset:deleted", { presetId });
+
+    this._persistPresets();
+
+    return true;
+  },
+
+  /**
+   * Persist presets to storage
+   */
+  _persistPresets() {
+    if (this._kernel && this._kernel.setStorage) {
+      const presetsData = Array.from(this._promptPresets.values());
+      this._kernel.setStorage("promptBuilder.presets", presetsData);
+    }
+  },
+
+  /**
+   * Load presets from storage
+   */
+  _loadPresets() {
+    if (this._kernel && this._kernel.getStorage) {
+      const presetsData = this._kernel.getStorage("promptBuilder.presets");
+      if (Array.isArray(presetsData)) {
+        for (const preset of presetsData) {
+          this._promptPresets.set(preset.id, preset);
+        }
+        this._log("info", `Loaded ${presetsData.length} prompt presets from storage`);
+      }
+    }
+  },
+
   // ===== TOKEN RESOLUTION =====
 
   /**
@@ -345,12 +849,16 @@ const PromptBuilderSystem = {
 
   /**
    * Resolve all tokens in a template string
+   * Supports: {{token}}, {{macro:id param="value"}}, {{#if}}...{{/if}}, {{token | transform}}
    * @param {string} template - Template string with {{tokens}}
    * @param {Object} context - Resolution context
    * @param {Object} options - Resolution options
    * @param {boolean} options.preserveUnresolved - Keep unresolved tokens as-is (default: true)
    * @param {string} options.unresolvedPlaceholder - Placeholder for unresolved tokens
    * @param {boolean} options.passSTMacros - Pass ST macros through unresolved (default: true)
+   * @param {boolean} options.expandMacros - Expand macro invocations (default: true)
+   * @param {boolean} options.processConditionals - Process conditional blocks (default: true)
+   * @param {boolean} options.applyTransforms - Apply transform pipelines (default: true)
    * @returns {string} Resolved template
    */
   resolveTemplate(template, context = {}, options = {}) {
@@ -362,9 +870,332 @@ const PromptBuilderSystem = {
       preserveUnresolved: options.preserveUnresolved !== false,
       unresolvedPlaceholder: options.unresolvedPlaceholder || "",
       passSTMacros: options.passSTMacros !== false,
+      expandMacros: options.expandMacros !== false,
+      processConditionals: options.processConditionals !== false,
+      applyTransforms: options.applyTransforms !== false,
     };
 
-    // Use fresh regex instance for each call (global flag requires this)
+    let result = template;
+
+    // Step 1: Process conditional blocks {{#if}}...{{else}}...{{/if}}
+    if (opts.processConditionals) {
+      result = this._processConditionals(result, context, opts);
+    }
+
+    // Step 2: Expand macros {{macro:id param="value"}}
+    if (opts.expandMacros) {
+      result = this._expandMacrosInTemplate(result, context, opts);
+    }
+
+    // Step 3: Process transform pipelines {{token | transform}}
+    if (opts.applyTransforms) {
+      result = this._processTransformPipelines(result, context, opts);
+    }
+
+    // Step 4: Resolve standard tokens {{token}}
+    result = this._resolveStandardTokens(result, context, opts);
+
+    return result;
+  },
+
+  /**
+   * Process conditional blocks in template
+   * @param {string} template - Template with conditionals
+   * @param {Object} context - Resolution context
+   * @param {Object} opts - Options
+   * @returns {string} Processed template
+   */
+  _processConditionals(template, context, opts) {
+    // Process {{#if condition}}...{{else}}...{{/if}} and {{#unless}}
+    const pattern = new RegExp(this.CONDITIONAL_PATTERN.source, "g");
+
+    return template.replace(pattern, (match, type, condition, thenContent, elseContent) => {
+      try {
+        const conditionResult = this._evaluateConditionExpression(condition.trim(), context);
+        const shouldShow = type === "if" ? conditionResult : !conditionResult;
+
+        if (shouldShow) {
+          return thenContent ? this.resolveTemplate(thenContent, context, opts) : "";
+        } else {
+          return elseContent ? this.resolveTemplate(elseContent, context, opts) : "";
+        }
+      } catch (error) {
+        this._log("warn", `Error processing conditional "${condition}":`, error);
+        return opts.preserveUnresolved ? match : "";
+      }
+    });
+  },
+
+  /**
+   * Evaluate a condition expression
+   * Supports: simple token truthiness, comparison operators, boolean operators
+   * @param {string} condition - Condition expression
+   * @param {Object} context - Resolution context
+   * @returns {boolean} Condition result
+   */
+  _evaluateConditionExpression(condition, context) {
+    // Handle comparison operators: ==, !=, <, >, <=, >=
+    const comparisonMatch = condition.match(/^(.+?)\s*(==|!=|<=|>=|<|>)\s*(.+)$/);
+    if (comparisonMatch) {
+      const [, left, operator, right] = comparisonMatch;
+      const leftValue = this._resolveConditionValue(left.trim(), context);
+      const rightValue = this._resolveConditionValue(right.trim(), context);
+
+      switch (operator) {
+        case "==": return leftValue == rightValue;
+        case "!=": return leftValue != rightValue;
+        case "<": return leftValue < rightValue;
+        case ">": return leftValue > rightValue;
+        case "<=": return leftValue <= rightValue;
+        case ">=": return leftValue >= rightValue;
+      }
+    }
+
+    // Handle boolean operators: && and ||
+    if (condition.includes("&&")) {
+      const parts = condition.split("&&").map((p) => p.trim());
+      return parts.every((p) => this._evaluateConditionExpression(p, context));
+    }
+
+    if (condition.includes("||")) {
+      const parts = condition.split("||").map((p) => p.trim());
+      return parts.some((p) => this._evaluateConditionExpression(p, context));
+    }
+
+    // Handle negation: !condition
+    if (condition.startsWith("!")) {
+      return !this._evaluateConditionExpression(condition.slice(1).trim(), context);
+    }
+
+    // Simple truthiness check
+    const value = this._resolveConditionValue(condition, context);
+    return !!value;
+  },
+
+  /**
+   * Resolve a value in condition expression
+   * @param {string} expr - Expression (token path or literal)
+   * @param {Object} context - Resolution context
+   * @returns {any} Resolved value
+   */
+  _resolveConditionValue(expr, context) {
+    // Check for string literals (quoted)
+    if ((expr.startsWith('"') && expr.endsWith('"')) ||
+        (expr.startsWith("'") && expr.endsWith("'"))) {
+      return expr.slice(1, -1);
+    }
+
+    // Check for number literals
+    const numValue = Number(expr);
+    if (!isNaN(numValue)) {
+      return numValue;
+    }
+
+    // Check for boolean literals
+    if (expr === "true") return true;
+    if (expr === "false") return false;
+    if (expr === "null") return null;
+    if (expr === "undefined") return undefined;
+
+    // Treat as token path
+    return this._resolveFromContext(expr, context);
+  },
+
+  /**
+   * Expand macros in template
+   * @param {string} template - Template with macros
+   * @param {Object} context - Resolution context
+   * @param {Object} opts - Options
+   * @returns {string} Template with expanded macros
+   */
+  _expandMacrosInTemplate(template, context, opts) {
+    const pattern = new RegExp(this.MACRO_PATTERN.source, "g");
+
+    return template.replace(pattern, (match, macroId, paramsStr) => {
+      try {
+        const params = this._parseMacroParams(paramsStr || "");
+        const expanded = this.expandMacro(macroId, params, context);
+
+        if (!expanded && this.hasMacro(macroId)) {
+          return expanded; // Macro exists but returned empty
+        } else if (!expanded) {
+          return opts.preserveUnresolved ? match : "";
+        }
+
+        return expanded;
+      } catch (error) {
+        this._log("warn", `Error expanding macro "${macroId}":`, error);
+        return opts.preserveUnresolved ? match : "";
+      }
+    });
+  },
+
+  /**
+   * Parse macro parameters from string
+   * @param {string} paramsStr - Parameters string (e.g., 'name="Alice" age=25')
+   * @returns {Object} Parsed parameters
+   */
+  _parseMacroParams(paramsStr) {
+    const params = {};
+    if (!paramsStr) return params;
+
+    // Match key="value" or key='value' or key=value patterns
+    const paramPattern = /(\w+)=(?:"([^"]*)"|'([^']*)'|(\S+))/g;
+    let match;
+
+    while ((match = paramPattern.exec(paramsStr)) !== null) {
+      const key = match[1];
+      const value = match[2] !== undefined ? match[2] :
+                    match[3] !== undefined ? match[3] : match[4];
+      params[key] = value;
+    }
+
+    return params;
+  },
+
+  /**
+   * Process transform pipelines
+   * @param {string} template - Template with transforms
+   * @param {Object} context - Resolution context
+   * @param {Object} opts - Options
+   * @returns {string} Template with transforms applied
+   */
+  _processTransformPipelines(template, context, opts) {
+    const pattern = new RegExp(this.TRANSFORM_PATTERN.source, "g");
+
+    return template.replace(pattern, (match, tokenExpr, transformsStr) => {
+      try {
+        // Resolve the token first
+        const tokenPath = tokenExpr.trim();
+        let value = this._resolveFromContext(tokenPath, context);
+
+        if (value === undefined) {
+          // Try as a registered token
+          value = this.resolveToken(tokenPath, context);
+        }
+
+        if (value === undefined) {
+          return opts.preserveUnresolved ? match : "";
+        }
+
+        // Parse and apply transforms
+        const transforms = transformsStr.split("|").map((t) => t.trim());
+        let result = this._stringify(value);
+
+        for (const transform of transforms) {
+          result = this._applySingleTransform(result, transform);
+        }
+
+        return result;
+      } catch (error) {
+        this._log("warn", `Error processing transform pipeline "${match}":`, error);
+        return opts.preserveUnresolved ? match : "";
+      }
+    });
+  },
+
+  /**
+   * Apply a single transform to a value
+   * @param {string} value - Value to transform
+   * @param {string} transformExpr - Transform expression (e.g., "truncate:100")
+   * @returns {string} Transformed value
+   */
+  _applySingleTransform(value, transformExpr) {
+    const [name, ...args] = transformExpr.split(":");
+    const transformName = name.trim().toLowerCase();
+    const arg = args.join(":").trim();
+
+    switch (transformName) {
+      case "uppercase":
+        return value.toUpperCase();
+      case "lowercase":
+        return value.toLowerCase();
+      case "capitalize":
+        return value.charAt(0).toUpperCase() + value.slice(1);
+      case "titlecase":
+        return value.replace(/\b\w/g, (c) => c.toUpperCase());
+      case "trim":
+        return value.trim();
+      case "truncate":
+        const maxLen = parseInt(arg, 10) || 100;
+        return value.length > maxLen ? value.substring(0, maxLen) + "..." : value;
+      case "wrap":
+        const wrapChar = arg || '"';
+        return wrapChar + value + wrapChar;
+      case "default":
+        return value || arg;
+      case "replace":
+        const [from, to] = arg.split(",").map((s) => s.trim());
+        return value.replace(new RegExp(from, "g"), to || "");
+      case "json":
+        try {
+          return JSON.stringify(JSON.parse(value));
+        } catch {
+          return value;
+        }
+      case "pretty":
+        try {
+          return JSON.stringify(JSON.parse(value), null, 2);
+        } catch {
+          return value;
+        }
+      case "first":
+        try {
+          const arr = JSON.parse(value);
+          return Array.isArray(arr) ? this._stringify(arr[0]) : value;
+        } catch {
+          return value.split(",")[0]?.trim() || value;
+        }
+      case "last":
+        try {
+          const arr = JSON.parse(value);
+          return Array.isArray(arr) ? this._stringify(arr[arr.length - 1]) : value;
+        } catch {
+          const parts = value.split(",");
+          return parts[parts.length - 1]?.trim() || value;
+        }
+      case "join":
+        try {
+          const arr = JSON.parse(value);
+          return Array.isArray(arr) ? arr.join(arg || ", ") : value;
+        } catch {
+          return value;
+        }
+      case "count":
+        try {
+          const arr = JSON.parse(value);
+          return Array.isArray(arr) ? String(arr.length) : String(value.length);
+        } catch {
+          return String(value.length);
+        }
+      case "reverse":
+        return value.split("").reverse().join("");
+      case "base64":
+        try {
+          return btoa(value);
+        } catch {
+          return value;
+        }
+      case "unbase64":
+        try {
+          return atob(value);
+        } catch {
+          return value;
+        }
+      default:
+        this._log("debug", `Unknown transform: ${transformName}`);
+        return value;
+    }
+  },
+
+  /**
+   * Resolve standard tokens (after macros, conditionals, transforms)
+   * @param {string} template - Template with tokens
+   * @param {Object} context - Resolution context
+   * @param {Object} opts - Options
+   * @returns {string} Resolved template
+   */
+  _resolveStandardTokens(template, context, opts) {
     const pattern = new RegExp(this.TOKEN_PATTERN.source, "g");
 
     return template.replace(pattern, (match, tokenPath, args) => {
@@ -1164,6 +1995,219 @@ const PromptBuilderSystem = {
     this._log("debug", `Registered ${this._tokens.size} default tokens`);
   },
 
+  // ===== DEFAULT MACRO REGISTRATION =====
+
+  /**
+   * Register default macros on initialization
+   */
+  _registerDefaultMacros() {
+    const defaultMacros = [
+      // System prompt macros
+      {
+        id: "system_base",
+        name: "Base System Prompt",
+        description: "Standard base system prompt template",
+        category: "system",
+        template: "You are {{agent.name}}, {{agent.description}}.\n\n{{#if position.roleDescription}}Your role: {{position.roleDescription}}{{/if}}",
+        parameters: [],
+      },
+      {
+        id: "system_creative_writer",
+        name: "Creative Writer System",
+        description: "System prompt for creative writing agents",
+        category: "system",
+        template: `You are {{name}}, an expert creative writer specializing in {{specialty}}.
+
+Your writing style:
+- Voice: {{voice}}
+- Tone: {{tone}}
+- Focus: {{focus}}
+
+{{#if constraints}}Constraints: {{constraints}}{{/if}}`,
+        parameters: [
+          { name: "name", required: true, default: "the Writer" },
+          { name: "specialty", required: false, default: "narrative fiction" },
+          { name: "voice", required: false, default: "engaging and vivid" },
+          { name: "tone", required: false, default: "appropriate to the content" },
+          { name: "focus", required: false, default: "character and plot development" },
+          { name: "constraints", required: false, default: "" },
+        ],
+      },
+      {
+        id: "system_analyst",
+        name: "Analyst System",
+        description: "System prompt for analysis agents",
+        category: "system",
+        template: `You are {{name}}, a skilled analyst focusing on {{domain}}.
+
+Your approach:
+- Methodology: {{methodology}}
+- Output format: {{outputFormat}}
+
+{{#if additionalInstructions}}Additional instructions: {{additionalInstructions}}{{/if}}`,
+        parameters: [
+          { name: "name", required: true, default: "the Analyst" },
+          { name: "domain", required: false, default: "content analysis" },
+          { name: "methodology", required: false, default: "systematic and thorough" },
+          { name: "outputFormat", required: false, default: "structured analysis" },
+          { name: "additionalInstructions", required: false, default: "" },
+        ],
+      },
+
+      // Role prompt macros
+      {
+        id: "role_team_leader",
+        name: "Team Leader Role",
+        description: "Role prompt for team leaders",
+        category: "role",
+        template: `As {{team.name}} Team Leader, you are responsible for:
+1. Coordinating team efforts
+2. Ensuring quality standards
+3. Synthesizing team contributions
+4. Making final decisions for your team's output
+
+Your team members: {{team.members | join}}`,
+        parameters: [],
+      },
+      {
+        id: "role_reviewer",
+        name: "Reviewer Role",
+        description: "Role prompt for review/editing positions",
+        category: "role",
+        template: `As a reviewer, your task is to critically evaluate {{subject}}.
+
+Focus areas:
+{{#if focusAreas}}- {{focusAreas}}{{else}}- Quality
+- Accuracy
+- Coherence
+- Style{{/if}}
+
+Provide constructive feedback with specific suggestions for improvement.`,
+        parameters: [
+          { name: "subject", required: true, default: "the content" },
+          { name: "focusAreas", required: false, default: "" },
+        ],
+      },
+
+      // Action instruction macros
+      {
+        id: "action_analyze",
+        name: "Analysis Action",
+        description: "Standard analysis action instruction",
+        category: "action",
+        template: `Analyze the following {{contentType}}:
+
+{{input}}
+
+Provide a detailed analysis covering:
+{{#if analysisPoints}}{{analysisPoints}}{{else}}- Key themes and elements
+- Strengths and weaknesses
+- Opportunities for improvement{{/if}}`,
+        parameters: [
+          { name: "contentType", required: false, default: "content" },
+          { name: "analysisPoints", required: false, default: "" },
+        ],
+      },
+      {
+        id: "action_draft",
+        name: "Drafting Action",
+        description: "Standard drafting action instruction",
+        category: "action",
+        template: `Based on the following context:
+
+{{input}}
+
+Write a {{outputType}} that:
+{{#if requirements}}- {{requirements}}{{else}}- Is engaging and well-structured
+- Maintains consistency with established elements
+- Advances the narrative appropriately{{/if}}
+
+{{#if style}}Style notes: {{style}}{{/if}}
+{{#if wordCount}}Target length: approximately {{wordCount}} words{{/if}}`,
+        parameters: [
+          { name: "outputType", required: false, default: "draft" },
+          { name: "requirements", required: false, default: "" },
+          { name: "style", required: false, default: "" },
+          { name: "wordCount", required: false, default: "" },
+        ],
+      },
+      {
+        id: "action_revise",
+        name: "Revision Action",
+        description: "Standard revision action instruction",
+        category: "action",
+        template: `Revise the following draft based on the feedback provided:
+
+Original Draft:
+{{input}}
+
+{{#if feedback}}Feedback:
+{{feedback}}{{/if}}
+
+Make improvements while preserving the core content and intent.
+{{#if preserveElements}}Elements to preserve: {{preserveElements}}{{/if}}`,
+        parameters: [
+          { name: "feedback", required: false, default: "" },
+          { name: "preserveElements", required: false, default: "" },
+        ],
+      },
+
+      // Common fragment macros
+      {
+        id: "context_summary",
+        name: "Context Summary Block",
+        description: "Formatted context summary",
+        category: "common",
+        template: `=== Context ===
+{{#if char}}Character: {{char}}{{/if}}
+{{#if scenario}}Scenario: {{scenario}}{{/if}}
+{{#if previousOutput}}Previous output: {{previousOutput | truncate:500}}{{/if}}
+===============`,
+        parameters: [
+          { name: "previousOutput", required: false, default: "" },
+        ],
+      },
+      {
+        id: "output_format",
+        name: "Output Format Block",
+        description: "Standard output format instructions",
+        category: "common",
+        template: `Output Format:
+{{#if format}}{{format}}{{else}}Provide your response in clear, well-organized prose.{{/if}}
+
+{{#if includeReasoning}}Include your reasoning process.{{/if}}
+{{#if jsonOutput}}Format as valid JSON.{{/if}}`,
+        parameters: [
+          { name: "format", required: false, default: "" },
+          { name: "includeReasoning", required: false, default: "" },
+          { name: "jsonOutput", required: false, default: "" },
+        ],
+      },
+      {
+        id: "thinking_block",
+        name: "Thinking/Reasoning Block",
+        description: "Prompt for explicit reasoning",
+        category: "common",
+        template: `Before responding, think through the following:
+{{#if thinkingPoints}}{{thinkingPoints}}{{else}}1. What is the core objective?
+2. What key information do I have?
+3. What are the constraints or requirements?
+4. What approach will best achieve the goal?{{/if}}
+
+Then provide your response.`,
+        parameters: [
+          { name: "thinkingPoints", required: false, default: "" },
+        ],
+      },
+    ];
+
+    for (const macro of defaultMacros) {
+      this.registerMacro(macro);
+    }
+
+    this._log("debug", `Registered ${this._macros.size} default macros`);
+  },
+
   // ===== PRESET INTEGRATION =====
 
   /**
@@ -1176,6 +2220,7 @@ const PromptBuilderSystem = {
     const result = {
       tokensRegistered: 0,
       macrosRegistered: 0,
+      presetsLoaded: 0,
     };
 
     // Register custom tokens from preset
@@ -1187,13 +2232,25 @@ const PromptBuilderSystem = {
       }
     }
 
-    // Future: Register macros from preset
+    // Register macros from preset
     if (preset.macros && Array.isArray(preset.macros)) {
-      // TODO: Implement macro registration
-      result.macrosRegistered = preset.macros.length;
+      for (const macro of preset.macros) {
+        if (this.registerMacro({ ...macro, category: macro.category || "custom" })) {
+          result.macrosRegistered++;
+        }
+      }
     }
 
-    this._log("info", `Preset applied: ${result.tokensRegistered} tokens registered`);
+    // Load prompt presets from preset data
+    if (preset.promptPresets && Array.isArray(preset.promptPresets)) {
+      for (const promptPreset of preset.promptPresets) {
+        if (this.savePromptPreset(promptPreset)) {
+          result.presetsLoaded++;
+        }
+      }
+    }
+
+    this._log("info", `Preset applied: ${result.tokensRegistered} tokens, ${result.macrosRegistered} macros, ${result.presetsLoaded} presets`);
     return result;
   },
 
@@ -1211,9 +2268,31 @@ const PromptBuilderSystem = {
       metadata: t.metadata,
     }));
 
+    // Get custom macros only
+    const customMacros = this.getAllMacros("custom").map((m) => ({
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      category: m.category,
+      template: m.template,
+      parameters: m.parameters,
+      metadata: m.metadata,
+    }));
+
+    // Get all prompt presets
+    const promptPresets = this.getAllPromptPresets().map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      category: p.category,
+      config: p.config,
+      metadata: p.metadata,
+    }));
+
     return {
       customTokens,
-      // Future: macros, presets, etc.
+      macros: customMacros,
+      promptPresets,
     };
   },
 
@@ -1225,16 +2304,32 @@ const PromptBuilderSystem = {
    */
   getSummary() {
     const tokensByCategory = this.getTokensByCategory();
-    const categoryCounts = {};
+    const tokenCategoryCounts = {};
     for (const [cat, tokens] of Object.entries(tokensByCategory)) {
-      categoryCounts[cat] = tokens.length;
+      tokenCategoryCounts[cat] = tokens.length;
+    }
+
+    const macrosByCategory = this.getMacrosByCategory();
+    const macroCategoryCounts = {};
+    for (const [cat, macros] of Object.entries(macrosByCategory)) {
+      macroCategoryCounts[cat] = macros.length;
+    }
+
+    const presetsByCategory = this.getPresetsByCategory();
+    const presetCategoryCounts = {};
+    for (const [cat, presets] of Object.entries(presetsByCategory)) {
+      presetCategoryCounts[cat] = presets.length;
     }
 
     return {
       version: this.VERSION,
       initialized: this._initialized,
       totalTokens: this._tokens.size,
-      tokensByCategory: categoryCounts,
+      tokensByCategory: tokenCategoryCounts,
+      totalMacros: this._macros.size,
+      macrosByCategory: macroCategoryCounts,
+      totalPresets: this._promptPresets.size,
+      presetsByCategory: presetCategoryCounts,
     };
   },
 

@@ -1,21 +1,26 @@
 # The Council
 
-**A Multi-LLM Story Production Pipeline for SillyTavern**
+**A Multi-Agent Story Production Pipeline for SillyTavern**
 
-The Council is a comprehensive multi-agent orchestration system that transforms SillyTavern's response generation into a full editorial production pipeline. It coordinates multiple specialized AI agents across different teams to produce high-quality, consistent narrative responses.
+The Council is a comprehensive multi-agent orchestration system that transforms SillyTavern's response generation into a full editorial production pipeline. It coordinates multiple specialized AI agents to produce high-quality, consistent narrative responses.
+
+**Version:** 2.1.0-alpha
+**Status:** Alpha Complete
 
 ## Features
 
-- **Multi-Agent Architecture**: 20+ specialized agents organized into teams (Prose, Plot, World, Character, Environment, Record Keeping)
-- **Pipeline-Based Processing**: 14 distinct phases from context retrieval to final output
-- **Persistent Data Stores**: Track story state, characters, locations, plot lines, and more
-- **Topological Indexing**: Efficient context retrieval and relationship mapping
-- **Dynamic Character Agents**: Automatically create agents for present characters
-- **Subject Matter Experts (SMEs)**: Dynamically spin up domain experts as needed
+- **Six-System Architecture**: Modular design with clear separation of concerns
+- **Multi-Agent Orchestration**: Coordinate multiple LLM agents in configurable pipelines
+- **Three Orchestration Modes**: Synthesis, Compilation, and Injection
+- **Advanced Prompt Builder**: Council Macros, conditionals, transforms, live validation
+- **Curation System**: Topological data stores with CRUD/RAG pipelines
+- **Character System**: Dynamic avatar agents from character data
 - **User Gavel System**: Review and edit at key decision points
 - **Full ST Integration**: Uses SillyTavern's APIs for seamless chat integration
 
-## Installation
+## Quick Start
+
+### Installation
 
 1. Navigate to your SillyTavern installation's extensions folder:
    ```
@@ -28,136 +33,157 @@ The Council is a comprehensive multi-agent orchestration system that transforms 
 
 4. The Council button (⚖️) should appear next to your send button
 
+### Basic Usage
+
+1. Click the **⚖️ Council** button to open the navigation panel
+2. Configure your pipeline in the **Pipeline** tab
+3. Set up agents, positions, and teams
+4. Run the pipeline using the **Execute** button
+5. Review and edit at User Gavel points
+
 ## Architecture
 
-### Module Structure
+### Six Systems
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           THE COUNCIL KERNEL                                 │
+│  (EventBus, StateManager, Storage, Presets, Hooks, UI Components)           │
+└────────────────────────────────────┬────────────────────────────────────────┘
+          ┌──────────────────────────┼──────────────────────────┐
+          ▼                          ▼                          ▼
+┌─────────────────┐      ┌─────────────────────┐      ┌─────────────────┐
+│ CURATION SYSTEM │      │ PROMPT BUILDER SYS  │      │ CHARACTER SYSTEM│
+│ (Topologists)   │      │ (Macros/Tokens)     │      │ (Avatars)       │
+└────────┬────────┘      └──────────┬──────────┘      └────────┬────────┘
+         └───────────────────────────┼─────────────────────────┘
+┌────────────────────────────────────┴────────────────────────────────────────┐
+│              RESPONSE PIPELINE BUILDER SYSTEM (Editorial Agents)            │
+└────────────────────────────────────┬────────────────────────────────────────┘
+┌────────────────────────────────────┴────────────────────────────────────────┐
+│                      RESPONSE ORCHESTRATION SYSTEM                           │
+│              (Synthesis | Compilation | Injection modes)                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### File Structure
 
 ```
 TheCouncil/
-├── index.js                 # Entry point, module loader, ST integration
-├── manifest.json            # Extension manifest
-├── modules/
-│   ├── config.js            # Agent, phase, thread, store definitions
-│   ├── state.js             # Global state management & events
-│   ├── stores.js            # Persistent storage CRUD operations
-│   ├── context.js           # RAG system - retrieval & processing
-│   ├── topology.js          # Topological indexing & relationship mapping
-│   ├── generation.js        # LLM API calls (main + custom endpoints)
-│   ├── agents.js            # Agent management & prompt building
-│   ├── pipeline.js          # Pipeline orchestration
-│   └── ui.js                # UI components & DOM management
-├── styles/
-│   └── main.css             # Stylesheet reference
-└── data/
-    └── stories/             # Per-story persistent data
+├── index.js                    # Entry point
+├── core/                       # System implementations
+│   ├── kernel.js               # The Council Kernel
+│   ├── curation-system.js      # Curation System
+│   ├── character-system.js     # Character System
+│   ├── prompt-builder-system.js # Prompt Builder System
+│   ├── pipeline-builder-system.js # Pipeline Builder System
+│   └── orchestration-system.js # Orchestration System
+├── ui/                         # User interface
+│   ├── nav-modal.js            # Navigation modal
+│   └── components/             # Reusable UI components
+├── data/presets/               # Pipeline presets
+└── docs/                       # Documentation
 ```
 
-### Agent Teams
+## Orchestration Modes
 
-| Team | Lead | Specialists |
-|------|------|-------------|
-| **Leadership** | Publisher | - |
-| **Prose** | Editor | Scene Writer, Dialogue Writer, Action Writer, Character Writer |
-| **Plot** | Plot Architect | Macro Plot, Micro Plot, Continuity Specialist |
-| **World** | Scholar | Lore Specialist, Story Specialist |
-| **Character** | Character Director | Dynamic character agents |
-| **Environment** | Environment Director | Interior Specialist, Exterior Specialist |
-| **Record Keeping** | Archivist | Story/Lore/Character/Scene/Location Topologists |
+| Mode | Purpose | Use Case |
+|------|---------|----------|
+| **Synthesis** | Multi-agent workflow produces final response | Complex creative tasks requiring multiple perspectives |
+| **Compilation** | Multi-agent workflow produces optimized prompt | Prompt engineering and optimization |
+| **Injection** | Replace ST tokens with Curation RAG outputs | Fast context injection without full pipeline |
 
-### Pipeline Phases
+## Pipeline Configuration
 
-1. **Curate Persistent Stores** - Update story data stores
-2. **Preliminary Context** - Identify needed context
-3. **Understand User Instructions** - Interpret user intent (🔨 User Gavel)
-4. **Secondary Context Pass** - Gather additional context
-5. **Outline Draft** - Plot team creates outline
-6. **Outline Review** - Teams review outline (parallel)
-7. **Outline Consensus** - Finalize outline (🔨 User Gavel)
-8. **First Draft** - Prose team writes (🔨 User Gavel)
-9. **First Draft Review** - Character/Environment review (parallel)
-10. **Second Draft** - Refine based on feedback (🔨 User Gavel)
-11. **Second Draft Review** - Plot/World/Publisher review (parallel)
-12. **Final Draft** - Final polish (🔨 User Gavel)
-13. **Team Commentary** - Team leads comment, Archivist records
-14. **Final Response** - Post to ST chat
+### Agents
 
-## Persistent Data Stores
+LLM-backed workers that process inputs and produce outputs:
+- Configurable system prompts using the Prompt Builder
+- Per-agent API settings (temperature, max tokens)
+- Support for custom and ST-native endpoints
 
-The Council maintains the following per-story data stores:
+### Positions
 
-| Store | Description |
-|-------|-------------|
-| `storyDraft` | Current working draft |
-| `storyOutline` | Current story outline |
-| `storySynopsis` | Detailed synopsis (5 W's and How) |
-| `plotLines` | Plot threads with status tracking |
-| `scenes` | Scene details and timeline |
-| `dialogueHistory` | Complete dialogue archive |
-| `characterSheets` | All character data |
-| `characterDevelopment` | Character arc tracking |
-| `characterInventory` | Character possessions |
-| `characterPositions` | Character locations |
-| `factionSheets` | Faction data |
-| `locationSheets` | Location details |
-| `currentSituation` | Current story situation |
-| `agentCommentary` | Archived agent commentary |
-| `sessionHistory` | Pipeline run history |
+Roles within teams that define how agents participate:
+- Role descriptions
+- Prompt modifiers (prefix, suffix)
+- Priority ordering
 
-## Configuration
+### Teams
 
-### Per-Agent API Settings
+Groups of positions working together:
+- Team-level orchestration modes
+- Participant selection
+- Output aggregation
 
-Each agent can be configured independently:
+### Phases & Actions
 
-```javascript
-{
-  enabled: true,           // Enable/disable agent
-  useMainApi: true,        // Use ST's main API or custom
-  apiEndpoint: "",         // Custom API endpoint
-  apiKey: "",              // API key for custom endpoint
-  model: "",               // Model to use
-  temperature: 0.7,        // Temperature setting
-  maxTokens: 1000,         // Max tokens per response
-  systemPrompt: ""         // Custom system prompt
-}
+Multi-step workflows:
+- Phases contain ordered actions
+- Actions can reference agents, curation stores, or character avatars
+- Input/output variable flow
+- Gavel points for user intervention
+
+## Prompt Builder
+
+The Prompt Builder provides advanced prompt construction:
+
+### Modes
+- **Custom**: Write prompts directly with macro support
+- **ST Preset**: Use SillyTavern prompt presets
+- **Token Builder**: Drag-and-drop token assembly
+
+### Council Macros
+```
+{{macro:system_base}}
+{{macro:greeting name="Alice" location="wonderland"}}
 ```
 
-### Global Settings
-
-```javascript
-{
-  delayBetweenCalls: 500,  // MS between API calls
-  autoSaveStores: true,    // Auto-save store changes
-  showTeamThreads: false,  // Expand team threads by default
-  maxContextTokens: 8000,  // Context token budget
-  contextStrategy: "relevance",  // Context selection strategy
-  debugMode: false         // Enable debug logging
-}
+### Conditional Blocks
+```
+{{#if phase.isFirst}}
+  This is the first phase.
+{{else}}
+  Building on previous work.
+{{/if}}
 ```
 
-## Usage
+### Transform Pipelines
+```
+{{input | uppercase | truncate:100}}
+{{agent.name | default:'Unknown'}}
+```
 
-### Basic Usage
+## Curation System
 
-1. Type your message in the SillyTavern input field
-2. Click the **⚖️ Council** button (instead of Send)
-3. Watch the pipeline execute in the panel (click 📜 to toggle)
-4. Review and edit at User Gavel points
-5. Final response is added to chat automatically
+Manage topological data stores:
 
-### Panel Features
+### Stores
+- Define custom schemas with fields and types
+- CRUD operations on entries
+- Topological indexing for relationships
 
-- **Progress Bar**: Shows current phase progress
-- **Thread Tabs**: View deliberations from each team
-- **Collapse/Expand**: Click thread headers to toggle
-- **Badge Counts**: See message counts per thread
+### RAG Pipelines
+- Retrieval-augmented generation
+- Query building with LLM assistance
+- Context injection into prompts
 
-### User Gavel
+### Topologist Agents
+- AI-powered data management
+- Automatic categorization and indexing
 
-At key points, you can review and edit the content:
+## Character System
 
-- Click **Skip (Accept)** to accept as-is
-- Edit in the textarea and click **Apply Edits** to modify
+Dynamic avatar agents:
+
+### Character Avatars
+- Generate agents from character data
+- Automatic personality and knowledge extraction
+- Voice consistency guidance
+
+### Character Director
+- Coordinates multiple character agents
+- Ensures narrative consistency
 
 ## API Reference
 
@@ -165,133 +191,115 @@ At key points, you can review and edit the content:
 
 ```javascript
 window.TheCouncil = {
-  version: "0.3.0",
-  modules: { ... },        // All module references
-  
-  // Methods
-  run(userInput),          // Start pipeline with input
-  abort(),                 // Abort running pipeline
-  isRunning(),             // Check if pipeline is active
-  getProgress(),           // Get current progress
-  getSummary(),            // Get pipeline summary
-  
-  // Module Access
-  getState(),              // Get State module
-  getStores(),             // Get Stores module
-  getContext(),            // Get Context module
-  getTopology(),           // Get Topology module
-  
-  // Settings
-  saveSettings(),          // Save current settings
-  reloadSettings()         // Reload from ST
-}
+  // Modules
+  getModule(name),         // Get registered module
+
+  // Events
+  on(event, handler),      // Subscribe to event
+  off(event, handler),     // Unsubscribe
+  emit(event, data),       // Emit event
+
+  // State
+  getState(),              // Get current state
+  setState(path, value),   // Update state
+
+  // Storage
+  save(key, data),         // Save to storage
+  load(key),               // Load from storage
+
+  // Presets
+  discoverPresets(),       // Find available presets
+  loadPreset(name),        // Load preset by name
+  applyPreset(preset),     // Apply preset to current config
+};
 ```
 
 ### Events
 
-Subscribe to state events:
-
 ```javascript
-TheCouncil.getState().on('pipeline:start', (data) => { ... });
-TheCouncil.getState().on('pipeline:phase', ({ phase, index }) => { ... });
-TheCouncil.getState().on('pipeline:complete', (data) => { ... });
-TheCouncil.getState().on('pipeline:error', ({ error }) => { ... });
-TheCouncil.getState().on('thread:entry', ({ threadId, entry }) => { ... });
-TheCouncil.getState().on('gavel:await', ({ phaseId, prompt, content }) => { ... });
+// System events
+'kernel:ready'              // Kernel initialized
+'pipeline:start'            // Pipeline execution started
+'pipeline:phase'            // Phase started
+'pipeline:action'           // Action started
+'pipeline:complete'         // Pipeline finished
+'pipeline:error'            // Error occurred
+'gavel:await'               // User intervention needed
+'gavel:resolved'            // User intervention complete
+
+// UI events
+'ui:modal:open'             // Modal opened
+'ui:modal:close'            // Modal closed
 ```
 
-## Subject Matter Experts (SMEs)
+## Configuration
 
-SMEs are automatically activated based on content keywords:
+### Pipeline Presets
 
-| SME | Domain |
-|-----|--------|
-| Firearms | Weapons, ammunition, combat |
-| Physics | Physical laws, mechanics |
-| Survivalism | Survival skills, wilderness |
-| History (US/World) | Historical accuracy |
-| Medicine | Medical procedures, injuries |
-| Psychology | Human behavior, motivations |
-| Military | Military operations, tactics |
-| Technology | Computers, electronics |
-| Maritime | Naval, sailing |
-| Legal | Law, legal procedures |
-| Science | Scientific accuracy |
+Located in `data/presets/`:
+- `default-pipeline.json` - Empty starter pipeline
+- `quick-pipeline.json` - Single-phase quick execution
+- `standard-pipeline.json` - Multi-phase editorial workflow
 
-## Development
-
-### Debug Mode
-
-Enable debug logging:
+### Per-Agent Settings
 
 ```javascript
-window.TheCouncil.debug = true;
-```
-
-### Module Development
-
-Each module follows a consistent pattern:
-
-```javascript
-const ModuleName = {
-  _state: null,
-  
-  init(dependencies) {
-    // Initialize with dependencies
-    return this;
+{
+  apiConfig: {
+    useCurrentConnection: true,  // Use ST's current API
+    temperature: 0.7,
+    maxTokens: 2048,
   },
-  
-  // Methods...
-};
-
-// Export
-if (typeof window !== "undefined") {
-  window.ModuleName = ModuleName;
+  systemPrompt: {
+    source: "custom",           // custom | character | curation
+    customText: "...",
+    promptConfig: { ... }       // Prompt Builder config
+  }
 }
 ```
-
-### Adding New Agents
-
-1. Add role definition in `config.js` under `AGENT_ROLES`
-2. Add to relevant pipeline phases in `PIPELINE_PHASES`
-3. Add phase instructions in `agents.js` under `getPhaseInstructions`
-
-### Adding New Phases
-
-1. Define phase in `config.js` under `PIPELINE_PHASES`
-2. Add handler in `pipeline.js` under `phaseHandlers`
-3. Update UI if needed for new thread types
 
 ## Troubleshooting
 
 ### Common Issues
 
 **Pipeline won't start:**
-- Ensure SillyTavern's `executeSlashCommands` is available
 - Check browser console for errors
-- Verify extension loaded (should see toast on startup)
+- Verify all systems initialized (look for "initialized" logs)
+- Ensure preset is valid
 
 **Agents not responding:**
-- Check API configuration in settings
+- Check API configuration in agent settings
 - Verify API key if using custom endpoints
-- Check rate limiting delays
+- Check rate limiting
 
 **Context missing:**
-- Ensure World Info is enabled and populated
-- Check character card has content
-- Verify chat history exists
+- Ensure Curation stores have data
+- Verify token resolution in Prompt Builder preview
 
-### Logs
+### Debug Mode
 
-Check browser console for logs prefixed with `[The_Council]`
+Enable debug logging in browser console:
+```javascript
+window.TheCouncil.getModule('logger').setLevel('debug');
+```
+
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| `CLAUDE.md` | Developer quick reference |
+| `docs/SYSTEM_DEFINITIONS.md` | Complete system specifications |
+| `docs/STATUS_REPORT.md` | Implementation status |
+| `docs/DEVELOPMENT_PLAN.md` | Development task plan |
+
+## Credits
+
+- **Author**: The Liquor Priest
+- **Inspiration**: Wild Turkey 101 Bourbon
 
 ## License
 
 MIT License - See LICENSE file for details
-
-## Credits
-
-Wild Turkey 101 Bourbon
 
 ---
 
