@@ -1,0 +1,60 @@
+{
+  "id": "crud-characterInventory",
+  "name": "Character Inventory CRUD",
+  "description": "Create, Read, Update, Delete operations for Character Inventory",
+  "storeId": "characterInventory",
+  "operations": {
+    "create": {
+      "actions": [
+        {
+          "id": "validate-input",
+          "name": "Validate Input",
+          "positionId": "archivist",
+          "promptTemplate": "Validate the following data for Character Inventory:\n{{input}}\n\nEnsure all required fields are present and valid."
+        },
+        {
+          "id": "create-entry",
+          "name": "Create Entry",
+          "positionId": "characterInventoryTopologist",
+          "promptTemplate": "Create a new Character Inventory entry with the validated data."
+        }
+      ]
+    },
+    "read": {
+      "actions": [
+        {
+          "id": "query-store",
+          "name": "Query Store",
+          "positionId": "archivist",
+          "promptTemplate": "Retrieve Character Inventory data matching: {{query}}"
+        }
+      ]
+    },
+    "update": {
+      "actions": [
+        {
+          "id": "validate-update",
+          "name": "Validate Update",
+          "positionId": "archivist",
+          "promptTemplate": "Validate the update for Character Inventory entry {{id}}:\n{{changes}}"
+        },
+        {
+          "id": "apply-update",
+          "name": "Apply Update",
+          "positionId": "characterInventoryTopologist",
+          "promptTemplate": "Apply the validated changes to Character Inventory entry {{id}}."
+        }
+      ]
+    },
+    "delete": {
+      "actions": [
+        {
+          "id": "confirm-delete",
+          "name": "Confirm Delete",
+          "positionId": "archivist",
+          "promptTemplate": "Confirm deletion of Character Inventory entry {{id}}. Check for dependencies."
+        }
+      ]
+    }
+  }
+}

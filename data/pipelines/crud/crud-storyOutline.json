@@ -1,0 +1,34 @@
+{
+  "id": "crud-storyOutline",
+  "name": "Story Outline CRUD",
+  "description": "Read and Update operations for Story Outline (singleton)",
+  "storeId": "storyOutline",
+  "operations": {
+    "read": {
+      "actions": [
+        {
+          "id": "get-current",
+          "name": "Get Current State",
+          "positionId": "archivist",
+          "promptTemplate": "Retrieve current Story Outline data."
+        }
+      ]
+    },
+    "update": {
+      "actions": [
+        {
+          "id": "validate-update",
+          "name": "Validate Update",
+          "positionId": "archivist",
+          "promptTemplate": "Validate the update for Story Outline:\n{{changes}}"
+        },
+        {
+          "id": "apply-update",
+          "name": "Apply Update",
+          "positionId": "storyOutlineTopologist",
+          "promptTemplate": "Apply the validated changes to Story Outline."
+        }
+      ]
+    }
+  }
+}

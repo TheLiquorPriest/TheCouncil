@@ -1,0 +1,60 @@
+{
+  "id": "crud-plotLines",
+  "name": "Plot Lines CRUD",
+  "description": "Create, Read, Update, Delete operations for Plot Lines",
+  "storeId": "plotLines",
+  "operations": {
+    "create": {
+      "actions": [
+        {
+          "id": "validate-input",
+          "name": "Validate Input",
+          "positionId": "archivist",
+          "promptTemplate": "Validate the following data for Plot Lines:\n{{input}}\n\nEnsure all required fields are present and valid."
+        },
+        {
+          "id": "create-entry",
+          "name": "Create Entry",
+          "positionId": "plotLinesTopologist",
+          "promptTemplate": "Create a new Plot Lines entry with the validated data."
+        }
+      ]
+    },
+    "read": {
+      "actions": [
+        {
+          "id": "query-store",
+          "name": "Query Store",
+          "positionId": "archivist",
+          "promptTemplate": "Retrieve Plot Lines data matching: {{query}}"
+        }
+      ]
+    },
+    "update": {
+      "actions": [
+        {
+          "id": "validate-update",
+          "name": "Validate Update",
+          "positionId": "archivist",
+          "promptTemplate": "Validate the update for Plot Lines entry {{id}}:\n{{changes}}"
+        },
+        {
+          "id": "apply-update",
+          "name": "Apply Update",
+          "positionId": "plotLinesTopologist",
+          "promptTemplate": "Apply the validated changes to Plot Lines entry {{id}}."
+        }
+      ]
+    },
+    "delete": {
+      "actions": [
+        {
+          "id": "confirm-delete",
+          "name": "Confirm Delete",
+          "positionId": "archivist",
+          "promptTemplate": "Confirm deletion of Plot Lines entry {{id}}. Check for dependencies."
+        }
+      ]
+    }
+  }
+}
