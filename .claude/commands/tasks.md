@@ -62,6 +62,8 @@ Continue to the next task (or exit if single task mode).
 
 ## Step 3: Branch Setup
 
+Base phase branches off of TARGET_BRANCH.
+
 ```bash
 # Branch naming convention: alpha{VERSION}-phase-{PHASE}
 BRANCH_NAME="alpha${ALPHA_VERSION}-phase-${PHASE_NUMBER}"
