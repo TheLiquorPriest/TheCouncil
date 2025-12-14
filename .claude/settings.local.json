@@ -135,7 +135,17 @@
       "Bash(*||*)",
       "Bash(*;*)",
       "Bash(git: *)",
-      "Task"
+      "Task",
+      "Bash(powershell -Command \"Get-Content ''D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil/schemas/systems.js'' | Select-Object -Last 20\")",
+      "Bash(powershell:*)",
+      "Bash(python:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nTask 3.2.1: Define per-system configuration schemas\n\n- Create schemas/config-schemas.js with SystemConfigSchemas\n- Define config schemas for all 6 systems:\n  - CurationConfigSchema (storeSchemas, crudPipelines, ragPipelines, agents, positions)\n  - CharacterConfigSchema (directorConfig, voicingDefaults, avatarSettings)\n  - PromptBuilderConfigSchema (customTokens, macros, transforms, presetPrompts)\n  - PipelineConfigSchema (agents, positions, teams, pipelines)\n  - OrchestrationConfigSchema (mode, injectionMappings, executionSettings)\n  - KernelConfigSchema (activePreset, uiSettings, apiDefaults)\n- Add CompiledPresetSchema for full preset export/import\n- Add helper functions: getSchema(), getSystemIds(), detectSystem(), createDefaultConfig()\n- Update schemas/systems.js to import and expose config schemas\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit -m \"$(cat <<''EOF''\nTask 3.2.2: Add Kernel Config Manager for centralized configuration\n\n- Add _configManager object with schemas, configs, presets, dirty tracking\n- Add registerConfigSchema() for system schema registration\n- Add getSystemConfig() / setSystemConfig() / updateSystemConfig()\n- Add compilePreset() for creating named presets from all configs\n- Add loadCompiledPreset() for applying presets across systems\n- Add exportSystemConfig() / importSystemConfig() with auto-detection\n- Add _validateConfig() for schema-based validation\n- Add _detectSystemFromConfig() for system identification\n- Emit config:changed and {systemId}:config:reload events\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(for f in default-pipeline.json quick-pipeline.json standard-pipeline.json)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(done)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nTask 3.3.1: Migrate existing presets to per-system schema format\n\n- Migrated default-pipeline.json, quick-pipeline.json, standard-pipeline.json\n- Updated preset version from 2.0.0 to 2.1.0\n- Added per-system configuration structure (curation, character, promptBuilder,\n  pipeline, orchestration, kernel)\n- Created scripts/migrate-presets.cjs utility for future preset migrations\n- Added default configs for all systems\n- Pipeline data (agents, positions, teams) moved to systems.pipeline section\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit -m \"$(cat <<''EOF''\nTask 3.4.1: Create tiered presets (basic, standard, comprehensive)\n\nThree tiered presets for different use cases:\n\n- basic.json: 3 agents, 1 phase, injection mode, low API usage\n- standard.json: 8 agents, 3 phases, synthesis mode, balanced\n- comprehensive.json: 23 agents, 19 phases, 5 gavel points, max quality\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
@@ -143,7 +153,9 @@
   "mcpServers": {
     "browsermcp": {
       "command": "npx",
-      "args": ["@browsermcp/mcp@latest"]
+      "args": [
+        "@browsermcp/mcp@latest"
+      ]
     }
   }
 }

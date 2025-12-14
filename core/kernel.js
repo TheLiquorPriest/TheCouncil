@@ -1775,6 +1775,92 @@ const TheCouncilKernel = {
     return preset;
   },
 
+  // ===== PRESET MANAGER INTERFACE =====
+  // These methods provide compatibility with the Pipeline Modal's expected PresetManager interface
+
+  /**
+   * Get all cached presets
+   * @returns {Array} Array of preset objects
+   */
+  getAllPresets() {
+    return Array.from(this._presets.values());
+  },
+
+  /**
+   * Get a preset by ID
+   * @param {string} presetId - Preset ID
+   * @returns {Object|null} Preset object or null
+   */
+  getPreset(presetId) {
+    return this._presets.get(presetId) || null;
+  },
+
+  /**
+   * Get the active preset ID
+   * @returns {string|null} Active preset ID or null
+   */
+  getActivePresetId() {
+    return this.getState("session.activePresetId") || null;
+  },
+
+  /**
+   * Download a preset as JSON file
+   * @param {string} presetId - Preset ID to download
+   */
+  downloadPreset(presetId) {
+    const preset = this._presets.get(presetId);
+    if (!preset) {
+      throw new Error(`Preset not found: ${presetId}`);
+    }
+
+    // Create downloadable JSON
+    const json = JSON.stringify(preset, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    // Trigger download
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${preset.id || "preset"}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    this._log("info", `Preset downloaded: ${preset.name}`);
+  },
+
+  /**
+   * Create a preset from current system state
+   * Wrapper around compilePreset for PresetManager interface compatibility
+   * @param {Object} options - Options with name and description
+   * @returns {Object} Created preset
+   */
+  createPresetFromCurrentState(options = {}) {
+    const name = options.name || "Custom Preset";
+    const description = options.description || "Created from current configuration";
+
+    // Use the Config Manager's compilePreset
+    const preset = this.compilePreset(name, description);
+
+    // Cache it
+    this._presets.set(preset.id, preset);
+
+    this._log("info", `Preset created from state: ${preset.name} (${preset.id})`);
+    this._emit("kernel:preset:created", { preset });
+
+    return preset;
+  },
+
+  /**
+   * Get the preset manager interface
+   * Returns this Kernel instance cast as a PresetManager
+   * @returns {Object} PresetManager-compatible interface
+   */
+  getPresetManager() {
+    return this;
+  },
+
   // ===== BOOTSTRAP SEQUENCE =====
 
   /**

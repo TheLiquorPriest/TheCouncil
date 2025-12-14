@@ -661,8 +661,8 @@ const PipelineModal = {
    * Render Presets tab
    */
   _renderPresetsTab() {
-    const presetManager = this._presetManager || window.TheCouncilPresetManager;
-    const presets = presetManager?.getAllPresets() || [];
+    const presetManager = this._kernel;
+    const presets = presetManager?.getAllPresets?.() || [];
     const activePresetId = presetManager?.getActivePresetId();
 
     let html = `
@@ -3193,8 +3193,8 @@ const PipelineModal = {
    * @param {string} presetId - Preset ID
    */
   _showPresetDetail(presetId) {
-    const presetManager = this._presetManager || window.TheCouncilPresetManager;
-    const preset = presetManager?.getPreset(presetId);
+    const presetManager = this._kernel;
+    const preset = presetManager?.getPreset?.(presetId);
 
     const detailPane = this._elements.content.querySelector(
       ".council-pipeline-preset-detail",
@@ -3216,8 +3216,8 @@ const PipelineModal = {
    * @param {string} presetId - Preset ID to apply
    */
   async _applyPreset(presetId) {
-    const presetManager = this._presetManager || window.TheCouncilPresetManager;
-    if (!presetManager) {
+    const presetManager = this._kernel;
+    if (!presetManager?.applyPreset) {
       this._showNotification("Preset manager not available", "error");
       return;
     }
@@ -3248,8 +3248,8 @@ const PipelineModal = {
    * @param {string} presetId - Preset ID
    */
   _exportPresetById(presetId) {
-    const presetManager = this._presetManager || window.TheCouncilPresetManager;
-    if (!presetManager) {
+    const presetManager = this._kernel;
+    if (!presetManager?.downloadPreset) {
       this._showNotification("Preset manager not available", "error");
       return;
     }
@@ -3267,8 +3267,8 @@ const PipelineModal = {
    * Discover presets from the presets directory
    */
   async _discoverPresets() {
-    const presetManager = this._presetManager || window.TheCouncilPresetManager;
-    if (!presetManager) {
+    const presetManager = this._kernel;
+    if (!presetManager?.discoverPresets) {
       this._showNotification("Preset manager not available", "error");
       return;
     }
@@ -3298,14 +3298,13 @@ const PipelineModal = {
 
       try {
         const text = await file.text();
-        const presetManager =
-          this._presetManager || window.TheCouncilPresetManager;
-        if (!presetManager) {
+        const presetManager = this._kernel;
+        if (!presetManager?.importPreset) {
           this._showNotification("Preset manager not available", "error");
           return;
         }
 
-        const preset = presetManager.importPreset(text);
+        const preset = await presetManager.importPreset(text);
         this._showNotification(`Preset imported: ${preset.name}`, "success");
         this._renderPresetsTab();
       } catch (error) {
@@ -3321,8 +3320,8 @@ const PipelineModal = {
    * Create a preset from current system state
    */
   async _createPresetFromState() {
-    const presetManager = this._presetManager || window.TheCouncilPresetManager;
-    if (!presetManager) {
+    const presetManager = this._kernel;
+    if (!presetManager?.createPresetFromCurrentState) {
       this._showNotification("Preset manager not available", "error");
       return;
     }
