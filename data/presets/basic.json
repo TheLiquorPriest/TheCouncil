@@ -1,0 +1,488 @@
+{
+  "id": "basic",
+  "name": "Basic Pipeline",
+  "description": "A minimal single-phase workflow optimized for fast responses with low API usage. Uses injection mode to replace ST tokens with Curation RAG outputs.",
+  "version": "2.1.0",
+  "metadata": {
+    "createdAt": 1765740350527,
+    "updatedAt": 1765740350527,
+    "author": "The Council",
+    "description": "A minimal single-phase workflow optimized for fast responses with low API usage. Uses injection mode to replace ST tokens with Curation RAG outputs.",
+    "tags": [
+      "basic",
+      "minimal",
+      "fast",
+      "injection",
+      "low-usage"
+    ],
+    "sourceVersion": "2.1.0",
+    "exportedAt": 1765740350527
+  },
+  "systems": {
+    "curation": {
+      "version": "1.0.0",
+      "storeSchemas": [],
+      "crudPipelines": [],
+      "ragPipelines": [],
+      "agents": [],
+      "positions": [],
+      "positionMapping": {
+        "storyTopologist": [
+          "storyDraft",
+          "storyOutline"
+        ],
+        "characterTopologist": [
+          "characterSheets"
+        ],
+        "sceneTopologist": [
+          "currentSituation"
+        ]
+      },
+      "executionSettings": {
+        "maxDeliberationRounds": 1,
+        "deliberationTimeout": 15000,
+        "autoSaveInterval": 120000,
+        "enableAutoExtraction": false,
+        "extractionTriggers": [
+          "on_demand"
+        ]
+      },
+      "metadata": {
+        "createdAt": 1765740350527,
+        "updatedAt": 1765740350527,
+        "author": "TheCouncil",
+        "description": "Minimal curation configuration for basic preset",
+        "tags": [
+          "basic",
+          "minimal"
+        ]
+      }
+    },
+    "character": {
+      "version": "1.0.0",
+      "directorConfig": {
+        "enabled": false,
+        "autoSpawn": false,
+        "maxActiveCharacters": 5,
+        "spawnThreshold": 0.7
+      },
+      "voicingDefaults": {
+        "includePersonality": true,
+        "includeAppearance": false,
+        "includeBackground": false,
+        "includeSpeechPatterns": true,
+        "includeMannerisms": false,
+        "includeCatchphrases": false,
+        "includeRelationships": false,
+        "voiceIntensity": "light",
+        "promptTemplate": ""
+      },
+      "avatarSettings": {
+        "defaultReasoning": {
+          "enabled": false,
+          "prefix": "<thinking>",
+          "suffix": "</thinking>",
+          "hideFromOutput": true
+        },
+        "syncOnStartup": false,
+        "persistOverrides": false
+      },
+      "agentOverrides": {},
+      "typePriorities": {
+        "main_cast": 1,
+        "recurring_cast": 2,
+        "supporting_cast": 3,
+        "background": 4
+      },
+      "metadata": {
+        "createdAt": 1765740350527,
+        "updatedAt": 1765740350527,
+        "author": "TheCouncil",
+        "description": "Minimal character system configuration",
+        "tags": [
+          "basic",
+          "minimal"
+        ]
+      }
+    },
+    "promptBuilder": {
+      "version": "1.0.0",
+      "customTokens": [],
+      "macros": [],
+      "transforms": [],
+      "presetPrompts": [],
+      "resolutionSettings": {
+        "maxNestingDepth": 5,
+        "passUnresolvedToST": true,
+        "warnOnUnresolved": false,
+        "cacheResolutions": true
+      },
+      "uiPreferences": {
+        "defaultMode": "builder",
+        "showTokenCategories": true,
+        "showTokenDescriptions": false,
+        "enableAutoComplete": true
+      },
+      "metadata": {
+        "createdAt": 1765740350527,
+        "updatedAt": 1765740350527,
+        "author": "TheCouncil",
+        "description": "Minimal prompt builder configuration",
+        "tags": [
+          "basic",
+          "minimal"
+        ]
+      }
+    },
+    "pipeline": {
+      "version": "2.0.0",
+      "agents": [
+        {
+          "id": "publisher",
+          "name": "Publisher",
+          "description": "Executive leader who oversees the process and makes key decisions.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.7,
+            "maxTokens": 1024
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Publisher, the executive leader of this streamlined editorial process. Your role is to quickly assess input and ensure quality output while maintaining efficiency."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "executive",
+              "basic"
+            ]
+          }
+        },
+        {
+          "id": "editor",
+          "name": "Editor",
+          "description": "Primary content creator and editor responsible for drafting and polishing responses.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.75,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Editor, the primary creative force. Your role is to craft engaging, well-written narrative content that matches the established tone. Write with clarity, natural dialogue, and compelling prose."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "creative"
+            ]
+          }
+        },
+        {
+          "id": "archivist",
+          "name": "Archivist",
+          "description": "Manages story data and retrieves relevant context from curation stores.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.3,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Archivist. Your role is to retrieve relevant context from story records and provide accurate information to support the narrative response."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "curation",
+              "context"
+            ]
+          }
+        }
+      ],
+      "positions": [
+        {
+          "id": "executive",
+          "name": "Executive Publisher",
+          "teamId": null,
+          "tier": "executive",
+          "assignedAgentId": "publisher",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Executive oversight"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_lead",
+          "name": "Lead Editor",
+          "teamId": "prose_team",
+          "tier": "leader",
+          "assignedAgentId": "editor",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Creative writing and editing"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "curation_lead",
+          "name": "Archivist",
+          "teamId": "curation_team",
+          "tier": "leader",
+          "assignedAgentId": "archivist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Context retrieval and data management"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        }
+      ],
+      "teams": [
+        {
+          "id": "prose_team",
+          "name": "Prose Team",
+          "description": "Handles narrative writing and editing",
+          "icon": "pen",
+          "leaderId": "prose_lead",
+          "memberIds": [
+            "prose_lead"
+          ],
+          "settings": {},
+          "displayOrder": 1
+        },
+        {
+          "id": "curation_team",
+          "name": "Curation Team",
+          "description": "Handles data management and context retrieval",
+          "icon": "archive",
+          "leaderId": "curation_lead",
+          "memberIds": [
+            "curation_lead"
+          ],
+          "settings": {},
+          "displayOrder": 2
+        }
+      ],
+      "agentPools": [],
+      "pipelines": [
+        {
+          "id": "basic-pipeline",
+          "name": "Basic Pipeline",
+          "description": "A minimal single-phase workflow for fast responses.",
+          "version": "2.0.0",
+          "threads": {
+            "main": {
+              "id": "main",
+              "name": "Main",
+              "description": "Primary workspace",
+              "visible": true
+            }
+          },
+          "phases": [
+            {
+              "id": "phase_1_respond",
+              "name": "Generate Response",
+              "description": "Generate the narrative response directly",
+              "icon": "pen",
+              "teams": [
+                "prose_team"
+              ],
+              "threads": {
+                "phaseThread": {
+                  "enabled": true
+                },
+                "teamThreads": {}
+              },
+              "actions": [
+                {
+                  "id": "generate_response",
+                  "name": "Generate Response",
+                  "actionType": "standard",
+                  "description": "Write the narrative response",
+                  "participants": {
+                    "positionIds": [
+                      "prose_lead"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Generate a narrative response based on the following:\n\nContext:\n{{context}}\n\nUser Input:\n{{input}}\n\nWrite an engaging response that advances the story naturally. Match the established tone and style."
+                }
+              ],
+              "output": {
+                "consolidation": "last"
+              }
+            }
+          ],
+          "staticContext": {
+            "includeCharacterCard": true,
+            "includeWorldInfo": true,
+            "includePersona": true,
+            "includeScenario": true
+          },
+          "metadata": {
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z",
+            "author": "The Council",
+            "tags": [
+              "basic",
+              "minimal",
+              "fast",
+              "single-phase"
+            ]
+          }
+        }
+      ],
+      "defaultPipelineSettings": {
+        "includeCharacterCard": true,
+        "includeWorldInfo": true,
+        "includePersona": true,
+        "includeScenario": true,
+        "defaultTimeout": 20000,
+        "defaultRetryCount": 1
+      },
+      "activePipelineId": "basic-pipeline",
+      "metadata": {
+        "createdAt": 1765740350527,
+        "updatedAt": 1765740350527,
+        "author": "TheCouncil",
+        "description": "Minimal pipeline configuration for basic preset",
+        "tags": [
+          "basic",
+          "minimal"
+        ]
+      }
+    },
+    "orchestration": {
+      "version": "1.0.0",
+      "mode": "injection",
+      "injectionMappings": [],
+      "injectionSettings": {
+        "enabled": true,
+        "cacheEnabled": true,
+        "cacheDefaultTTL": 60000,
+        "failSilently": true,
+        "fallbackToOriginal": true
+      },
+      "executionSettings": {
+        "defaultActionTimeout": 30000,
+        "defaultPhaseTimeout": 120000,
+        "defaultPipelineTimeout": 300000,
+        "defaultRetryCount": 1,
+        "retryDelayMs": 1000,
+        "retryBackoffMultiplier": 2,
+        "maxParallelActions": 1,
+        "maxParallelAgents": 1,
+        "streamOutput": true,
+        "preserveIntermediate": false,
+        "continueOnActionError": true,
+        "continueOnPhaseError": true,
+        "defaultGavelTimeout": 0,
+        "autoApproveGavel": true
+      },
+      "stIntegration": {
+        "interceptEnabled": true,
+        "autoDeliverOutput": true,
+        "deliveryTarget": "chat",
+        "formatOutput": true
+      },
+      "metadata": {
+        "createdAt": 1765740350527,
+        "updatedAt": 1765740350527,
+        "author": "TheCouncil",
+        "description": "Minimal orchestration configuration with injection mode",
+        "tags": [
+          "basic",
+          "injection"
+        ]
+      }
+    },
+    "kernel": {
+      "version": "2.0.0",
+      "activePreset": "basic",
+      "uiSettings": {
+        "navPosition": {
+          "x": 20,
+          "y": 100
+        },
+        "theme": "auto",
+        "autoShowNav": true,
+        "showTooltips": true,
+        "confirmDestructive": true,
+        "modalAnimations": true,
+        "compactMode": true
+      },
+      "apiDefaults": {
+        "useCurrentConnection": true,
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "temperature": 0.7,
+        "maxTokens": 2048,
+        "topP": 1,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0
+      },
+      "debug": {
+        "enabled": false,
+        "logLevel": "warn",
+        "logToConsole": true,
+        "logToFile": false,
+        "includeTimestamps": true,
+        "includeStackTraces": false
+      },
+      "features": {
+        "enableCuration": true,
+        "enableCharacter": false,
+        "enablePipeline": true,
+        "enableOrchestration": true,
+        "enablePromptBuilder": true,
+        "enablePresets": true
+      },
+      "storage": {
+        "defaultScope": "chat",
+        "autoSave": true,
+        "autoSaveInterval": 120000,
+        "compressionEnabled": false
+      },
+      "metadata": {
+        "createdAt": 1765740350527,
+        "updatedAt": 1765740350527,
+        "author": "TheCouncil",
+        "description": "Minimal kernel configuration for basic preset",
+        "tags": [
+          "basic",
+          "minimal"
+        ]
+      }
+    }
+  }
+}

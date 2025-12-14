@@ -1,0 +1,838 @@
+{
+  "id": "standard",
+  "name": "Standard Pipeline",
+  "description": "A balanced 3-phase workflow with context gathering, drafting, and review. Full prose team with synthesis mode for quality responses.",
+  "version": "2.1.0",
+  "metadata": {
+    "createdAt": 1765740350528,
+    "updatedAt": 1765740350528,
+    "author": "The Council",
+    "description": "A balanced 3-phase workflow with context gathering, drafting, and review. Full prose team with synthesis mode for quality responses.",
+    "tags": [
+      "standard",
+      "balanced",
+      "recommended",
+      "3-phase",
+      "synthesis"
+    ],
+    "sourceVersion": "2.1.0",
+    "exportedAt": 1765740350528
+  },
+  "systems": {
+    "curation": {
+      "version": "1.0.0",
+      "storeSchemas": [],
+      "crudPipelines": [],
+      "ragPipelines": [],
+      "agents": [],
+      "positions": [],
+      "positionMapping": {
+        "storyTopologist": [
+          "storyDraft",
+          "storyOutline",
+          "storySynopsis",
+          "plotLines",
+          "scenes"
+        ],
+        "characterTopologist": [
+          "characterSheets",
+          "characterDevelopment",
+          "characterInventory",
+          "characterPositions"
+        ],
+        "loreTopologist": [
+          "factionSheets",
+          "locationSheets"
+        ],
+        "sceneTopologist": [
+          "scenes",
+          "dialogueHistory",
+          "currentSituation"
+        ],
+        "locationTopologist": [
+          "locationSheets"
+        ]
+      },
+      "executionSettings": {
+        "maxDeliberationRounds": 2,
+        "deliberationTimeout": 25000,
+        "autoSaveInterval": 60000,
+        "enableAutoExtraction": false,
+        "extractionTriggers": [
+          "after_response",
+          "on_demand"
+        ]
+      },
+      "metadata": {
+        "createdAt": 1765740350528,
+        "updatedAt": 1765740350528,
+        "author": "TheCouncil",
+        "description": "Standard curation configuration",
+        "tags": [
+          "standard",
+          "balanced"
+        ]
+      }
+    },
+    "character": {
+      "version": "1.0.0",
+      "directorConfig": {
+        "enabled": true,
+        "autoSpawn": true,
+        "maxActiveCharacters": 10,
+        "spawnThreshold": 0.5
+      },
+      "voicingDefaults": {
+        "includePersonality": true,
+        "includeAppearance": false,
+        "includeBackground": true,
+        "includeSpeechPatterns": true,
+        "includeMannerisms": true,
+        "includeCatchphrases": true,
+        "includeRelationships": true,
+        "voiceIntensity": "moderate",
+        "promptTemplate": ""
+      },
+      "avatarSettings": {
+        "defaultReasoning": {
+          "enabled": false,
+          "prefix": "<thinking>",
+          "suffix": "</thinking>",
+          "hideFromOutput": true
+        },
+        "syncOnStartup": true,
+        "persistOverrides": true
+      },
+      "agentOverrides": {},
+      "typePriorities": {
+        "main_cast": 1,
+        "recurring_cast": 2,
+        "supporting_cast": 3,
+        "background": 4
+      },
+      "metadata": {
+        "createdAt": 1765740350528,
+        "updatedAt": 1765740350528,
+        "author": "TheCouncil",
+        "description": "Standard character system configuration",
+        "tags": [
+          "standard",
+          "balanced"
+        ]
+      }
+    },
+    "promptBuilder": {
+      "version": "1.0.0",
+      "customTokens": [],
+      "macros": [],
+      "transforms": [],
+      "presetPrompts": [],
+      "resolutionSettings": {
+        "maxNestingDepth": 10,
+        "passUnresolvedToST": true,
+        "warnOnUnresolved": true,
+        "cacheResolutions": true
+      },
+      "uiPreferences": {
+        "defaultMode": "builder",
+        "showTokenCategories": true,
+        "showTokenDescriptions": true,
+        "enableAutoComplete": true
+      },
+      "metadata": {
+        "createdAt": 1765740350528,
+        "updatedAt": 1765740350528,
+        "author": "TheCouncil",
+        "description": "Standard prompt builder configuration",
+        "tags": [
+          "standard",
+          "balanced"
+        ]
+      }
+    },
+    "pipeline": {
+      "version": "2.0.0",
+      "agents": [
+        {
+          "id": "publisher",
+          "name": "Publisher",
+          "description": "Executive leader who directs the creative process and makes key decisions.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.7,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Publisher, the executive leader of this editorial team. Your role is to direct the overall creative process, make decisions on content direction, and ensure quality standards are met. Balance efficiency with quality."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "executive"
+            ]
+          }
+        },
+        {
+          "id": "editor",
+          "name": "Editor",
+          "description": "Leads prose quality, synthesizes drafts, makes editorial decisions.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.6,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Editor, leading the Prose Team. Your role is to oversee prose quality, synthesize contributions, and make editorial passes. Focus on clarity, flow, engagement, and consistency of voice."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "leader"
+            ]
+          }
+        },
+        {
+          "id": "writer_scene",
+          "name": "Scene Writer",
+          "description": "Focuses on scene-setting, atmosphere, and pacing.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.8,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Scene Writer, a specialist in scene-setting, atmosphere, and pacing. Your contributions should establish vivid settings, create appropriate mood, and ensure scenes flow naturally."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "scene"
+            ]
+          }
+        },
+        {
+          "id": "writer_dialogue",
+          "name": "Dialogue Writer",
+          "description": "Focuses on character voice and conversation flow.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.75,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Dialogue Writer, a specialist in character voice and conversation flow. Your contributions should capture each character's unique speech patterns, ensure natural conversation dynamics, and convey subtext through dialogue."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "dialogue"
+            ]
+          }
+        },
+        {
+          "id": "writer_action",
+          "name": "Action Writer",
+          "description": "Focuses on action sequences and physical descriptions.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.8,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Action Writer, a specialist in action sequences and physical descriptions. Your contributions should create dynamic, clear action scenes with appropriate pacing and visceral physical detail."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "action"
+            ]
+          }
+        },
+        {
+          "id": "writer_character",
+          "name": "Character Writer",
+          "description": "Focuses on character thoughts, emotions, and internal state.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.75,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Character Writer, a specialist in internal narrative, thoughts, and emotions. Your contributions should reveal character psychology, emotional states, and internal conflicts in authentic ways."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "character"
+            ]
+          }
+        },
+        {
+          "id": "continuity",
+          "name": "Continuity Specialist",
+          "description": "Ensures consistency with established events and tracks story details.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.3,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Continuity Specialist, responsible for ensuring consistency with established story events. Track character positions, timeline, established facts, and flag any contradictions."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "plot",
+              "continuity"
+            ]
+          }
+        },
+        {
+          "id": "archivist",
+          "name": "Archivist",
+          "description": "Manages story data and retrieves relevant context.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.3,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Archivist. Your role is to manage story data, retrieve relevant context from previous events, and ensure important information is available to the team."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "curation",
+              "context"
+            ]
+          }
+        }
+      ],
+      "positions": [
+        {
+          "id": "executive",
+          "name": "Executive Publisher",
+          "teamId": null,
+          "tier": "executive",
+          "assignedAgentId": "publisher",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Executive leadership and final decisions"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_lead",
+          "name": "Editor-in-Chief",
+          "teamId": "prose_team",
+          "tier": "leader",
+          "assignedAgentId": "editor",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Lead editorial direction and prose quality"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_scene",
+          "name": "Scene Writer",
+          "teamId": "prose_team",
+          "tier": "member",
+          "assignedAgentId": "writer_scene",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Scene-setting, atmosphere, pacing"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_dialogue",
+          "name": "Dialogue Writer",
+          "teamId": "prose_team",
+          "tier": "member",
+          "assignedAgentId": "writer_dialogue",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Character voice and dialogue"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_action",
+          "name": "Action Writer",
+          "teamId": "prose_team",
+          "tier": "member",
+          "assignedAgentId": "writer_action",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Action sequences and physicality"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_character",
+          "name": "Character Writer",
+          "teamId": "prose_team",
+          "tier": "member",
+          "assignedAgentId": "writer_character",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Internal narrative and emotion"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "plot_lead",
+          "name": "Continuity Lead",
+          "teamId": "plot_team",
+          "tier": "leader",
+          "assignedAgentId": "continuity",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Track continuity and flag inconsistencies"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "curation_lead",
+          "name": "Archivist",
+          "teamId": "curation_team",
+          "tier": "leader",
+          "assignedAgentId": "archivist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Manage story data and retrieve context"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        }
+      ],
+      "teams": [
+        {
+          "id": "prose_team",
+          "name": "Prose Team",
+          "description": "Handles narrative writing, editing, and dialogue",
+          "icon": "pen",
+          "leaderId": "prose_lead",
+          "memberIds": [
+            "prose_lead",
+            "prose_scene",
+            "prose_dialogue",
+            "prose_action",
+            "prose_character"
+          ],
+          "settings": {},
+          "displayOrder": 1
+        },
+        {
+          "id": "plot_team",
+          "name": "Plot Team",
+          "description": "Handles story structure and continuity",
+          "icon": "chart-line",
+          "leaderId": "plot_lead",
+          "memberIds": [
+            "plot_lead"
+          ],
+          "settings": {},
+          "displayOrder": 2
+        },
+        {
+          "id": "curation_team",
+          "name": "Curation Team",
+          "description": "Handles data management and context",
+          "icon": "archive",
+          "leaderId": "curation_lead",
+          "memberIds": [
+            "curation_lead"
+          ],
+          "settings": {},
+          "displayOrder": 3
+        }
+      ],
+      "agentPools": [],
+      "pipelines": [
+        {
+          "id": "standard-pipeline",
+          "name": "Standard Pipeline",
+          "description": "A balanced 3-phase workflow with context, draft, and review phases.",
+          "version": "2.0.0",
+          "threads": {
+            "main": {
+              "id": "main",
+              "name": "Main",
+              "description": "Primary deliberation space",
+              "visible": true
+            },
+            "context": {
+              "id": "context",
+              "name": "Context",
+              "description": "Context gathering and analysis",
+              "visible": true
+            },
+            "drafting": {
+              "id": "drafting",
+              "name": "Drafting",
+              "description": "Draft development",
+              "visible": true
+            }
+          },
+          "phases": [
+            {
+              "id": "phase_1_context",
+              "name": "Phase 1: Context Gathering",
+              "description": "Gather and analyze relevant story context",
+              "icon": "magnifying-glass",
+              "teams": [
+                "curation_team",
+                "plot_team"
+              ],
+              "threads": {
+                "phaseThread": {
+                  "enabled": true
+                },
+                "teamThreads": {
+                  "context": true
+                }
+              },
+              "actions": [
+                {
+                  "id": "gather_context",
+                  "name": "Gather Context",
+                  "actionType": "standard",
+                  "description": "Retrieve relevant story information",
+                  "participants": {
+                    "positionIds": [
+                      "curation_lead"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Review the current story context and identify key information relevant to the upcoming response.\n\nContext:\n{{context}}\n\nUser Input:\n{{input}}\n\nSummarize the most relevant story elements, character states, and recent events that should inform the response."
+                },
+                {
+                  "id": "continuity_check",
+                  "name": "Continuity Check",
+                  "actionType": "standard",
+                  "description": "Verify continuity considerations",
+                  "participants": {
+                    "positionIds": [
+                      "plot_lead"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Review the gathered context and user input for continuity considerations.\n\nGathered Context:\n{{previousAction.output}}\n\nUser Input:\n{{input}}\n\nIdentify any continuity points that must be maintained and potential issues to avoid."
+                }
+              ],
+              "output": {
+                "consolidation": "synthesize"
+              }
+            },
+            {
+              "id": "phase_2_draft",
+              "name": "Phase 2: Draft",
+              "description": "Write the narrative draft with the full prose team",
+              "icon": "pen-nib",
+              "teams": [
+                "prose_team"
+              ],
+              "threads": {
+                "phaseThread": {
+                  "enabled": true
+                },
+                "teamThreads": {
+                  "drafting": true
+                }
+              },
+              "actions": [
+                {
+                  "id": "write_draft",
+                  "name": "Write Draft",
+                  "actionType": "standard",
+                  "description": "Create the initial narrative draft",
+                  "participants": {
+                    "teamIds": [
+                      "prose_team"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Write a narrative response based on the context and continuity analysis.\n\nContext Analysis:\n{{previousPhase.output}}\n\nUser Input:\n{{input}}\n\nWrite an engaging, well-crafted narrative response that:\n1. Advances the story naturally\n2. Maintains established tone and style\n3. Respects continuity considerations\n4. Features vivid prose and natural dialogue"
+                }
+              ],
+              "output": {
+                "consolidation": "last"
+              }
+            },
+            {
+              "id": "phase_3_review",
+              "name": "Phase 3: Review",
+              "description": "Review, polish, and finalize the response",
+              "icon": "check-double",
+              "teams": [
+                "prose_team",
+                "plot_team"
+              ],
+              "threads": {
+                "phaseThread": {
+                  "enabled": true
+                },
+                "teamThreads": {}
+              },
+              "actions": [
+                {
+                  "id": "continuity_review",
+                  "name": "Continuity Review",
+                  "actionType": "standard",
+                  "description": "Review for consistency issues",
+                  "participants": {
+                    "positionIds": [
+                      "plot_lead"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Review this draft for continuity issues.\n\nDraft:\n{{previousPhase.output}}\n\nContext:\n{{context}}\n\nIdentify any contradictions with established facts, timeline issues, or character inconsistencies. List specific issues or confirm the draft is consistent."
+                },
+                {
+                  "id": "editorial_polish",
+                  "name": "Editorial Polish",
+                  "actionType": "standard",
+                  "description": "Final editorial pass",
+                  "participants": {
+                    "positionIds": [
+                      "prose_lead"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Review and polish this draft, addressing any continuity notes.\n\nDraft:\n{{previousPhase.output}}\n\nContinuity Notes:\n{{previousAction.output}}\n\nFix any issues noted. Polish the prose for clarity, flow, and engagement. Return the final polished response."
+                }
+              ],
+              "output": {
+                "consolidation": "last"
+              }
+            }
+          ],
+          "staticContext": {
+            "includeCharacterCard": true,
+            "includeWorldInfo": true,
+            "includePersona": true,
+            "includeScenario": true
+          },
+          "metadata": {
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z",
+            "author": "The Council",
+            "tags": [
+              "standard",
+              "balanced",
+              "3-phase"
+            ]
+          }
+        }
+      ],
+      "defaultPipelineSettings": {
+        "includeCharacterCard": true,
+        "includeWorldInfo": true,
+        "includePersona": true,
+        "includeScenario": true,
+        "defaultTimeout": 45000,
+        "defaultRetryCount": 1
+      },
+      "activePipelineId": "standard-pipeline",
+      "metadata": {
+        "createdAt": 1765740350528,
+        "updatedAt": 1765740350528,
+        "author": "TheCouncil",
+        "description": "Standard pipeline configuration",
+        "tags": [
+          "standard",
+          "balanced"
+        ]
+      }
+    },
+    "orchestration": {
+      "version": "1.0.0",
+      "mode": "synthesis",
+      "injectionMappings": [],
+      "injectionSettings": {
+        "enabled": false,
+        "cacheEnabled": true,
+        "cacheDefaultTTL": 30000,
+        "failSilently": true,
+        "fallbackToOriginal": true
+      },
+      "executionSettings": {
+        "defaultActionTimeout": 60000,
+        "defaultPhaseTimeout": 300000,
+        "defaultPipelineTimeout": 900000,
+        "defaultRetryCount": 1,
+        "retryDelayMs": 1000,
+        "retryBackoffMultiplier": 2,
+        "maxParallelActions": 2,
+        "maxParallelAgents": 3,
+        "streamOutput": true,
+        "preserveIntermediate": true,
+        "continueOnActionError": false,
+        "continueOnPhaseError": false,
+        "defaultGavelTimeout": 0,
+        "autoApproveGavel": false
+      },
+      "stIntegration": {
+        "interceptEnabled": true,
+        "autoDeliverOutput": true,
+        "deliveryTarget": "chat",
+        "formatOutput": true
+      },
+      "metadata": {
+        "createdAt": 1765740350528,
+        "updatedAt": 1765740350528,
+        "author": "TheCouncil",
+        "description": "Standard orchestration configuration with synthesis mode",
+        "tags": [
+          "standard",
+          "synthesis"
+        ]
+      }
+    },
+    "kernel": {
+      "version": "2.0.0",
+      "activePreset": "standard",
+      "uiSettings": {
+        "navPosition": {
+          "x": 20,
+          "y": 100
+        },
+        "theme": "auto",
+        "autoShowNav": true,
+        "showTooltips": true,
+        "confirmDestructive": true,
+        "modalAnimations": true,
+        "compactMode": false
+      },
+      "apiDefaults": {
+        "useCurrentConnection": true,
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "temperature": 0.7,
+        "maxTokens": 2048,
+        "topP": 1,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0
+      },
+      "debug": {
+        "enabled": false,
+        "logLevel": "info",
+        "logToConsole": true,
+        "logToFile": false,
+        "includeTimestamps": true,
+        "includeStackTraces": false
+      },
+      "features": {
+        "enableCuration": true,
+        "enableCharacter": true,
+        "enablePipeline": true,
+        "enableOrchestration": true,
+        "enablePromptBuilder": true,
+        "enablePresets": true
+      },
+      "storage": {
+        "defaultScope": "chat",
+        "autoSave": true,
+        "autoSaveInterval": 60000,
+        "compressionEnabled": false
+      },
+      "metadata": {
+        "createdAt": 1765740350528,
+        "updatedAt": 1765740350528,
+        "author": "TheCouncil",
+        "description": "Standard kernel configuration",
+        "tags": [
+          "standard",
+          "balanced"
+        ]
+      }
+    }
+  }
+}
