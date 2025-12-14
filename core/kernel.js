@@ -1468,7 +1468,10 @@ const TheCouncilKernel = {
     const knownFiles = [
       "default-pipeline.json",
       "standard-pipeline.json",
-      "quick-pipeline.json"
+      "quick-pipeline.json",
+      "basic.json",
+      "standard.json",
+      "comprehensive.json"
     ];
 
     const validFiles = [];
