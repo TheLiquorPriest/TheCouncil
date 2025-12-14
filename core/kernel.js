@@ -334,6 +334,578 @@ const TheCouncilKernel = {
     },
   },
 
+  // ===== CONFIG MANAGER =====
+  /**
+   * Centralized configuration management for all systems
+   * Handles per-system config schemas, validation, and preset compilation
+   */
+  _configManager: {
+    schemas: new Map(),      // System config schemas (systemId -> schema)
+    configs: new Map(),      // Current configs per system (systemId -> config)
+    presets: new Map(),      // Named presets (presetId -> compiled preset)
+    dirty: new Set(),        // Systems with unsaved changes
+  },
+
+  /**
+   * Register a system's config schema
+   * @param {string} systemId - System identifier (e.g., 'curation', 'character')
+   * @param {Object} schema - Configuration schema object
+   * @returns {boolean} Success
+   */
+  registerConfigSchema(systemId, schema) {
+    if (!systemId || typeof systemId !== "string") {
+      this._log("error", "registerConfigSchema: systemId must be a non-empty string");
+      return false;
+    }
+    if (!schema || typeof schema !== "object") {
+      this._log("error", `registerConfigSchema: schema must be an object for ${systemId}`);
+      return false;
+    }
+
+    this._configManager.schemas.set(systemId, schema);
+    this._log("info", `Registered config schema for ${systemId}`);
+    this._emit("kernel:config:schema:registered", { systemId, schema });
+    return true;
+  },
+
+  /**
+   * Get a registered config schema
+   * @param {string} systemId - System identifier
+   * @returns {Object|null} Schema or null if not found
+   */
+  getConfigSchema(systemId) {
+    return this._configManager.schemas.get(systemId) || null;
+  },
+
+  /**
+   * Get all registered config schema IDs
+   * @returns {string[]} Array of system IDs with registered schemas
+   */
+  getRegisteredSchemaIds() {
+    return Array.from(this._configManager.schemas.keys());
+  },
+
+  /**
+   * Get a system's current config
+   * @param {string} systemId - System identifier
+   * @returns {Object|null} Config or null if not set
+   */
+  getSystemConfig(systemId) {
+    return this._configManager.configs.get(systemId) || null;
+  },
+
+  /**
+   * Get all current system configs
+   * @returns {Object} Map of systemId -> config
+   */
+  getAllSystemConfigs() {
+    return Object.fromEntries(this._configManager.configs);
+  },
+
+  /**
+   * Set a system's config with optional validation
+   * @param {string} systemId - System identifier
+   * @param {Object} config - Configuration object
+   * @param {Object} options - Options { validate: true, notify: true }
+   * @returns {boolean} Success
+   * @throws {Error} If validation fails
+   */
+  setSystemConfig(systemId, config, options = {}) {
+    const { validate = true, notify = true } = options;
+
+    if (!systemId || typeof systemId !== "string") {
+      this._log("error", "setSystemConfig: systemId must be a non-empty string");
+      return false;
+    }
+    if (!config || typeof config !== "object") {
+      this._log("error", `setSystemConfig: config must be an object for ${systemId}`);
+      return false;
+    }
+
+    // Validate against schema if requested and schema exists
+    if (validate) {
+      const schema = this._configManager.schemas.get(systemId);
+      if (schema) {
+        const validationResult = this._validateConfig(config, schema);
+        if (!validationResult.valid) {
+          const errorMsg = `Invalid config for ${systemId}: ${validationResult.errors.join(", ")}`;
+          this._log("error", errorMsg);
+          throw new Error(errorMsg);
+        }
+      }
+    }
+
+    const oldConfig = this._configManager.configs.get(systemId);
+    this._configManager.configs.set(systemId, config);
+    this._configManager.dirty.add(systemId);
+
+    this._log("info", `Set config for ${systemId}`);
+
+    if (notify) {
+      this._emit("kernel:config:changed", { systemId, config, oldConfig });
+      // Notify the specific system to reload its config
+      this._emit(`${systemId}:config:reload`, { config, oldConfig });
+    }
+
+    return true;
+  },
+
+  /**
+   * Update a system's config (merge with existing)
+   * @param {string} systemId - System identifier
+   * @param {Object} updates - Partial config updates
+   * @param {Object} options - Options { validate: true, notify: true }
+   * @returns {boolean} Success
+   */
+  updateSystemConfig(systemId, updates, options = {}) {
+    const currentConfig = this._configManager.configs.get(systemId) || {};
+    const mergedConfig = this._deepMerge(currentConfig, updates);
+    return this.setSystemConfig(systemId, mergedConfig, options);
+  },
+
+  /**
+   * Clear a system's config
+   * @param {string} systemId - System identifier
+   * @param {boolean} notify - Whether to emit events
+   */
+  clearSystemConfig(systemId, notify = true) {
+    const oldConfig = this._configManager.configs.get(systemId);
+    this._configManager.configs.delete(systemId);
+    this._configManager.dirty.delete(systemId);
+
+    this._log("info", `Cleared config for ${systemId}`);
+
+    if (notify && oldConfig) {
+      this._emit("kernel:config:cleared", { systemId, oldConfig });
+      this._emit(`${systemId}:config:reload`, { config: null, oldConfig });
+    }
+  },
+
+  /**
+   * Check if a system has unsaved config changes
+   * @param {string} systemId - System identifier (or null to check all)
+   * @returns {boolean} True if dirty
+   */
+  isConfigDirty(systemId = null) {
+    if (systemId) {
+      return this._configManager.dirty.has(systemId);
+    }
+    return this._configManager.dirty.size > 0;
+  },
+
+  /**
+   * Mark a system's config as saved (clean)
+   * @param {string} systemId - System identifier (or null for all)
+   */
+  markConfigClean(systemId = null) {
+    if (systemId) {
+      this._configManager.dirty.delete(systemId);
+    } else {
+      this._configManager.dirty.clear();
+    }
+  },
+
+  /**
+   * Compile all system configs into a named preset
+   * @param {string} name - Preset name
+   * @param {string} description - Preset description
+   * @param {Object} options - Options { includeMetadata: true }
+   * @returns {Object} Compiled preset object
+   */
+  compilePreset(name, description = "", options = {}) {
+    const { includeMetadata = true } = options;
+
+    if (!name || typeof name !== "string") {
+      throw new Error("compilePreset: name must be a non-empty string");
+    }
+
+    const presetId = `preset_${Date.now()}_${name.toLowerCase().replace(/\s+/g, "_")}`;
+
+    const compiled = {
+      id: presetId,
+      name,
+      description,
+      version: this.VERSION,
+      systems: {},
+    };
+
+    if (includeMetadata) {
+      compiled.metadata = {
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        sourceVersion: this.VERSION,
+        author: "",
+        tags: [],
+      };
+    }
+
+    // Collect config from each system
+    for (const [systemId, config] of this._configManager.configs) {
+      compiled.systems[systemId] = JSON.parse(JSON.stringify(config)); // Deep clone
+    }
+
+    // Cache the preset
+    this._configManager.presets.set(presetId, compiled);
+
+    this._log("info", `Compiled preset: ${name} (${presetId})`);
+    this._emit("kernel:config:preset:compiled", { preset: compiled });
+
+    return compiled;
+  },
+
+  /**
+   * Load a compiled preset, applying configs to all systems
+   * @param {Object|string} presetOrId - Preset object or preset ID
+   * @param {Object} options - Options { merge: false, notify: true }
+   * @returns {Object} Results { applied: [], errors: [] }
+   */
+  loadCompiledPreset(presetOrId, options = {}) {
+    const { merge = false, notify = true } = options;
+
+    let preset;
+    if (typeof presetOrId === "string") {
+      // Load from cache or storage
+      preset = this._configManager.presets.get(presetOrId);
+      if (!preset) {
+        throw new Error(`Preset not found: ${presetOrId}`);
+      }
+    } else {
+      preset = presetOrId;
+    }
+
+    if (!preset || !preset.systems) {
+      throw new Error("Invalid preset: missing systems object");
+    }
+
+    const results = {
+      presetId: preset.id,
+      presetName: preset.name,
+      applied: [],
+      errors: [],
+    };
+
+    // Apply configs to each system
+    for (const [systemId, config] of Object.entries(preset.systems)) {
+      try {
+        if (merge) {
+          this.updateSystemConfig(systemId, config, { validate: true, notify });
+        } else {
+          this.setSystemConfig(systemId, config, { validate: true, notify });
+        }
+        results.applied.push(systemId);
+      } catch (error) {
+        results.errors.push({ systemId, error: error.message });
+        this._log("error", `Failed to apply preset config to ${systemId}: ${error.message}`);
+      }
+    }
+
+    // Mark all as clean after loading preset
+    this.markConfigClean();
+
+    this._log("info", `Loaded preset: ${preset.name} (${results.applied.length} systems applied, ${results.errors.length} errors)`);
+    this._emit("kernel:config:preset:loaded", { preset, results });
+
+    return results;
+  },
+
+  /**
+   * Export a single system's config as a portable object
+   * @param {string} systemId - System identifier
+   * @returns {Object} Exportable config object
+   */
+  exportSystemConfig(systemId) {
+    const config = this._configManager.configs.get(systemId);
+    if (!config) {
+      throw new Error(`No config found for system: ${systemId}`);
+    }
+
+    return {
+      systemId,
+      version: this.VERSION,
+      exportedAt: Date.now(),
+      config: JSON.parse(JSON.stringify(config)), // Deep clone
+    };
+  },
+
+  /**
+   * Export multiple systems' configs
+   * @param {string[]} systemIds - Array of system IDs (null for all)
+   * @returns {Object[]} Array of exportable config objects
+   */
+  exportMultipleConfigs(systemIds = null) {
+    const ids = systemIds || Array.from(this._configManager.configs.keys());
+    return ids.map(systemId => {
+      try {
+        return this.exportSystemConfig(systemId);
+      } catch (error) {
+        this._log("warn", `Could not export config for ${systemId}: ${error.message}`);
+        return null;
+      }
+    }).filter(Boolean);
+  },
+
+  /**
+   * Import a system config (auto-detects system if not specified)
+   * @param {Object} data - Import data { systemId?, config, version? }
+   * @param {Object} options - Options { validate: true, overwrite: true }
+   * @returns {string} The systemId that was imported
+   */
+  importSystemConfig(data, options = {}) {
+    const { validate = true, overwrite = true } = options;
+
+    if (!data || typeof data !== "object") {
+      throw new Error("importSystemConfig: data must be an object");
+    }
+
+    // Extract config - support both direct config and wrapped format
+    const config = data.config || data;
+
+    // Determine system ID
+    let systemId = data.systemId;
+    if (!systemId) {
+      systemId = this._detectSystemFromConfig(config);
+    }
+
+    if (!systemId) {
+      throw new Error("Could not determine target system for import. Please specify systemId.");
+    }
+
+    // Check for existing config
+    if (!overwrite && this._configManager.configs.has(systemId)) {
+      throw new Error(`Config already exists for ${systemId}. Set overwrite: true to replace.`);
+    }
+
+    // Set the config
+    this.setSystemConfig(systemId, config, { validate, notify: true });
+
+    this._log("info", `Imported config for ${systemId}`);
+    this._emit("kernel:config:imported", { systemId, config });
+
+    return systemId;
+  },
+
+  /**
+   * Detect which system a config belongs to based on its structure
+   * @param {Object} config - Configuration object
+   * @returns {string|null} System ID or null if cannot detect
+   */
+  _detectSystemFromConfig(config) {
+    if (!config || typeof config !== "object") {
+      return null;
+    }
+
+    // Check for distinctive fields in each system's config
+    // Order matters - check most distinctive first
+
+    // Curation System: has storeSchemas, crudPipelines, or ragPipelines
+    if (config.storeSchemas || config.crudPipelines || config.ragPipelines) {
+      return "curation";
+    }
+
+    // Character System: has directorConfig, voicingDefaults, or avatarSettings
+    if (config.directorConfig || config.voicingDefaults || config.avatarSettings) {
+      return "character";
+    }
+
+    // Prompt Builder System: has customTokens, macros, or transforms
+    if (config.customTokens !== undefined || config.macros !== undefined || config.transforms !== undefined) {
+      return "promptBuilder";
+    }
+
+    // Pipeline Builder System: has teams AND pipelines (both required to distinguish)
+    if (config.teams && config.pipelines) {
+      return "pipeline";
+    }
+
+    // Orchestration System: has injectionMappings or specific mode field
+    if (config.injectionMappings !== undefined || config.injectionSettings) {
+      return "orchestration";
+    }
+
+    // Kernel: has uiSettings AND apiDefaults
+    if (config.uiSettings && config.apiDefaults) {
+      return "kernel";
+    }
+
+    // Check for systems object (this is a compiled preset, not a system config)
+    if (config.systems) {
+      this._log("warn", "_detectSystemFromConfig: Received a compiled preset, not a system config");
+      return "preset";
+    }
+
+    return null;
+  },
+
+  /**
+   * Validate a config against a schema
+   * @param {Object} config - Configuration object
+   * @param {Object} schema - Schema object
+   * @returns {Object} { valid: boolean, errors: string[] }
+   */
+  _validateConfig(config, schema) {
+    const errors = [];
+
+    // Basic type check
+    if (!config || typeof config !== "object") {
+      return { valid: false, errors: ["Config must be an object"] };
+    }
+
+    // Validate each schema field
+    for (const [fieldName, fieldSchema] of Object.entries(schema)) {
+      const value = config[fieldName];
+
+      // Check required fields
+      if (fieldSchema.required && (value === undefined || value === null)) {
+        errors.push(`Required field missing: ${fieldName}`);
+        continue;
+      }
+
+      // Skip validation if value is undefined and not required
+      if (value === undefined) {
+        continue;
+      }
+
+      // Type validation
+      if (fieldSchema.type) {
+        const isValid = this._validateFieldType(value, fieldSchema);
+        if (!isValid) {
+          errors.push(`Invalid type for ${fieldName}: expected ${fieldSchema.type}, got ${typeof value}`);
+        }
+      }
+
+      // Nested object validation
+      if (fieldSchema.type === "object" && fieldSchema.schema && value) {
+        const nestedResult = this._validateConfig(value, fieldSchema.schema);
+        if (!nestedResult.valid) {
+          errors.push(...nestedResult.errors.map(e => `${fieldName}.${e}`));
+        }
+      }
+
+      // Array item validation
+      if (fieldSchema.type === "array" && fieldSchema.items && Array.isArray(value)) {
+        value.forEach((item, index) => {
+          if (fieldSchema.items.type === "object" && fieldSchema.items.schema) {
+            const itemResult = this._validateConfig(item, fieldSchema.items.schema);
+            if (!itemResult.valid) {
+              errors.push(...itemResult.errors.map(e => `${fieldName}[${index}].${e}`));
+            }
+          }
+        });
+      }
+
+      // Enum validation
+      if (fieldSchema.type === "enum" && fieldSchema.values) {
+        if (!fieldSchema.values.includes(value)) {
+          errors.push(`Invalid value for ${fieldName}: must be one of [${fieldSchema.values.join(", ")}]`);
+        }
+      }
+
+      // Min/max validation for numbers
+      if (fieldSchema.type === "number" && typeof value === "number") {
+        if (fieldSchema.min !== undefined && value < fieldSchema.min) {
+          errors.push(`${fieldName} must be >= ${fieldSchema.min}`);
+        }
+        if (fieldSchema.max !== undefined && value > fieldSchema.max) {
+          errors.push(`${fieldName} must be <= ${fieldSchema.max}`);
+        }
+      }
+
+      // Pattern validation for strings
+      if (fieldSchema.type === "string" && fieldSchema.pattern && typeof value === "string") {
+        const regex = new RegExp(fieldSchema.pattern);
+        if (!regex.test(value)) {
+          errors.push(`${fieldName} must match pattern: ${fieldSchema.pattern}`);
+        }
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
+  },
+
+  /**
+   * Validate a field's type
+   * @param {any} value - Value to check
+   * @param {Object} fieldSchema - Field schema
+   * @returns {boolean} True if valid
+   */
+  _validateFieldType(value, fieldSchema) {
+    const { type, nullable } = fieldSchema;
+
+    // Handle nullable fields
+    if (nullable && (value === null || value === undefined)) {
+      return true;
+    }
+
+    switch (type) {
+      case "string":
+        return typeof value === "string";
+      case "number":
+        return typeof value === "number" && !isNaN(value);
+      case "boolean":
+        return typeof value === "boolean";
+      case "array":
+        return Array.isArray(value);
+      case "object":
+        return typeof value === "object" && value !== null && !Array.isArray(value);
+      case "enum":
+        // Enum validation is handled separately
+        return true;
+      case "any":
+        return true;
+      default:
+        return true;
+    }
+  },
+
+  /**
+   * Get cached config presets
+   * @returns {Object[]} Array of preset metadata
+   */
+  getCachedConfigPresets() {
+    return Array.from(this._configManager.presets.values()).map(p => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      version: p.version,
+      metadata: p.metadata,
+    }));
+  },
+
+  /**
+   * Get a cached config preset by ID
+   * @param {string} presetId - Preset ID
+   * @returns {Object|null} Preset or null
+   */
+  getCachedConfigPreset(presetId) {
+    return this._configManager.presets.get(presetId) || null;
+  },
+
+  /**
+   * Cache a config preset (without applying it)
+   * @param {Object} preset - Preset object
+   * @returns {boolean} Success
+   */
+  cacheConfigPreset(preset) {
+    if (!preset || !preset.id || !preset.name) {
+      this._log("error", "cacheConfigPreset: preset must have id and name");
+      return false;
+    }
+    this._configManager.presets.set(preset.id, preset);
+    return true;
+  },
+
+  /**
+   * Remove a cached config preset
+   * @param {string} presetId - Preset ID
+   * @returns {boolean} True if removed
+   */
+  removeCachedConfigPreset(presetId) {
+    return this._configManager.presets.delete(presetId);
+  },
+
   _stateSubscribers: new Map(),
 
   /**
