@@ -2,516 +2,2044 @@
   "id": "editorial-board",
   "name": "Editorial Board Pipeline",
   "description": "A comprehensive multi-agent workflow designed for high-quality narrative response generation. Features multiple review cycles, team deliberations, and user gavel points.",
-  "version": "2.0.0",
-  "companyName": "The Council",
-  "staticContext": {
-    "includeCharacterCard": true,
-    "includeWorldInfo": true,
-    "includePersona": true,
-    "includeScenario": true,
-    "custom": {}
+  "version": "2.1.0",
+  "metadata": {
+    "createdAt": 1765740350524,
+    "updatedAt": 1765740350524,
+    "author": "TheCouncil",
+    "description": "A comprehensive multi-agent workflow designed for high-quality narrative response generation. Features multiple review cycles, team deliberations, and user gavel points.",
+    "tags": [
+      "default",
+      "editorial",
+      "comprehensive",
+      "multi-agent"
+    ],
+    "sourceVersion": "2.1.0",
+    "exportedAt": 1765740350524
   },
-  "globals": {
-    "instructions": "",
-    "outlineDraft": "",
-    "finalOutline": "",
-    "firstDraft": "",
-    "secondDraft": "",
-    "finalDraft": "",
-    "commentary": "",
-    "custom": {}
-  },
-  "constants": {
-    "maxSMEs": 2,
-    "defaultTimeout": 60000,
-    "deliberationRounds": 3
-  },
-  "agents": [
-    {
-      "id": "publisher",
-      "name": "Publisher",
-      "description": "The big boss. Directs the pipeline process, makes final decisions, approves SME requests.",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.7, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Publisher, the executive leader of this editorial board. Your role is to direct the overall creative process, make final decisions on content direction, and approve or deny requests for Subject Matter Experts. Maintain high standards for quality while keeping the narrative engaging and consistent with the established story." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["executive"] }
-    },
-    {
-      "id": "editor",
-      "name": "Editor",
-      "description": "Oversees prose quality, synthesizes drafts, makes final editorial passes",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.6, "maxTokens": 4096 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Editor, leading the Prose Team. Your role is to oversee prose quality, synthesize contributions from specialized writers, and make final editorial passes. Focus on clarity, flow, engagement, and consistency of voice throughout the narrative." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["prose", "leader"] }
-    },
-    {
-      "id": "writer_scene",
-      "name": "Scene Writer",
-      "description": "Focuses on scene-setting, atmosphere, pacing",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.8, "maxTokens": 4096 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Scene Writer, a specialist in scene-setting, atmosphere, and pacing. Your contributions should establish vivid settings, create appropriate mood, and ensure scenes flow naturally from one to the next." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["prose", "scene"] }
-    },
-    {
-      "id": "writer_dialogue",
-      "name": "Dialogue Writer",
-      "description": "Focuses on character voice, conversation flow",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.75, "maxTokens": 4096 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Dialogue Writer, a specialist in character voice and conversation flow. Your contributions should capture each character's unique speech patterns, ensure natural conversation dynamics, and convey subtext through dialogue." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["prose", "dialogue"] }
-    },
-    {
-      "id": "writer_action",
-      "name": "Action Writer",
-      "description": "Focuses on action sequences, physical descriptions",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.8, "maxTokens": 4096 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Action Writer, a specialist in action sequences and physical descriptions. Your contributions should create dynamic, clear action scenes with appropriate pacing and visceral physical detail." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["prose", "action"] }
-    },
-    {
-      "id": "writer_character",
-      "name": "Character Writer",
-      "description": "Focuses on character thoughts, emotions, internal state",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.75, "maxTokens": 4096 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Character Writer, a specialist in internal narrative, thoughts, and emotions. Your contributions should reveal character psychology, emotional states, and internal conflicts in authentic ways." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["prose", "character"] }
-    },
-    {
-      "id": "plot_architect",
-      "name": "Plot Architect",
-      "description": "Oversees plot structure, creates outlines",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.6, "maxTokens": 3072 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Plot Architect, leading the Plot Team. Your role is to design story structure, create outlines, and ensure narrative beats land effectively. Focus on dramatic tension, story progression, and satisfying narrative arcs." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["plot", "leader"] }
-    },
-    {
-      "id": "macro_plot",
-      "name": "Macro Plot Specialist",
-      "description": "Focuses on overarching story arcs, long-term progression",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.5, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Macro Plot Specialist, focusing on overarching story arcs and long-term narrative progression. Consider how current events connect to larger story threads and future plot developments." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["plot", "macro"] }
-    },
-    {
-      "id": "micro_plot",
-      "name": "Micro Plot Specialist",
-      "description": "Focuses on scene-level plot beats, immediate conflict",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.5, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Micro Plot Specialist, focusing on scene-level plot beats and immediate conflicts. Ensure each scene has clear purpose, stakes, and momentum." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["plot", "micro"] }
-    },
-    {
-      "id": "continuity",
-      "name": "Continuity Specialist",
-      "description": "Ensures consistency with established events",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.3, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Continuity Specialist, responsible for ensuring consistency with established story events. Track character positions, timeline, established facts, and flag any contradictions." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["plot", "continuity"] }
-    },
-    {
-      "id": "scholar",
-      "name": "Scholar",
-      "description": "Oversees world-building accuracy",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.4, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Scholar, leading the World Team. Your role is to maintain world-building accuracy, ensure consistency with established lore, and guide how the world is portrayed in the narrative." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["world", "leader"] }
-    },
-    {
-      "id": "lore_specialist",
-      "name": "Lore Specialist",
-      "description": "Focuses on world rules, magic systems, technology",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.4, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Lore Specialist, focusing on world rules, magic systems, and technology. Ensure all supernatural or technological elements follow established rules and feel consistent." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["world", "lore"] }
-    },
-    {
-      "id": "story_specialist",
-      "name": "Story Specialist",
-      "description": "Focuses on narrative context, story history",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.4, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Story Specialist, focusing on narrative context and story history. Ensure the current narrative connects appropriately to past events and established story elements." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["world", "story"] }
-    },
-    {
-      "id": "character_director",
-      "name": "Character Director",
-      "description": "Oversees character portrayal accuracy",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.5, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Character Director, leading the Character Team. Your role is to ensure all characters are portrayed accurately to their established personalities, motivations, and speech patterns." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["character", "leader"] }
-    },
-    {
-      "id": "environment_director",
-      "name": "Environment Director",
-      "description": "Oversees setting descriptions",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.6, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Environment Director, leading the Environment Team. Your role is to ensure settings are described vividly and consistently, creating immersive spaces for the narrative." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["environment", "leader"] }
-    },
-    {
-      "id": "interior_specialist",
-      "name": "Interior Specialist",
-      "description": "Focuses on indoor environments, rooms, buildings",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.6, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Interior Specialist, focusing on indoor environments. Describe rooms, buildings, and enclosed spaces with attention to atmosphere, detail, and spatial relationships." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["environment", "interior"] }
-    },
-    {
-      "id": "exterior_specialist",
-      "name": "Exterior Specialist",
-      "description": "Focuses on outdoor environments, landscapes, weather",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.6, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Exterior Specialist, focusing on outdoor environments. Describe landscapes, weather, and open spaces with attention to natural beauty, environmental conditions, and sense of scale." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["environment", "exterior"] }
-    },
-    {
-      "id": "archivist",
-      "name": "Archivist",
-      "description": "Oversees all data curation and retrieval",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.3, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Archivist, leading the Record Keeping Team. Your role is to maintain, organize, and retrieve story data. You have access to all stored information about characters, plots, locations, and story history." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["curation", "leader"] }
-    },
-    {
-      "id": "story_topologist",
-      "name": "Story Topologist",
-      "description": "Manages story/plot structure data",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.3, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Story Topologist, responsible for managing story and plot structure data. Track narrative arcs, plot threads, and story progression in the curation stores." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["curation", "story"] }
-    },
-    {
-      "id": "lore_topologist",
-      "name": "Lore Topologist",
-      "description": "Manages world-building data",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.3, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Lore Topologist, responsible for managing world-building data. Track world rules, magic systems, factions, and lore in the curation stores." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["curation", "lore"] }
-    },
-    {
-      "id": "character_topologist",
-      "name": "Character Topologist",
-      "description": "Manages character data",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.3, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Character Topologist, responsible for managing character data. Track character profiles, development arcs, relationships, and positions in the curation stores." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["curation", "character"] }
-    },
-    {
-      "id": "scene_topologist",
-      "name": "Scene Topologist",
-      "description": "Manages scene data",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.3, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Scene Topologist, responsible for managing scene data. Track scene progressions, locations within scenes, and temporal markers in the curation stores." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["curation", "scene"] }
-    },
-    {
-      "id": "location_topologist",
-      "name": "Location Topologist",
-      "description": "Manages location data",
-      "apiConfig": { "useCurrentConnection": true, "endpoint": "", "apiKey": "", "model": "", "temperature": 0.3, "maxTokens": 2048 },
-      "systemPrompt": { "source": "custom", "customText": "You are the Location Topologist, responsible for managing location data. Track places, their features, connections, and atmosphere in the curation stores." },
-      "metadata": { "createdAt": 0, "updatedAt": 0, "tags": ["curation", "location"] }
-    }
-  ],
-  "positions": [
-    { "id": "executive", "name": "Executive Publisher", "description": "Top-level oversight and strategic decisions", "tier": "executive", "teamId": null, "assignedAgent": "publisher", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Executive leadership and final decisions" } },
-    { "id": "prose_lead", "name": "Editor-in-Chief", "description": "Leads prose team and editorial direction", "tier": "leader", "teamId": "prose_team", "assignedAgent": "editor", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Lead editorial direction and prose quality" } },
-    { "id": "prose_scene", "name": "Scene Writer", "description": "Scene-setting and atmosphere", "tier": "member", "teamId": "prose_team", "assignedAgent": "writer_scene", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Scene-setting, atmosphere, pacing" } },
-    { "id": "prose_dialogue", "name": "Dialogue Writer", "description": "Character voice and conversation", "tier": "member", "teamId": "prose_team", "assignedAgent": "writer_dialogue", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Character voice and dialogue" } },
-    { "id": "prose_action", "name": "Action Writer", "description": "Action sequences and physical descriptions", "tier": "member", "teamId": "prose_team", "assignedAgent": "writer_action", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Action sequences and physicality" } },
-    { "id": "prose_character", "name": "Character Writer", "description": "Internal narrative and emotions", "tier": "member", "teamId": "prose_team", "assignedAgent": "writer_character", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Internal narrative and emotion" } },
-    { "id": "plot_lead", "name": "Plot Architect", "description": "Story structure and narrative architecture", "tier": "leader", "teamId": "plot_team", "assignedAgent": "plot_architect", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Story structure and plot design" } },
-    { "id": "plot_macro", "name": "Macro Plot Specialist", "description": "Long-term story arcs", "tier": "member", "teamId": "plot_team", "assignedAgent": "macro_plot", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Overarching story arcs" } },
-    { "id": "plot_micro", "name": "Micro Plot Specialist", "description": "Scene-level plot beats", "tier": "member", "teamId": "plot_team", "assignedAgent": "micro_plot", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Scene-level plot execution" } },
-    { "id": "plot_continuity", "name": "Continuity Specialist", "description": "Story consistency and fact tracking", "tier": "member", "teamId": "plot_team", "assignedAgent": "continuity", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Track continuity and flag inconsistencies" } },
-    { "id": "world_lead", "name": "Scholar", "description": "World-building and lore leader", "tier": "leader", "teamId": "world_team", "assignedAgent": "scholar", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Maintain world consistency and lore" } },
-    { "id": "world_lore", "name": "Lore Specialist", "description": "World rules and magic systems", "tier": "member", "teamId": "world_team", "assignedAgent": "lore_specialist", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "World rules and systems" } },
-    { "id": "world_story", "name": "Story Specialist", "description": "Narrative context and history", "tier": "member", "teamId": "world_team", "assignedAgent": "story_specialist", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Story history and context" } },
-    { "id": "character_lead", "name": "Character Director", "description": "Character portrayal accuracy", "tier": "leader", "teamId": "character_team", "assignedAgent": "character_director", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Character accuracy and portrayal" } },
-    { "id": "environment_lead", "name": "Environment Director", "description": "Setting descriptions leader", "tier": "leader", "teamId": "environment_team", "assignedAgent": "environment_director", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Setting and environment leadership" } },
-    { "id": "environment_interior", "name": "Interior Specialist", "description": "Indoor environments", "tier": "member", "teamId": "environment_team", "assignedAgent": "interior_specialist", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Indoor environment descriptions" } },
-    { "id": "environment_exterior", "name": "Exterior Specialist", "description": "Outdoor environments", "tier": "member", "teamId": "environment_team", "assignedAgent": "exterior_specialist", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Outdoor environment descriptions" } },
-    { "id": "curation_lead", "name": "Archivist", "description": "Data curation and retrieval leader", "tier": "leader", "teamId": "curation_team", "assignedAgent": "archivist", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Manage story data and retrieve context" } },
-    { "id": "curation_story", "name": "Story Topologist", "description": "Story structure data", "tier": "member", "teamId": "curation_team", "assignedAgent": "story_topologist", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Story structure data management" } },
-    { "id": "curation_lore", "name": "Lore Topologist", "description": "World-building data", "tier": "member", "teamId": "curation_team", "assignedAgent": "lore_topologist", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "World-building data management" } },
-    { "id": "curation_character", "name": "Character Topologist", "description": "Character data", "tier": "member", "teamId": "curation_team", "assignedAgent": "character_topologist", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Character data management" } },
-    { "id": "curation_scene", "name": "Scene Topologist", "description": "Scene data", "tier": "member", "teamId": "curation_team", "assignedAgent": "scene_topologist", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Scene data management" } },
-    { "id": "curation_location", "name": "Location Topologist", "description": "Location data", "tier": "member", "teamId": "curation_team", "assignedAgent": "location_topologist", "promptModifiers": { "prefix": "", "suffix": "", "roleDescription": "Location data management" } }
-  ],
-  "teams": [
-    { "id": "prose_team", "name": "Prose Team", "description": "Handles narrative writing, editing, and prose quality", "leaderId": "prose_lead", "memberIds": ["prose_lead", "prose_scene", "prose_dialogue", "prose_action", "prose_character"] },
-    { "id": "plot_team", "name": "Plot Team", "description": "Handles story structure, plot, and continuity", "leaderId": "plot_lead", "memberIds": ["plot_lead", "plot_macro", "plot_micro", "plot_continuity"] },
-    { "id": "world_team", "name": "World Team", "description": "Handles world-building, lore, and consistency", "leaderId": "world_lead", "memberIds": ["world_lead", "world_lore", "world_story"] },
-    { "id": "character_team", "name": "Character Team", "description": "Handles character portrayal accuracy", "leaderId": "character_lead", "memberIds": ["character_lead"] },
-    { "id": "environment_team", "name": "Environment Team", "description": "Handles setting and environment descriptions", "leaderId": "environment_lead", "memberIds": ["environment_lead", "environment_interior", "environment_exterior"] },
-    { "id": "curation_team", "name": "Record Keeping Team", "description": "Handles data curation and retrieval", "leaderId": "curation_lead", "memberIds": ["curation_lead", "curation_story", "curation_lore", "curation_character", "curation_scene", "curation_location"] }
-  ],
-  "pipelines": [
-    {
-      "id": "editorial-board",
-      "name": "Editorial Board Pipeline",
-      "description": "A comprehensive multi-agent workflow designed for high-quality narrative response generation.",
-      "version": "2.0.0",
-      "threads": {
-        "main": { "id": "main", "name": "Main", "description": "Primary deliberation space for leaders and executives", "visible": true },
-        "context": { "id": "context", "name": "Context", "description": "Context retrieval discussions and results", "visible": true },
-        "instructions": { "id": "instructions", "name": "Instructions", "description": "User instruction interpretation", "visible": true },
-        "outline": { "id": "outline", "name": "Outline", "description": "Outline drafts and revisions", "visible": true },
-        "drafting": { "id": "drafting", "name": "Drafting", "description": "Draft synthesis and reviewer feedback", "visible": true },
-        "final": { "id": "final", "name": "Final Response", "description": "Final approved content", "visible": true },
-        "prose": { "id": "prose", "name": "Prose", "description": "Prose team internal discussions", "visible": false },
-        "plot": { "id": "plot", "name": "Plot", "description": "Plot team internal discussions", "visible": false },
-        "world": { "id": "world", "name": "World", "description": "World team internal discussions", "visible": false },
-        "characters": { "id": "characters", "name": "Characters", "description": "Character team internal discussions", "visible": false },
-        "environment": { "id": "environment", "name": "Environment", "description": "Environment team internal discussions", "visible": false },
-        "curation": { "id": "curation", "name": "Record Keeping", "description": "Curation team internal discussions", "visible": false }
+  "systems": {
+    "curation": {
+      "version": "1.0.0",
+      "storeSchemas": [],
+      "crudPipelines": [],
+      "ragPipelines": [],
+      "agents": [],
+      "positions": [],
+      "positionMapping": {
+        "storyTopologist": [
+          "storyDraft",
+          "storyOutline",
+          "storySynopsis",
+          "plotLines",
+          "scenes"
+        ],
+        "characterTopologist": [
+          "characterSheets",
+          "characterDevelopment",
+          "characterInventory",
+          "characterPositions"
+        ],
+        "loreTopologist": [
+          "factionSheets",
+          "locationSheets"
+        ],
+        "sceneTopologist": [
+          "scenes",
+          "dialogueHistory",
+          "currentSituation"
+        ],
+        "locationTopologist": [
+          "locationSheets"
+        ]
       },
-      "phases": [
+      "executionSettings": {
+        "maxDeliberationRounds": 3,
+        "deliberationTimeout": 30000,
+        "autoSaveInterval": 60000,
+        "enableAutoExtraction": false,
+        "extractionTriggers": [
+          "after_response",
+          "on_demand"
+        ]
+      },
+      "metadata": {
+        "createdAt": 1765740350524,
+        "updatedAt": 1765740350524,
+        "author": "TheCouncil",
+        "description": "Default curation configuration",
+        "tags": []
+      }
+    },
+    "character": {
+      "version": "1.0.0",
+      "directorConfig": {
+        "enabled": true,
+        "autoSpawn": true,
+        "maxActiveCharacters": 10,
+        "spawnThreshold": 0.5
+      },
+      "voicingDefaults": {
+        "includePersonality": true,
+        "includeAppearance": false,
+        "includeBackground": true,
+        "includeSpeechPatterns": true,
+        "includeMannerisms": true,
+        "includeCatchphrases": true,
+        "includeRelationships": true,
+        "voiceIntensity": "moderate",
+        "promptTemplate": ""
+      },
+      "avatarSettings": {
+        "defaultReasoning": {
+          "enabled": false,
+          "prefix": "<thinking>",
+          "suffix": "</thinking>",
+          "hideFromOutput": true
+        },
+        "syncOnStartup": true,
+        "persistOverrides": true
+      },
+      "agentOverrides": {},
+      "typePriorities": {
+        "main_cast": 1,
+        "recurring_cast": 2,
+        "supporting_cast": 3,
+        "background": 4
+      },
+      "metadata": {
+        "createdAt": 1765740350524,
+        "updatedAt": 1765740350524,
+        "author": "TheCouncil",
+        "description": "Default character system configuration",
+        "tags": []
+      }
+    },
+    "promptBuilder": {
+      "version": "1.0.0",
+      "customTokens": [],
+      "macros": [],
+      "transforms": [],
+      "presetPrompts": [],
+      "resolutionSettings": {
+        "maxNestingDepth": 10,
+        "passUnresolvedToST": true,
+        "warnOnUnresolved": true,
+        "cacheResolutions": true
+      },
+      "uiPreferences": {
+        "defaultMode": "builder",
+        "showTokenCategories": true,
+        "showTokenDescriptions": true,
+        "enableAutoComplete": true
+      },
+      "metadata": {
+        "createdAt": 1765740350524,
+        "updatedAt": 1765740350524,
+        "author": "TheCouncil",
+        "description": "Default prompt builder configuration",
+        "tags": []
+      }
+    },
+    "pipeline": {
+      "version": "2.0.0",
+      "agents": [
         {
-          "id": "phase_1_curate",
-          "name": "Phase 1: Curate Persistent Stores",
-          "description": "Update or build persistent data stores based on recent chat history and story developments.",
-          "icon": "🗃️",
-          "teams": ["curation_team"],
-          "threads": { "phaseThread": { "enabled": true }, "teamThreads": { "curation": true } },
-          "actions": [
-            {
-              "id": "curate_stores",
-              "name": "Update Story Data",
-              "actionType": "crud_pipeline",
-              "description": "Record Keeping Team reviews and updates persistent stores",
-              "crudConfig": { "pipelineId": "auto_curate", "operation": "update", "storeId": "auto" },
-              "participants": { "positionIds": ["curation_lead", "curation_story", "curation_character", "curation_scene"], "orchestration": "sequential" },
-              "promptTemplate": "Review the recent chat history and update the relevant story data stores. Focus on:\n1. Character developments and state changes\n2. Plot progression and new events\n3. Scene and location changes\n4. Any new lore or world-building details\n\nRecent messages:\n{{lastMessages:5}}"
-            }
-          ],
-          "output": { "consolidation": "last_action" }
+          "id": "publisher",
+          "name": "Publisher",
+          "description": "The big boss. Directs the pipeline process, makes final decisions, approves SME requests.",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.7,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Publisher, the executive leader of this editorial board. Your role is to direct the overall creative process, make final decisions on content direction, and approve or deny requests for Subject Matter Experts. Maintain high standards for quality while keeping the narrative engaging and consistent with the established story."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "executive"
+            ]
+          }
         },
         {
-          "id": "phase_2_context",
-          "name": "Phase 2: Preliminary Context",
-          "description": "Deliberate to determine what preliminary context should be retrieved.",
-          "icon": "📋",
-          "teams": ["curation_team", "world_team", "plot_team"],
-          "threads": { "phaseThread": { "enabled": true }, "teamThreads": {} },
-          "actions": [
-            {
-              "id": "deliberate_context",
-              "name": "Context Deliberation",
-              "actionType": "deliberative_rag",
-              "description": "Team leads deliberate on what context to retrieve",
-              "deliberativeConfig": { "queryParticipants": ["plot_lead", "world_lead"], "curationPositions": ["curation_lead", "curation_story", "curation_lore", "curation_character"], "maxRounds": 2, "availableRAGPipelines": ["character_lookup", "scene_context", "plot_threads"], "consolidation": "synthesize", "curationPrompt": "You are a member of the Record Keeping team. Provide accurate information from the story records to help establish context for the upcoming response." },
-              "participants": { "positionIds": ["curation_lead", "world_lead", "plot_lead"], "orchestration": "consensus" }
-            }
-          ],
-          "output": { "consolidation": "synthesize" }
+          "id": "editor",
+          "name": "Editor",
+          "description": "Oversees prose quality, synthesizes drafts, makes final editorial passes",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.6,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Editor, leading the Prose Team. Your role is to oversee prose quality, synthesize contributions from specialized writers, and make final editorial passes. Focus on clarity, flow, engagement, and consistency of voice throughout the narrative."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "leader"
+            ]
+          }
         },
         {
-          "id": "phase_3_instructions",
-          "name": "Phase 3: Understand User Instructions",
-          "description": "Deliberate on user instructions and intent.",
-          "icon": "📝",
-          "teams": [],
-          "threads": { "phaseThread": { "enabled": true }, "teamThreads": {} },
-          "actions": [
-            {
-              "id": "interpret_instructions",
-              "name": "Interpret User Intent",
-              "actionType": "standard",
-              "description": "Leaders deliberate on user's message and intent",
-              "participants": { "positionIds": ["executive", "prose_lead", "plot_lead", "world_lead"], "orchestration": "consensus", "maxRounds": 2 },
-              "promptTemplate": "Review the user's message and deliberate on their intent.\n\nUser message: {{userMessage}}\n\nContext: {{context}}\n\nProvide your interpretation of:\n1. What is the user asking for?\n2. What narrative direction should we take?\n3. What tone and style is appropriate?\n4. Any specific elements to include or avoid?"
-            }
-          ],
-          "output": { "consolidation": "consensus" },
-          "gavel": { "enabled": true, "prompt": "Review the interpreted instructions. Edit if needed:", "editableFields": ["output"], "canSkip": true }
+          "id": "writer_scene",
+          "name": "Scene Writer",
+          "description": "Focuses on scene-setting, atmosphere, pacing",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.8,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Scene Writer, a specialist in scene-setting, atmosphere, and pacing. Your contributions should establish vivid settings, create appropriate mood, and ensure scenes flow naturally from one to the next."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "scene"
+            ]
+          }
         },
         {
-          "id": "phase_4_gavel_instructions",
-          "name": "Phase 4: User Gavel - Instructions",
-          "description": "User can review and edit the interpreted instructions before proceeding.",
-          "icon": "⚖️",
-          "teams": [],
-          "actions": [
-            { "id": "gavel_instructions", "name": "Review Instructions", "actionType": "user_gavel", "gavelConfig": { "prompt": "Review the interpreted instructions. You may edit them before the team proceeds:", "editableFields": ["instructions"], "canSkip": true, "timeout": 0 } }
-          ]
+          "id": "writer_dialogue",
+          "name": "Dialogue Writer",
+          "description": "Focuses on character voice, conversation flow",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.75,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Dialogue Writer, a specialist in character voice and conversation flow. Your contributions should capture each character's unique speech patterns, ensure natural conversation dynamics, and convey subtext through dialogue."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "dialogue"
+            ]
+          }
         },
         {
-          "id": "phase_5_secondary_context",
-          "name": "Phase 5: Secondary Context Pass",
-          "description": "Assess whether additional context should be included based on interpreted instructions.",
-          "icon": "🔍",
-          "teams": ["curation_team"],
-          "actions": [
-            { "id": "additional_context", "name": "Retrieve Additional Context", "actionType": "rag_pipeline", "ragConfig": { "pipelineId": "comprehensive_search", "querySource": "input", "queryTemplate": "Based on these instructions, find relevant: {{globals.instructions}}", "resultTarget": "context", "maxResults": 10 } }
-          ]
+          "id": "writer_action",
+          "name": "Action Writer",
+          "description": "Focuses on action sequences, physical descriptions",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.8,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Action Writer, a specialist in action sequences and physical descriptions. Your contributions should create dynamic, clear action scenes with appropriate pacing and visceral physical detail."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "action"
+            ]
+          }
         },
         {
-          "id": "phase_6_outline",
-          "name": "Phase 6: Outline Draft",
-          "description": "The Plot Team drafts the initial outline.",
-          "icon": "📊",
-          "teams": ["plot_team"],
-          "threads": { "phaseThread": { "enabled": true }, "teamThreads": { "plot": true } },
-          "actions": [
-            { "id": "draft_outline", "name": "Create Outline", "actionType": "standard", "participants": { "teamIds": ["plot_team"], "orchestration": "sequential" }, "promptTemplate": "Create an outline for the response based on:\n\nInstructions: {{globals.instructions}}\n\nContext: {{context}}\n\nThe outline should include:\n1. Opening hook/scene setup\n2. Key plot beats to hit\n3. Character moments to include\n4. Closing/transition point\n\nConsider pacing, tension, and narrative flow." }
-          ],
-          "output": { "consolidation": "last_action" }
+          "id": "writer_character",
+          "name": "Character Writer",
+          "description": "Focuses on character thoughts, emotions, internal state",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.75,
+            "maxTokens": 4096
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Character Writer, a specialist in internal narrative, thoughts, and emotions. Your contributions should reveal character psychology, emotional states, and internal conflicts in authentic ways."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "prose",
+              "character"
+            ]
+          }
         },
         {
-          "id": "phase_7_outline_review",
-          "name": "Phase 7: Outline Review",
-          "description": "Teams review the initial outline in parallel.",
-          "icon": "👁️",
-          "teams": ["world_team", "prose_team"],
-          "actions": [
-            { "id": "world_review_outline", "name": "World Team Review", "actionType": "standard", "execution": { "mode": "async" }, "participants": { "teamIds": ["world_team"], "orchestration": "sequential" }, "promptTemplate": "Review this outline for world-building accuracy:\n\n{{globals.outlineDraft}}\n\nCheck for:\n1. Consistency with established lore\n2. Appropriate use of world elements\n3. Any contradictions with world rules" },
-            { "id": "prose_review_outline", "name": "Prose Team Review", "actionType": "standard", "execution": { "mode": "async" }, "participants": { "teamIds": ["prose_team"], "orchestration": "sequential" }, "promptTemplate": "Review this outline for narrative quality:\n\n{{globals.outlineDraft}}\n\nCheck for:\n1. Pacing and flow\n2. Opportunities for strong prose moments\n3. Character voice opportunities" }
-          ]
+          "id": "plot_architect",
+          "name": "Plot Architect",
+          "description": "Oversees plot structure, creates outlines",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.6,
+            "maxTokens": 3072
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Plot Architect, leading the Plot Team. Your role is to design story structure, create outlines, and ensure narrative beats land effectively. Focus on dramatic tension, story progression, and satisfying narrative arcs."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "plot",
+              "leader"
+            ]
+          }
         },
         {
-          "id": "phase_8_outline_discussion",
-          "name": "Phase 8: Outline Discussion",
-          "description": "Deliberate and decide final outline by consensus.",
-          "icon": "💬",
-          "teams": [],
-          "actions": [
-            { "id": "finalize_outline", "name": "Finalize Outline", "actionType": "standard", "participants": { "positionIds": ["plot_lead", "prose_lead", "world_lead"], "orchestration": "consensus", "maxRounds": 2 }, "promptTemplate": "Review all team feedback and finalize the outline:\n\nOriginal outline:\n{{globals.outlineDraft}}\n\nWorld Team feedback:\n{{phase_7.world_review_outline.output}}\n\nProse Team feedback:\n{{phase_7.prose_review_outline.output}}\n\nReach consensus on the final outline." }
-          ],
-          "gavel": { "enabled": true, "prompt": "Review the final outline before drafting begins:", "canSkip": true }
+          "id": "macro_plot",
+          "name": "Macro Plot Specialist",
+          "description": "Focuses on overarching story arcs, long-term progression",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.5,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Macro Plot Specialist, focusing on overarching story arcs and long-term narrative progression. Consider how current events connect to larger story threads and future plot developments."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "plot",
+              "macro"
+            ]
+          }
         },
         {
-          "id": "phase_9_gavel_outline",
-          "name": "Phase 9: User Gavel - Outline",
-          "description": "User can review and edit the final outline before drafting begins.",
-          "icon": "⚖️",
-          "actions": [
-            { "id": "gavel_outline", "name": "Review Outline", "actionType": "user_gavel", "gavelConfig": { "prompt": "Review the outline. You may edit it before drafting begins:", "editableFields": ["outline"], "canSkip": true } }
-          ]
+          "id": "micro_plot",
+          "name": "Micro Plot Specialist",
+          "description": "Focuses on scene-level plot beats, immediate conflict",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.5,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Micro Plot Specialist, focusing on scene-level plot beats and immediate conflicts. Ensure each scene has clear purpose, stakes, and momentum."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "plot",
+              "micro"
+            ]
+          }
         },
         {
-          "id": "phase_10_first_draft",
-          "name": "Phase 10: First Draft",
-          "description": "The Prose Team specialists each produce their contributions.",
-          "icon": "✍️",
-          "teams": ["prose_team"],
-          "threads": { "phaseThread": { "enabled": true }, "teamThreads": { "prose": true } },
-          "actions": [
-            { "id": "write_first_draft", "name": "Write First Draft", "actionType": "standard", "participants": { "teamIds": ["prose_team"], "orchestration": "sequential" }, "promptTemplate": "Write the first draft based on the approved outline:\n\nOutline:\n{{globals.finalOutline}}\n\nContext:\n{{context}}\n\nInstructions:\n{{globals.instructions}}\n\nWrite a complete, engaging response that follows the outline while maintaining the established tone and style." }
-          ],
-          "gavel": { "enabled": true, "prompt": "Review the first draft:", "canSkip": true }
+          "id": "continuity",
+          "name": "Continuity Specialist",
+          "description": "Ensures consistency with established events",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.3,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Continuity Specialist, responsible for ensuring consistency with established story events. Track character positions, timeline, established facts, and flag any contradictions."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "plot",
+              "continuity"
+            ]
+          }
         },
         {
-          "id": "phase_11_gavel_first_draft",
-          "name": "Phase 11: User Gavel - First Draft",
-          "description": "User can review and edit the first draft.",
-          "icon": "⚖️",
-          "actions": [
-            { "id": "gavel_first_draft", "name": "Review First Draft", "actionType": "user_gavel", "gavelConfig": { "prompt": "Review the first draft. You may edit it:", "editableFields": ["draft"], "canSkip": true } }
-          ]
+          "id": "scholar",
+          "name": "Scholar",
+          "description": "Oversees world-building accuracy",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.4,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Scholar, leading the World Team. Your role is to maintain world-building accuracy, ensure consistency with established lore, and guide how the world is portrayed in the narrative."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "world",
+              "leader"
+            ]
+          }
         },
         {
-          "id": "phase_12_draft_review",
-          "name": "Phase 12: Draft Review",
-          "description": "Character and Environment teams review the draft in parallel.",
-          "icon": "🔎",
-          "teams": ["character_team", "environment_team"],
-          "actions": [
-            { "id": "character_review", "name": "Character Team Review", "actionType": "standard", "execution": { "mode": "async" }, "participants": { "teamIds": ["character_team"], "orchestration": "sequential" }, "promptTemplate": "Review this draft for character portrayal:\n\n{{globals.firstDraft}}\n\nCheck for:\n1. Accurate character voices\n2. Consistent characterization\n3. Natural dialogue" },
-            { "id": "environment_review", "name": "Environment Team Review", "actionType": "standard", "execution": { "mode": "async" }, "participants": { "teamIds": ["environment_team"], "orchestration": "sequential" }, "promptTemplate": "Review this draft for setting descriptions:\n\n{{globals.firstDraft}}\n\nCheck for:\n1. Vivid environment details\n2. Consistency with established locations\n3. Atmospheric quality" }
-          ]
+          "id": "lore_specialist",
+          "name": "Lore Specialist",
+          "description": "Focuses on world rules, magic systems, technology",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.4,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Lore Specialist, focusing on world rules, magic systems, and technology. Ensure all supernatural or technological elements follow established rules and feel consistent."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "world",
+              "lore"
+            ]
+          }
         },
         {
-          "id": "phase_13_second_draft",
-          "name": "Phase 13: Second Draft",
-          "description": "The Prose Team refines the first draft incorporating feedback.",
-          "icon": "📝",
-          "teams": ["prose_team"],
-          "actions": [
-            { "id": "write_second_draft", "name": "Write Second Draft", "actionType": "standard", "participants": { "teamIds": ["prose_team"], "orchestration": "consensus" }, "promptTemplate": "Refine the draft incorporating team feedback:\n\nFirst Draft:\n{{globals.firstDraft}}\n\nCharacter feedback:\n{{phase_12.character_review.output}}\n\nEnvironment feedback:\n{{phase_12.environment_review.output}}\n\nProduce a refined second draft." }
-          ],
-          "gavel": { "enabled": true, "prompt": "Review the second draft:", "canSkip": true }
+          "id": "story_specialist",
+          "name": "Story Specialist",
+          "description": "Focuses on narrative context, story history",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.4,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Story Specialist, focusing on narrative context and story history. Ensure the current narrative connects appropriately to past events and established story elements."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "world",
+              "story"
+            ]
+          }
         },
         {
-          "id": "phase_14_gavel_second_draft",
-          "name": "Phase 14: User Gavel - Second Draft",
-          "description": "User can review and edit the second draft.",
-          "icon": "⚖️",
-          "actions": [
-            { "id": "gavel_second_draft", "name": "Review Second Draft", "actionType": "user_gavel", "gavelConfig": { "prompt": "Review the second draft. You may edit it:", "editableFields": ["draft"], "canSkip": true } }
-          ]
+          "id": "character_director",
+          "name": "Character Director",
+          "description": "Oversees character portrayal accuracy",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.5,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Character Director, leading the Character Team. Your role is to ensure all characters are portrayed accurately to their established personalities, motivations, and speech patterns."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "character",
+              "leader"
+            ]
+          }
         },
         {
-          "id": "phase_15_final_review",
-          "name": "Phase 15: Final Review",
-          "description": "Plot Team, World Team, and Publisher perform final reviews.",
-          "icon": "✅",
-          "teams": ["plot_team", "world_team"],
-          "actions": [
-            { "id": "plot_final_review", "name": "Plot Team Final Review", "actionType": "standard", "execution": { "mode": "async" }, "participants": { "teamIds": ["plot_team"], "orchestration": "sequential" }, "promptTemplate": "Final review for plot execution:\n\n{{globals.secondDraft}}\n\nVerify the response:\n1. Follows the approved outline\n2. Maintains plot momentum\n3. Serves larger story goals" },
-            { "id": "world_final_review", "name": "World Team Final Review", "actionType": "standard", "execution": { "mode": "async" }, "participants": { "teamIds": ["world_team"], "orchestration": "sequential" }, "promptTemplate": "Final review for world consistency:\n\n{{globals.secondDraft}}\n\nVerify:\n1. Lore accuracy\n2. World-building consistency\n3. Proper use of established elements" },
-            { "id": "publisher_review", "name": "Publisher Review", "actionType": "standard", "execution": { "mode": "async" }, "participants": { "positionIds": ["executive"], "orchestration": "sequential" }, "promptTemplate": "Executive review of the draft:\n\n{{globals.secondDraft}}\n\nProvide high-level feedback on:\n1. Overall quality\n2. Alignment with user intent\n3. Any final concerns" }
-          ]
+          "id": "environment_director",
+          "name": "Environment Director",
+          "description": "Oversees setting descriptions",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.6,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Environment Director, leading the Environment Team. Your role is to ensure settings are described vividly and consistently, creating immersive spaces for the narrative."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "environment",
+              "leader"
+            ]
+          }
         },
         {
-          "id": "phase_16_final_draft",
-          "name": "Phase 16: Final Draft",
-          "description": "The Prose Team produces the final draft incorporating all feedback.",
-          "icon": "🏁",
-          "teams": ["prose_team"],
-          "actions": [
-            { "id": "write_final_draft", "name": "Write Final Draft", "actionType": "standard", "participants": { "positionIds": ["prose_lead"], "orchestration": "sequential" }, "promptTemplate": "Produce the final draft incorporating all feedback:\n\nSecond Draft:\n{{globals.secondDraft}}\n\nPlot feedback:\n{{phase_15.plot_final_review.output}}\n\nWorld feedback:\n{{phase_15.world_final_review.output}}\n\nPublisher feedback:\n{{phase_15.publisher_review.output}}\n\nCreate the polished final draft." }
-          ],
-          "gavel": { "enabled": true, "prompt": "Review the final draft before publication:", "canSkip": true }
+          "id": "interior_specialist",
+          "name": "Interior Specialist",
+          "description": "Focuses on indoor environments, rooms, buildings",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.6,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Interior Specialist, focusing on indoor environments. Describe rooms, buildings, and enclosed spaces with attention to atmosphere, detail, and spatial relationships."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "environment",
+              "interior"
+            ]
+          }
         },
         {
-          "id": "phase_17_gavel_final",
-          "name": "Phase 17: User Gavel - Final Draft",
-          "description": "User can review and make final edits before publication.",
-          "icon": "⚖️",
-          "actions": [
-            { "id": "gavel_final_draft", "name": "Final Review", "actionType": "user_gavel", "gavelConfig": { "prompt": "Final review before publication. Make any last edits:", "editableFields": ["draft"], "canSkip": true } }
-          ]
+          "id": "exterior_specialist",
+          "name": "Exterior Specialist",
+          "description": "Focuses on outdoor environments, landscapes, weather",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.6,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Exterior Specialist, focusing on outdoor environments. Describe landscapes, weather, and open spaces with attention to natural beauty, environmental conditions, and sense of scale."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "environment",
+              "exterior"
+            ]
+          }
         },
         {
-          "id": "phase_18_commentary",
-          "name": "Phase 18: Team Commentary",
-          "description": "Team leads may comment on the final draft. Archivist records commentary.",
-          "icon": "💭",
-          "teams": ["curation_team"],
-          "actions": [
-            { "id": "record_commentary", "name": "Record Commentary", "actionType": "standard", "participants": { "positionIds": ["prose_lead", "plot_lead", "world_lead", "character_lead", "environment_lead", "executive", "curation_lead"], "orchestration": "parallel" }, "promptTemplate": "Provide brief optional commentary on the final response:\n\n{{globals.finalDraft}}\n\nShare any insights, notes for future reference, or observations. Keep it brief." },
-            { "id": "archive_response", "name": "Archive Response", "actionType": "crud_pipeline", "crudConfig": { "pipelineId": "archive_response", "operation": "create", "storeId": "responses" } }
-          ]
+          "id": "archivist",
+          "name": "Archivist",
+          "description": "Oversees all data curation and retrieval",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.3,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Archivist, leading the Record Keeping Team. Your role is to maintain, organize, and retrieve story data. You have access to all stored information about characters, plots, locations, and story history."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "curation",
+              "leader"
+            ]
+          }
         },
         {
-          "id": "phase_19_final_response",
-          "name": "Phase 19: Final Response",
-          "description": "Final draft is posted as the SillyTavern chat response.",
-          "icon": "📤",
-          "actions": [
-            { "id": "publish_response", "name": "Publish Response", "actionType": "system", "promptTemplate": "{{globals.finalDraft}}" }
-          ],
-          "output": { "consolidation": "last_action" }
+          "id": "story_topologist",
+          "name": "Story Topologist",
+          "description": "Manages story/plot structure data",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.3,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Story Topologist, responsible for managing story and plot structure data. Track narrative arcs, plot threads, and story progression in the curation stores."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "curation",
+              "story"
+            ]
+          }
+        },
+        {
+          "id": "lore_topologist",
+          "name": "Lore Topologist",
+          "description": "Manages world-building data",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.3,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Lore Topologist, responsible for managing world-building data. Track world rules, magic systems, factions, and lore in the curation stores."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "curation",
+              "lore"
+            ]
+          }
+        },
+        {
+          "id": "character_topologist",
+          "name": "Character Topologist",
+          "description": "Manages character data",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.3,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Character Topologist, responsible for managing character data. Track character profiles, development arcs, relationships, and positions in the curation stores."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "curation",
+              "character"
+            ]
+          }
+        },
+        {
+          "id": "scene_topologist",
+          "name": "Scene Topologist",
+          "description": "Manages scene data",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.3,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Scene Topologist, responsible for managing scene data. Track scene progressions, locations within scenes, and temporal markers in the curation stores."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "curation",
+              "scene"
+            ]
+          }
+        },
+        {
+          "id": "location_topologist",
+          "name": "Location Topologist",
+          "description": "Manages location data",
+          "apiConfig": {
+            "useCurrentConnection": true,
+            "endpoint": "",
+            "apiKey": "",
+            "model": "",
+            "temperature": 0.3,
+            "maxTokens": 2048
+          },
+          "systemPrompt": {
+            "source": "custom",
+            "customText": "You are the Location Topologist, responsible for managing location data. Track places, their features, connections, and atmosphere in the curation stores."
+          },
+          "reasoning": {},
+          "metadata": {
+            "createdAt": 0,
+            "updatedAt": 0,
+            "tags": [
+              "curation",
+              "location"
+            ]
+          }
         }
       ],
-      "staticContext": {
+      "positions": [
+        {
+          "id": "executive",
+          "name": "Executive Publisher",
+          "teamId": null,
+          "tier": "executive",
+          "assignedAgentId": "publisher",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Executive leadership and final decisions"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_lead",
+          "name": "Editor-in-Chief",
+          "teamId": "prose_team",
+          "tier": "leader",
+          "assignedAgentId": "editor",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Lead editorial direction and prose quality"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_scene",
+          "name": "Scene Writer",
+          "teamId": "prose_team",
+          "tier": "member",
+          "assignedAgentId": "writer_scene",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Scene-setting, atmosphere, pacing"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_dialogue",
+          "name": "Dialogue Writer",
+          "teamId": "prose_team",
+          "tier": "member",
+          "assignedAgentId": "writer_dialogue",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Character voice and dialogue"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_action",
+          "name": "Action Writer",
+          "teamId": "prose_team",
+          "tier": "member",
+          "assignedAgentId": "writer_action",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Action sequences and physicality"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "prose_character",
+          "name": "Character Writer",
+          "teamId": "prose_team",
+          "tier": "member",
+          "assignedAgentId": "writer_character",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Internal narrative and emotion"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "plot_lead",
+          "name": "Plot Architect",
+          "teamId": "plot_team",
+          "tier": "leader",
+          "assignedAgentId": "plot_architect",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Story structure and plot design"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "plot_macro",
+          "name": "Macro Plot Specialist",
+          "teamId": "plot_team",
+          "tier": "member",
+          "assignedAgentId": "macro_plot",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Overarching story arcs"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "plot_micro",
+          "name": "Micro Plot Specialist",
+          "teamId": "plot_team",
+          "tier": "member",
+          "assignedAgentId": "micro_plot",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Scene-level plot execution"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "plot_continuity",
+          "name": "Continuity Specialist",
+          "teamId": "plot_team",
+          "tier": "member",
+          "assignedAgentId": "continuity",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Track continuity and flag inconsistencies"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "world_lead",
+          "name": "Scholar",
+          "teamId": "world_team",
+          "tier": "leader",
+          "assignedAgentId": "scholar",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Maintain world consistency and lore"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "world_lore",
+          "name": "Lore Specialist",
+          "teamId": "world_team",
+          "tier": "member",
+          "assignedAgentId": "lore_specialist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "World rules and systems"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "world_story",
+          "name": "Story Specialist",
+          "teamId": "world_team",
+          "tier": "member",
+          "assignedAgentId": "story_specialist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Story history and context"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "character_lead",
+          "name": "Character Director",
+          "teamId": "character_team",
+          "tier": "leader",
+          "assignedAgentId": "character_director",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Character accuracy and portrayal"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "environment_lead",
+          "name": "Environment Director",
+          "teamId": "environment_team",
+          "tier": "leader",
+          "assignedAgentId": "environment_director",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Setting and environment leadership"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "environment_interior",
+          "name": "Interior Specialist",
+          "teamId": "environment_team",
+          "tier": "member",
+          "assignedAgentId": "interior_specialist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Indoor environment descriptions"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "environment_exterior",
+          "name": "Exterior Specialist",
+          "teamId": "environment_team",
+          "tier": "member",
+          "assignedAgentId": "exterior_specialist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Outdoor environment descriptions"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "curation_lead",
+          "name": "Archivist",
+          "teamId": "curation_team",
+          "tier": "leader",
+          "assignedAgentId": "archivist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Manage story data and retrieve context"
+          },
+          "isMandatory": true,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "curation_story",
+          "name": "Story Topologist",
+          "teamId": "curation_team",
+          "tier": "member",
+          "assignedAgentId": "story_topologist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Story structure data management"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "curation_lore",
+          "name": "Lore Topologist",
+          "teamId": "curation_team",
+          "tier": "member",
+          "assignedAgentId": "lore_topologist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "World-building data management"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "curation_character",
+          "name": "Character Topologist",
+          "teamId": "curation_team",
+          "tier": "member",
+          "assignedAgentId": "character_topologist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Character data management"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "curation_scene",
+          "name": "Scene Topologist",
+          "teamId": "curation_team",
+          "tier": "member",
+          "assignedAgentId": "scene_topologist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Scene data management"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        },
+        {
+          "id": "curation_location",
+          "name": "Location Topologist",
+          "teamId": "curation_team",
+          "tier": "member",
+          "assignedAgentId": "location_topologist",
+          "assignedPoolId": null,
+          "promptModifiers": {
+            "prefix": "",
+            "suffix": "",
+            "roleDescription": "Location data management"
+          },
+          "isMandatory": false,
+          "isSME": false,
+          "smeKeywords": []
+        }
+      ],
+      "teams": [
+        {
+          "id": "prose_team",
+          "name": "Prose Team",
+          "description": "Handles narrative writing, editing, and prose quality",
+          "icon": "pen",
+          "leaderId": "prose_lead",
+          "memberIds": [
+            "prose_lead",
+            "prose_scene",
+            "prose_dialogue",
+            "prose_action",
+            "prose_character"
+          ],
+          "settings": {},
+          "displayOrder": 1
+        },
+        {
+          "id": "plot_team",
+          "name": "Plot Team",
+          "description": "Handles story structure, plot, and continuity",
+          "icon": "chart-line",
+          "leaderId": "plot_lead",
+          "memberIds": [
+            "plot_lead",
+            "plot_macro",
+            "plot_micro",
+            "plot_continuity"
+          ],
+          "settings": {},
+          "displayOrder": 2
+        },
+        {
+          "id": "world_team",
+          "name": "World Team",
+          "description": "Handles world-building, lore, and consistency",
+          "icon": "globe",
+          "leaderId": "world_lead",
+          "memberIds": [
+            "world_lead",
+            "world_lore",
+            "world_story"
+          ],
+          "settings": {},
+          "displayOrder": 3
+        },
+        {
+          "id": "character_team",
+          "name": "Character Team",
+          "description": "Handles character portrayal accuracy",
+          "icon": "user",
+          "leaderId": "character_lead",
+          "memberIds": [
+            "character_lead"
+          ],
+          "settings": {},
+          "displayOrder": 4
+        },
+        {
+          "id": "environment_team",
+          "name": "Environment Team",
+          "description": "Handles setting and environment descriptions",
+          "icon": "mountain",
+          "leaderId": "environment_lead",
+          "memberIds": [
+            "environment_lead",
+            "environment_interior",
+            "environment_exterior"
+          ],
+          "settings": {},
+          "displayOrder": 5
+        },
+        {
+          "id": "curation_team",
+          "name": "Record Keeping Team",
+          "description": "Handles data curation and retrieval",
+          "icon": "archive",
+          "leaderId": "curation_lead",
+          "memberIds": [
+            "curation_lead",
+            "curation_story",
+            "curation_lore",
+            "curation_character",
+            "curation_scene",
+            "curation_location"
+          ],
+          "settings": {},
+          "displayOrder": 6
+        }
+      ],
+      "agentPools": [],
+      "pipelines": [
+        {
+          "id": "editorial-board",
+          "name": "Editorial Board Pipeline",
+          "description": "A comprehensive multi-agent workflow designed for high-quality narrative response generation.",
+          "version": "2.0.0",
+          "threads": {
+            "main": {
+              "id": "main",
+              "name": "Main",
+              "description": "Primary deliberation space for leaders and executives",
+              "visible": true
+            },
+            "context": {
+              "id": "context",
+              "name": "Context",
+              "description": "Context retrieval discussions and results",
+              "visible": true
+            },
+            "instructions": {
+              "id": "instructions",
+              "name": "Instructions",
+              "description": "User instruction interpretation",
+              "visible": true
+            },
+            "outline": {
+              "id": "outline",
+              "name": "Outline",
+              "description": "Outline drafts and revisions",
+              "visible": true
+            },
+            "drafting": {
+              "id": "drafting",
+              "name": "Drafting",
+              "description": "Draft synthesis and reviewer feedback",
+              "visible": true
+            },
+            "final": {
+              "id": "final",
+              "name": "Final Response",
+              "description": "Final approved content",
+              "visible": true
+            },
+            "prose": {
+              "id": "prose",
+              "name": "Prose",
+              "description": "Prose team internal discussions",
+              "visible": false
+            },
+            "plot": {
+              "id": "plot",
+              "name": "Plot",
+              "description": "Plot team internal discussions",
+              "visible": false
+            },
+            "world": {
+              "id": "world",
+              "name": "World",
+              "description": "World team internal discussions",
+              "visible": false
+            },
+            "characters": {
+              "id": "characters",
+              "name": "Characters",
+              "description": "Character team internal discussions",
+              "visible": false
+            },
+            "environment": {
+              "id": "environment",
+              "name": "Environment",
+              "description": "Environment team internal discussions",
+              "visible": false
+            },
+            "curation": {
+              "id": "curation",
+              "name": "Record Keeping",
+              "description": "Curation team internal discussions",
+              "visible": false
+            }
+          },
+          "phases": [
+            {
+              "id": "phase_1_curate",
+              "name": "Phase 1: Curate Persistent Stores",
+              "description": "Update or build persistent data stores based on recent chat history and story developments.",
+              "icon": "🗃️",
+              "teams": [
+                "curation_team"
+              ],
+              "threads": {
+                "phaseThread": {
+                  "enabled": true
+                },
+                "teamThreads": {
+                  "curation": true
+                }
+              },
+              "actions": [
+                {
+                  "id": "curate_stores",
+                  "name": "Update Story Data",
+                  "actionType": "crud_pipeline",
+                  "description": "Record Keeping Team reviews and updates persistent stores",
+                  "crudConfig": {
+                    "pipelineId": "auto_curate",
+                    "operation": "update",
+                    "storeId": "auto"
+                  },
+                  "participants": {
+                    "positionIds": [
+                      "curation_lead",
+                      "curation_story",
+                      "curation_character",
+                      "curation_scene"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Review the recent chat history and update the relevant story data stores. Focus on:\n1. Character developments and state changes\n2. Plot progression and new events\n3. Scene and location changes\n4. Any new lore or world-building details\n\nRecent messages:\n{{lastMessages:5}}"
+                }
+              ],
+              "output": {
+                "consolidation": "last_action"
+              }
+            },
+            {
+              "id": "phase_2_context",
+              "name": "Phase 2: Preliminary Context",
+              "description": "Deliberate to determine what preliminary context should be retrieved.",
+              "icon": "📋",
+              "teams": [
+                "curation_team",
+                "world_team",
+                "plot_team"
+              ],
+              "threads": {
+                "phaseThread": {
+                  "enabled": true
+                },
+                "teamThreads": {}
+              },
+              "actions": [
+                {
+                  "id": "deliberate_context",
+                  "name": "Context Deliberation",
+                  "actionType": "deliberative_rag",
+                  "description": "Team leads deliberate on what context to retrieve",
+                  "deliberativeConfig": {
+                    "queryParticipants": [
+                      "plot_lead",
+                      "world_lead"
+                    ],
+                    "curationPositions": [
+                      "curation_lead",
+                      "curation_story",
+                      "curation_lore",
+                      "curation_character"
+                    ],
+                    "maxRounds": 2,
+                    "availableRAGPipelines": [
+                      "character_lookup",
+                      "scene_context",
+                      "plot_threads"
+                    ],
+                    "consolidation": "synthesize",
+                    "curationPrompt": "You are a member of the Record Keeping team. Provide accurate information from the story records to help establish context for the upcoming response."
+                  },
+                  "participants": {
+                    "positionIds": [
+                      "curation_lead",
+                      "world_lead",
+                      "plot_lead"
+                    ],
+                    "orchestration": "consensus"
+                  }
+                }
+              ],
+              "output": {
+                "consolidation": "synthesize"
+              }
+            },
+            {
+              "id": "phase_3_instructions",
+              "name": "Phase 3: Understand User Instructions",
+              "description": "Deliberate on user instructions and intent.",
+              "icon": "📝",
+              "teams": [],
+              "threads": {
+                "phaseThread": {
+                  "enabled": true
+                },
+                "teamThreads": {}
+              },
+              "actions": [
+                {
+                  "id": "interpret_instructions",
+                  "name": "Interpret User Intent",
+                  "actionType": "standard",
+                  "description": "Leaders deliberate on user's message and intent",
+                  "participants": {
+                    "positionIds": [
+                      "executive",
+                      "prose_lead",
+                      "plot_lead",
+                      "world_lead"
+                    ],
+                    "orchestration": "consensus",
+                    "maxRounds": 2
+                  },
+                  "promptTemplate": "Review the user's message and deliberate on their intent.\n\nUser message: {{userMessage}}\n\nContext: {{context}}\n\nProvide your interpretation of:\n1. What is the user asking for?\n2. What narrative direction should we take?\n3. What tone and style is appropriate?\n4. Any specific elements to include or avoid?"
+                }
+              ],
+              "output": {
+                "consolidation": "consensus"
+              },
+              "gavel": {
+                "enabled": true,
+                "prompt": "Review the interpreted instructions. Edit if needed:",
+                "editableFields": [
+                  "output"
+                ],
+                "canSkip": true
+              }
+            },
+            {
+              "id": "phase_4_gavel_instructions",
+              "name": "Phase 4: User Gavel - Instructions",
+              "description": "User can review and edit the interpreted instructions before proceeding.",
+              "icon": "⚖️",
+              "teams": [],
+              "actions": [
+                {
+                  "id": "gavel_instructions",
+                  "name": "Review Instructions",
+                  "actionType": "user_gavel",
+                  "gavelConfig": {
+                    "prompt": "Review the interpreted instructions. You may edit them before the team proceeds:",
+                    "editableFields": [
+                      "instructions"
+                    ],
+                    "canSkip": true,
+                    "timeout": 0
+                  }
+                }
+              ]
+            },
+            {
+              "id": "phase_5_secondary_context",
+              "name": "Phase 5: Secondary Context Pass",
+              "description": "Assess whether additional context should be included based on interpreted instructions.",
+              "icon": "🔍",
+              "teams": [
+                "curation_team"
+              ],
+              "actions": [
+                {
+                  "id": "additional_context",
+                  "name": "Retrieve Additional Context",
+                  "actionType": "rag_pipeline",
+                  "ragConfig": {
+                    "pipelineId": "comprehensive_search",
+                    "querySource": "input",
+                    "queryTemplate": "Based on these instructions, find relevant: {{globals.instructions}}",
+                    "resultTarget": "context",
+                    "maxResults": 10
+                  }
+                }
+              ]
+            },
+            {
+              "id": "phase_6_outline",
+              "name": "Phase 6: Outline Draft",
+              "description": "The Plot Team drafts the initial outline.",
+              "icon": "📊",
+              "teams": [
+                "plot_team"
+              ],
+              "threads": {
+                "phaseThread": {
+                  "enabled": true
+                },
+                "teamThreads": {
+                  "plot": true
+                }
+              },
+              "actions": [
+                {
+                  "id": "draft_outline",
+                  "name": "Create Outline",
+                  "actionType": "standard",
+                  "participants": {
+                    "teamIds": [
+                      "plot_team"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Create an outline for the response based on:\n\nInstructions: {{globals.instructions}}\n\nContext: {{context}}\n\nThe outline should include:\n1. Opening hook/scene setup\n2. Key plot beats to hit\n3. Character moments to include\n4. Closing/transition point\n\nConsider pacing, tension, and narrative flow."
+                }
+              ],
+              "output": {
+                "consolidation": "last_action"
+              }
+            },
+            {
+              "id": "phase_7_outline_review",
+              "name": "Phase 7: Outline Review",
+              "description": "Teams review the initial outline in parallel.",
+              "icon": "👁️",
+              "teams": [
+                "world_team",
+                "prose_team"
+              ],
+              "actions": [
+                {
+                  "id": "world_review_outline",
+                  "name": "World Team Review",
+                  "actionType": "standard",
+                  "execution": {
+                    "mode": "async"
+                  },
+                  "participants": {
+                    "teamIds": [
+                      "world_team"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Review this outline for world-building accuracy:\n\n{{globals.outlineDraft}}\n\nCheck for:\n1. Consistency with established lore\n2. Appropriate use of world elements\n3. Any contradictions with world rules"
+                },
+                {
+                  "id": "prose_review_outline",
+                  "name": "Prose Team Review",
+                  "actionType": "standard",
+                  "execution": {
+                    "mode": "async"
+                  },
+                  "participants": {
+                    "teamIds": [
+                      "prose_team"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Review this outline for narrative quality:\n\n{{globals.outlineDraft}}\n\nCheck for:\n1. Pacing and flow\n2. Opportunities for strong prose moments\n3. Character voice opportunities"
+                }
+              ]
+            },
+            {
+              "id": "phase_8_outline_discussion",
+              "name": "Phase 8: Outline Discussion",
+              "description": "Deliberate and decide final outline by consensus.",
+              "icon": "💬",
+              "teams": [],
+              "actions": [
+                {
+                  "id": "finalize_outline",
+                  "name": "Finalize Outline",
+                  "actionType": "standard",
+                  "participants": {
+                    "positionIds": [
+                      "plot_lead",
+                      "prose_lead",
+                      "world_lead"
+                    ],
+                    "orchestration": "consensus",
+                    "maxRounds": 2
+                  },
+                  "promptTemplate": "Review all team feedback and finalize the outline:\n\nOriginal outline:\n{{globals.outlineDraft}}\n\nWorld Team feedback:\n{{phase_7.world_review_outline.output}}\n\nProse Team feedback:\n{{phase_7.prose_review_outline.output}}\n\nReach consensus on the final outline."
+                }
+              ],
+              "gavel": {
+                "enabled": true,
+                "prompt": "Review the final outline before drafting begins:",
+                "canSkip": true
+              }
+            },
+            {
+              "id": "phase_9_gavel_outline",
+              "name": "Phase 9: User Gavel - Outline",
+              "description": "User can review and edit the final outline before drafting begins.",
+              "icon": "⚖️",
+              "actions": [
+                {
+                  "id": "gavel_outline",
+                  "name": "Review Outline",
+                  "actionType": "user_gavel",
+                  "gavelConfig": {
+                    "prompt": "Review the outline. You may edit it before drafting begins:",
+                    "editableFields": [
+                      "outline"
+                    ],
+                    "canSkip": true
+                  }
+                }
+              ]
+            },
+            {
+              "id": "phase_10_first_draft",
+              "name": "Phase 10: First Draft",
+              "description": "The Prose Team specialists each produce their contributions.",
+              "icon": "✍️",
+              "teams": [
+                "prose_team"
+              ],
+              "threads": {
+                "phaseThread": {
+                  "enabled": true
+                },
+                "teamThreads": {
+                  "prose": true
+                }
+              },
+              "actions": [
+                {
+                  "id": "write_first_draft",
+                  "name": "Write First Draft",
+                  "actionType": "standard",
+                  "participants": {
+                    "teamIds": [
+                      "prose_team"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Write the first draft based on the approved outline:\n\nOutline:\n{{globals.finalOutline}}\n\nContext:\n{{context}}\n\nInstructions:\n{{globals.instructions}}\n\nWrite a complete, engaging response that follows the outline while maintaining the established tone and style."
+                }
+              ],
+              "gavel": {
+                "enabled": true,
+                "prompt": "Review the first draft:",
+                "canSkip": true
+              }
+            },
+            {
+              "id": "phase_11_gavel_first_draft",
+              "name": "Phase 11: User Gavel - First Draft",
+              "description": "User can review and edit the first draft.",
+              "icon": "⚖️",
+              "actions": [
+                {
+                  "id": "gavel_first_draft",
+                  "name": "Review First Draft",
+                  "actionType": "user_gavel",
+                  "gavelConfig": {
+                    "prompt": "Review the first draft. You may edit it:",
+                    "editableFields": [
+                      "draft"
+                    ],
+                    "canSkip": true
+                  }
+                }
+              ]
+            },
+            {
+              "id": "phase_12_draft_review",
+              "name": "Phase 12: Draft Review",
+              "description": "Character and Environment teams review the draft in parallel.",
+              "icon": "🔎",
+              "teams": [
+                "character_team",
+                "environment_team"
+              ],
+              "actions": [
+                {
+                  "id": "character_review",
+                  "name": "Character Team Review",
+                  "actionType": "standard",
+                  "execution": {
+                    "mode": "async"
+                  },
+                  "participants": {
+                    "teamIds": [
+                      "character_team"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Review this draft for character portrayal:\n\n{{globals.firstDraft}}\n\nCheck for:\n1. Accurate character voices\n2. Consistent characterization\n3. Natural dialogue"
+                },
+                {
+                  "id": "environment_review",
+                  "name": "Environment Team Review",
+                  "actionType": "standard",
+                  "execution": {
+                    "mode": "async"
+                  },
+                  "participants": {
+                    "teamIds": [
+                      "environment_team"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Review this draft for setting descriptions:\n\n{{globals.firstDraft}}\n\nCheck for:\n1. Vivid environment details\n2. Consistency with established locations\n3. Atmospheric quality"
+                }
+              ]
+            },
+            {
+              "id": "phase_13_second_draft",
+              "name": "Phase 13: Second Draft",
+              "description": "The Prose Team refines the first draft incorporating feedback.",
+              "icon": "📝",
+              "teams": [
+                "prose_team"
+              ],
+              "actions": [
+                {
+                  "id": "write_second_draft",
+                  "name": "Write Second Draft",
+                  "actionType": "standard",
+                  "participants": {
+                    "teamIds": [
+                      "prose_team"
+                    ],
+                    "orchestration": "consensus"
+                  },
+                  "promptTemplate": "Refine the draft incorporating team feedback:\n\nFirst Draft:\n{{globals.firstDraft}}\n\nCharacter feedback:\n{{phase_12.character_review.output}}\n\nEnvironment feedback:\n{{phase_12.environment_review.output}}\n\nProduce a refined second draft."
+                }
+              ],
+              "gavel": {
+                "enabled": true,
+                "prompt": "Review the second draft:",
+                "canSkip": true
+              }
+            },
+            {
+              "id": "phase_14_gavel_second_draft",
+              "name": "Phase 14: User Gavel - Second Draft",
+              "description": "User can review and edit the second draft.",
+              "icon": "⚖️",
+              "actions": [
+                {
+                  "id": "gavel_second_draft",
+                  "name": "Review Second Draft",
+                  "actionType": "user_gavel",
+                  "gavelConfig": {
+                    "prompt": "Review the second draft. You may edit it:",
+                    "editableFields": [
+                      "draft"
+                    ],
+                    "canSkip": true
+                  }
+                }
+              ]
+            },
+            {
+              "id": "phase_15_final_review",
+              "name": "Phase 15: Final Review",
+              "description": "Plot Team, World Team, and Publisher perform final reviews.",
+              "icon": "✅",
+              "teams": [
+                "plot_team",
+                "world_team"
+              ],
+              "actions": [
+                {
+                  "id": "plot_final_review",
+                  "name": "Plot Team Final Review",
+                  "actionType": "standard",
+                  "execution": {
+                    "mode": "async"
+                  },
+                  "participants": {
+                    "teamIds": [
+                      "plot_team"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Final review for plot execution:\n\n{{globals.secondDraft}}\n\nVerify the response:\n1. Follows the approved outline\n2. Maintains plot momentum\n3. Serves larger story goals"
+                },
+                {
+                  "id": "world_final_review",
+                  "name": "World Team Final Review",
+                  "actionType": "standard",
+                  "execution": {
+                    "mode": "async"
+                  },
+                  "participants": {
+                    "teamIds": [
+                      "world_team"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Final review for world consistency:\n\n{{globals.secondDraft}}\n\nVerify:\n1. Lore accuracy\n2. World-building consistency\n3. Proper use of established elements"
+                },
+                {
+                  "id": "publisher_review",
+                  "name": "Publisher Review",
+                  "actionType": "standard",
+                  "execution": {
+                    "mode": "async"
+                  },
+                  "participants": {
+                    "positionIds": [
+                      "executive"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Executive review of the draft:\n\n{{globals.secondDraft}}\n\nProvide high-level feedback on:\n1. Overall quality\n2. Alignment with user intent\n3. Any final concerns"
+                }
+              ]
+            },
+            {
+              "id": "phase_16_final_draft",
+              "name": "Phase 16: Final Draft",
+              "description": "The Prose Team produces the final draft incorporating all feedback.",
+              "icon": "🏁",
+              "teams": [
+                "prose_team"
+              ],
+              "actions": [
+                {
+                  "id": "write_final_draft",
+                  "name": "Write Final Draft",
+                  "actionType": "standard",
+                  "participants": {
+                    "positionIds": [
+                      "prose_lead"
+                    ],
+                    "orchestration": "sequential"
+                  },
+                  "promptTemplate": "Produce the final draft incorporating all feedback:\n\nSecond Draft:\n{{globals.secondDraft}}\n\nPlot feedback:\n{{phase_15.plot_final_review.output}}\n\nWorld feedback:\n{{phase_15.world_final_review.output}}\n\nPublisher feedback:\n{{phase_15.publisher_review.output}}\n\nCreate the polished final draft."
+                }
+              ],
+              "gavel": {
+                "enabled": true,
+                "prompt": "Review the final draft before publication:",
+                "canSkip": true
+              }
+            },
+            {
+              "id": "phase_17_gavel_final",
+              "name": "Phase 17: User Gavel - Final Draft",
+              "description": "User can review and make final edits before publication.",
+              "icon": "⚖️",
+              "actions": [
+                {
+                  "id": "gavel_final_draft",
+                  "name": "Final Review",
+                  "actionType": "user_gavel",
+                  "gavelConfig": {
+                    "prompt": "Final review before publication. Make any last edits:",
+                    "editableFields": [
+                      "draft"
+                    ],
+                    "canSkip": true
+                  }
+                }
+              ]
+            },
+            {
+              "id": "phase_18_commentary",
+              "name": "Phase 18: Team Commentary",
+              "description": "Team leads may comment on the final draft. Archivist records commentary.",
+              "icon": "💭",
+              "teams": [
+                "curation_team"
+              ],
+              "actions": [
+                {
+                  "id": "record_commentary",
+                  "name": "Record Commentary",
+                  "actionType": "standard",
+                  "participants": {
+                    "positionIds": [
+                      "prose_lead",
+                      "plot_lead",
+                      "world_lead",
+                      "character_lead",
+                      "environment_lead",
+                      "executive",
+                      "curation_lead"
+                    ],
+                    "orchestration": "parallel"
+                  },
+                  "promptTemplate": "Provide brief optional commentary on the final response:\n\n{{globals.finalDraft}}\n\nShare any insights, notes for future reference, or observations. Keep it brief."
+                },
+                {
+                  "id": "archive_response",
+                  "name": "Archive Response",
+                  "actionType": "crud_pipeline",
+                  "crudConfig": {
+                    "pipelineId": "archive_response",
+                    "operation": "create",
+                    "storeId": "responses"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "phase_19_final_response",
+              "name": "Phase 19: Final Response",
+              "description": "Final draft is posted as the SillyTavern chat response.",
+              "icon": "📤",
+              "actions": [
+                {
+                  "id": "publish_response",
+                  "name": "Publish Response",
+                  "actionType": "system",
+                  "promptTemplate": "{{globals.finalDraft}}"
+                }
+              ],
+              "output": {
+                "consolidation": "last_action"
+              }
+            }
+          ],
+          "staticContext": {
+            "includeCharacterCard": true,
+            "includeWorldInfo": true,
+            "includePersona": true,
+            "includeScenario": true
+          },
+          "metadata": {
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z",
+            "author": "TheCouncil",
+            "tags": [
+              "default",
+              "editorial",
+              "comprehensive",
+              "multi-agent"
+            ]
+          }
+        }
+      ],
+      "defaultPipelineSettings": {
         "includeCharacterCard": true,
         "includeWorldInfo": true,
         "includePersona": true,
-        "includeScenario": true
+        "includeScenario": true,
+        "defaultTimeout": 60000,
+        "defaultRetryCount": 1
+      },
+      "activePipelineId": "editorial-board",
+      "metadata": {
+        "createdAt": 1765740350524,
+        "updatedAt": 1765740350524,
+        "author": "TheCouncil",
+        "description": "Pipeline configuration for Editorial Board Pipeline",
+        "tags": [
+          "default",
+          "editorial",
+          "comprehensive",
+          "multi-agent"
+        ]
+      }
+    },
+    "orchestration": {
+      "version": "1.0.0",
+      "mode": "synthesis",
+      "injectionMappings": [],
+      "injectionSettings": {
+        "enabled": false,
+        "cacheEnabled": true,
+        "cacheDefaultTTL": 30000,
+        "failSilently": true,
+        "fallbackToOriginal": true
+      },
+      "executionSettings": {
+        "defaultActionTimeout": 60000,
+        "defaultPhaseTimeout": 300000,
+        "defaultPipelineTimeout": 1800000,
+        "defaultRetryCount": 1,
+        "retryDelayMs": 1000,
+        "retryBackoffMultiplier": 2,
+        "maxParallelActions": 3,
+        "maxParallelAgents": 5,
+        "streamOutput": true,
+        "preserveIntermediate": true,
+        "continueOnActionError": false,
+        "continueOnPhaseError": false,
+        "defaultGavelTimeout": 0,
+        "autoApproveGavel": false
+      },
+      "stIntegration": {
+        "interceptEnabled": true,
+        "autoDeliverOutput": true,
+        "deliveryTarget": "chat",
+        "formatOutput": true
       },
       "metadata": {
-        "createdAt": "2024-01-01T00:00:00.000Z",
-        "updatedAt": "2024-01-01T00:00:00.000Z",
+        "createdAt": 1765740350524,
+        "updatedAt": 1765740350524,
         "author": "TheCouncil",
-        "tags": ["default", "editorial", "comprehensive", "multi-agent"]
+        "description": "Default orchestration configuration",
+        "tags": []
+      }
+    },
+    "kernel": {
+      "version": "2.0.0",
+      "activePreset": "editorial-board",
+      "uiSettings": {
+        "navPosition": {
+          "x": 20,
+          "y": 100
+        },
+        "theme": "auto",
+        "autoShowNav": true,
+        "showTooltips": true,
+        "confirmDestructive": true,
+        "modalAnimations": true,
+        "compactMode": false
+      },
+      "apiDefaults": {
+        "useCurrentConnection": true,
+        "endpoint": "",
+        "apiKey": "",
+        "model": "",
+        "temperature": 0.7,
+        "maxTokens": 2048,
+        "topP": 1,
+        "frequencyPenalty": 0,
+        "presencePenalty": 0
+      },
+      "debug": {
+        "enabled": false,
+        "logLevel": "info",
+        "logToConsole": true,
+        "logToFile": false,
+        "includeTimestamps": true,
+        "includeStackTraces": false
+      },
+      "features": {
+        "enableCuration": true,
+        "enableCharacter": true,
+        "enablePipeline": true,
+        "enableOrchestration": true,
+        "enablePromptBuilder": true,
+        "enablePresets": true
+      },
+      "storage": {
+        "defaultScope": "chat",
+        "autoSave": true,
+        "autoSaveInterval": 60000,
+        "compressionEnabled": false
+      },
+      "metadata": {
+        "createdAt": 1765740350524,
+        "updatedAt": 1765740350524,
+        "author": "TheCouncil",
+        "description": "Default kernel configuration",
+        "tags": []
       }
     }
-  ],
-  "metadata": {
-    "createdAt": "2024-01-01T00:00:00.000Z",
-    "updatedAt": "2024-01-01T00:00:00.000Z",
-    "author": "TheCouncil",
-    "tags": ["default", "editorial", "comprehensive", "multi-agent"]
   }
 }
