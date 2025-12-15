@@ -1,5 +1,23 @@
 # CLAUDE.md - The Council
 
+## CRITICAL: File Editing on Windows
+
+### ⚠️ MANDATORY: Always Use Backslashes on Windows for File Paths
+
+**When using Edit or MultiEdit tools on Windows, you MUST use backslashes (`\`) in file paths, NOT forward slashes (`/`).**
+
+#### ❌ WRONG - Will cause errors:
+```
+Edit(file_path: "D:/repos/project/file.tsx", ...)
+MultiEdit(file_path: "D:/repos/project/file.tsx", ...)
+```
+
+#### ✅ CORRECT - Always works:
+```
+Edit(file_path: "D:\repos\project\file.tsx", ...)
+MultiEdit(file_path: "D:\repos\project\file.tsx", ...)
+```
+
 ## Session Context (memory-keeper)
 
 **Start every session** by initializing memory-keeper context:
@@ -323,6 +341,7 @@ const SystemName = {
 | `.claude/definitions/VIEWS.md` | Exhaustive UI views map and testing checklist |
 | `.claude/agent-workflows/UI_TESTING.md` | Browser automation testing guide |
 | `.claude/definitions/UI_BEHAVIOR.md` | Expected UI behavior spec (test reference) |
+| `.claude/PROCESS_README.md` | **Process documentation** |
 
 ## Quick Reference
 

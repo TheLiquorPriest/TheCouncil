@@ -6,9 +6,18 @@ Run tasks for a group/block or a single task, with branch management, browser ve
 
 ```
 /tasks 1          # Run all Group 1 tasks
+/tasks 1 async block   # Run all Group 1 tasks asynchronously in parallel by block with each task within each block sequentially but blocks in parallel
+/tasks 1 async block async task   # Run all Group 1 tasks asynchronously in parallel by block with each task within each block asynchronously in parallel
 /tasks 2.1        # Run all Block 2.1 tasks
+/tasks 2.1 async  # Run all Block 2.1 tasks asynchronously in parallel
 /tasks 1.1.1      # Run single task 1.1.1
 /tasks 2.3.1      # Run single task 2.3.1
+/tasks 4.1:4.3    # Run all tasks Group 4 Block 4.1 through 4.3 tasks
+/tasks 4.1:4.3 async block   # Run all tasks Group 4 Block 4.1 through 4.3 tasks asynchronously in parallel by block with each task within each block sequentially but blocks in parallel
+/tasks 4.1:4.3 async block async task   # Run all tasks Group 4 Block 4.1 through 4.3 tasks asynchronously in parallel by block with each task within each block asynchronously in parallel
+/tasks 4.5 - 4.8  # Run all tasks Group 4 Block 4.5 to 4.8 tasks
+/tasks 4.5 - 4.8 async block   # Run all tasks Group 4 Block 4.5 to 4.8 tasks asynchronously in parallel by block with each task within each block sequentially but blocks in parallel
+/tasks 4.5 - 4.8 async block async task   # Run all tasks Group 4 Block 4.5 to 4.8 tasks asynchronously in parallel by block with each task within each block asynchronously in parallel
 ```
 
 ## Instructions
@@ -197,7 +206,7 @@ You are working on branch: [BRANCH_NAME]
 2. Implement ALL deliverables
 3. Test against acceptance criteria
 4. Save progress to memory-keeper
-5. Write handoff to .claude/handoffs/task-[TASK_ID].md
+5. Write handoff to .claude/{agent-dev-plans}/{version}/handoffs/task-[TASK_ID].md
 
 ## Context Saving
 

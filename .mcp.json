@@ -21,6 +21,28 @@
         "@browsermcp/mcp@latest"
       ],
       "env": {}
+    },
+    "memory-keeper": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "mcp-memory-keeper"
+      ],
+      "env": {}
+    },
+    "concurrent-browser": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "concurrent-browser-mcp"
+      ],
+      "env": {}
     }
   }
 }

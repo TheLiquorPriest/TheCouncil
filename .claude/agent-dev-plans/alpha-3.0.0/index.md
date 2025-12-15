@@ -26,10 +26,8 @@
 
 ## Current Focus
 
-**Group 2: Curation Enhancements**
-- Manual pipeline triggering
-- Preview mode for pipelines
-- 28 default CRUD/RAG pipelines
+**Group 4: Curation Enhancements**
+
 
 ## Directory Contents
 
