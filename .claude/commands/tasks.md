@@ -24,6 +24,20 @@ Run tasks for a group/block or a single task, with branch management, browser ve
 
 You are running **$ARGUMENTS**.
 
+### ⚠️ CRITICAL: ALWAYS RUN FRESH - NO SKIPPING
+
+**When the user invokes `/tasks`, ALWAYS run ALL requested tasks from scratch.**
+
+- **NEVER** skip tasks because they were "already completed"
+- **NEVER** check handoffs to decide whether to run
+- **NEVER** assume previous work is valid
+- **ALWAYS** execute every task in the requested scope
+- **ALWAYS** overwrite existing handoffs with new results
+
+If `/tasks 4` is invoked → Run ALL Group 4 tasks, no exceptions.
+If `/tasks 4.1` is invoked → Run ALL Block 4.1 tasks, no exceptions.
+If `/tasks 4.1.1` is invoked → Run task 4.1.1, no exceptions.
+
 ---
 
 ## OBSERVABILITY CHECKPOINT #0: Read the Bible
@@ -322,28 +336,38 @@ TASK_ID = full task ID if single task mode (e.g., "1.1.1")
 
 ---
 
-## Step 2: Check for Completed Tasks
+## Step 2: Always Run Fresh (NO SKIPPING)
 
-Before running any task, check:
-1. `.claude/agent-dev-plans/{version}/tasks/task-X.X.X.md` for status
-2. `.claude/agent-dev-plans/{version}/handoffs/task-X.X.X.md` for handoff
+**ALWAYS run tasks fresh. NEVER skip based on previous completion status.**
 
-If status is `COMPLETE`, **skip that task** and report:
+When `/tasks` is invoked:
+- **DO NOT** check if tasks were previously completed
+- **DO NOT** skip tasks based on handoff files
+- **DO NOT** assume previous work is still valid
+- **ALWAYS** run every requested task from scratch
+
+```markdown
+## Task Execution Policy
+
+| Scenario | Action |
+|----------|--------|
+| Task has existing handoff | RUN IT ANYWAY |
+| Task marked COMPLETE in status | RUN IT ANYWAY |
+| Task was run in previous session | RUN IT ANYWAY |
+| User says `/tasks 4` | RUN ALL GROUP 4 TASKS |
 ```
-Task X.X.X: Already complete (see handoff)
-```
 
-**Save skip to memory:**
+**Log fresh run to memory:**
 ```javascript
 mcp__memory-keeper__context_save({
-  key: "task-skip-X.X.X",
-  value: "Task already complete, skipping",
+  key: "task-run-X.X.X-fresh",
+  value: "Running task fresh (ignoring previous completion status)",
   category: "progress",
   priority: "normal"
 })
 ```
 
-Continue to the next task (or exit if single task mode).
+**Overwrite existing handoffs** - new runs produce new handoffs.
 
 ---
 
@@ -684,11 +708,13 @@ mcp__memory-keeper__context_save({
 ### Branch: [BRANCH_NAME]
 ### Target: [TARGET_BRANCH]
 
-### Tasks Executed
+### Tasks Executed (ALL RUN FRESH)
 
 | Task | Agent | Model | Agent Def | Status | Browser |
 |------|-------|-------|-----------|--------|---------|
-| X.X.X | [name] | [model] | `.claude/agents/[name].md` | [status] | [PASS/FAIL/SKIP] |
+| X.X.X | [name] | [model] | `.claude/agents/[name].md` | [status] | [PASS/FAIL/N/A] |
+
+**Note:** All tasks were run fresh. No tasks were skipped based on previous completion status.
 
 ### Definitions Used
 - [list all definitions that were loaded]
