@@ -1,10 +1,11 @@
+---
+name: sillytavern-expert-opus
+model: opus
+---
+
 # sillytavern-expert-opus
 
 SillyTavern platform expert using Claude Opus for integration guidance.
-
-## Model
-
-opus
 
 ## Description
 

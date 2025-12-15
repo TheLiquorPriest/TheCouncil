@@ -1,10 +1,11 @@
+---
+name: api-expert-opus
+model: opus
+---
+
 # api-expert-opus
 
 API and integration expert using Claude Opus for backend guidance.
-
-## Model
-
-opus
 
 ## Description
 

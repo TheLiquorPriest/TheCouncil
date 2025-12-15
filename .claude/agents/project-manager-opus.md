@@ -1,10 +1,11 @@
+---
+name: project-manager-opus
+model: opus
+---
+
 # project-manager-opus
 
 Project management agent using Claude Opus for coordination and oversight.
-
-## Model
-
-opus
 
 ## Description
 

@@ -46,24 +46,34 @@ Group 1: Bug Fixes     →  Group 2: Curation  →  Group 3: Presets
 - [x] UI test pass rate: 100%
 - [x] No console errors on normal use
 
-### Group 2
-- [ ] Pipeline run button works
-- [ ] Preview mode functional
-- [ ] 28 default pipelines available
-- [ ] Pipeline tests pass
+### Group 2 ✅
+- [x] Pipeline run button works
+- [x] Preview mode functional
+- [x] 28 default pipelines available
+- [x] Pipeline tests pass
 
-### Group 3
-- [ ] Per-system schemas defined
-- [ ] Config manager functional
-- [ ] Existing presets migrated
-- [ ] 3 tiered presets available
+### Group 3 ✅
+- [x] Per-system schemas defined
+- [x] Config manager functional
+- [x] Existing presets migrated
+- [x] 3 tiered presets available
 
-## Out of Scope
+### Group 4 ⏳ PENDING
+- [ ] Verify Kernel infrastructure (event bus, state, logger, API client)
+- [ ] Verify Curation System (stores, pipelines, team)
+- [ ] Verify Character System (avatars, director, settings)
+- [ ] Verify Prompt Builder System (tokens, modes)
+- [ ] Verify Pipeline Builder System (agents, positions, teams, phases, actions)
+- [ ] Verify Orchestration System (modes, execution, gavel)
+- [ ] Verify all UI Modals (nav, curation, character, pipeline, injection, gavel)
+- [ ] Verify cross-system integration
+- [ ] Verify end-to-end workflows
 
+## Deferred to Alpha 4
 - New system implementations
 - Major UI redesigns
-- Performance optimization (deferred to Alpha 4)
-- Import/export enhancements (deferred)
+- Performance optimization
+- Import/export enhancements
 
 ## Dependencies
 

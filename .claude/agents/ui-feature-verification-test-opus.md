@@ -1,10 +1,11 @@
+---
+name: ui-feature-verification-test-opus
+model: opus
+---
+
 # ui-feature-verification-test-opus
 
 UI testing agent using Claude Opus for comprehensive browser-based verification.
-
-## Model
-
-opus
 
 ## Description
 

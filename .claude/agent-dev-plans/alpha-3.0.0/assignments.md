@@ -65,12 +65,38 @@
 
 ---
 
+## Group 4: Comprehensive System Verification
+
+| Task | Agent | Rationale | Status |
+|------|-------|-----------|--------|
+| 4.1.1 | ui-feature-verification-test-opus | Complex - Kernel infrastructure | ⏳ |
+| 4.2.1 | ui-feature-verification-test-opus | Complex - All stores | ⏳ |
+| 4.2.2 | ui-feature-verification-test-opus | Complex - Pipelines + team | ⏳ |
+| 4.3.1 | ui-feature-verification-test-sonnet | Moderate - Avatar UI | ⏳ |
+| 4.3.2 | ui-feature-verification-test-sonnet | Moderate - Director/settings | ⏳ |
+| 4.4.1 | ui-feature-verification-test-sonnet | Moderate - Token features | ⏳ |
+| 4.4.2 | ui-feature-verification-test-sonnet | Moderate - Mode switching | ⏳ |
+| 4.5.1 | ui-feature-verification-test-sonnet | Moderate - Entity CRUD | ⏳ |
+| 4.5.2 | ui-feature-verification-test-sonnet | Moderate - Entity CRUD | ⏳ |
+| 4.5.3 | ui-feature-verification-test-opus | Complex - Many entities | ⏳ |
+| 4.6.1 | ui-feature-verification-test-opus | Complex - All modes | ⏳ |
+| 4.6.2 | ui-feature-verification-test-opus | Complex - Execution + gavel | ⏳ |
+| 4.7.1 | ui-feature-verification-test-sonnet | Moderate - Nav + Curation | ⏳ |
+| 4.7.2 | ui-feature-verification-test-sonnet | Moderate - Modal tabs | ⏳ |
+| 4.7.3 | ui-feature-verification-test-sonnet | Moderate - Entity tabs | ⏳ |
+| 4.7.4 | ui-feature-verification-test-sonnet | Moderate - Remaining modals | ⏳ |
+| 4.8.1 | ui-feature-verification-test-opus | Complex - Cross-system | ⏳ |
+| 4.9.1 | ui-feature-verification-test-opus | Complex - Full E2E | ⏳ |
+
+---
+
 ## Agent Workload Summary
 
 | Agent | Assigned | Completed |
 |-------|----------|-----------|
-| dev-opus | 4 | 0 |
-| dev-sonnet | 7 | 3 |
-| dev-haiku | 3 | 2 |
-| code-audit-opus | 3 | 1 |
-| ui-feature-verification-test-* | 3 | 1 |
+| dev-opus | 4 | 4 |
+| dev-sonnet | 7 | 7 |
+| dev-haiku | 3 | 3 |
+| code-audit-opus | 3 | 3 |
+| ui-feature-verification-test-opus | 11 | 1 |
+| ui-feature-verification-test-sonnet | 10 | 2 |

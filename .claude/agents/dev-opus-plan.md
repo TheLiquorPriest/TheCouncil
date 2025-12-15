@@ -1,10 +1,11 @@
+---
+name: dev-opus-plan
+model: opus
+---
+
 # dev-opus-plan
 
 Planning agent using Claude Opus for architecture and task breakdown.
-
-## Model
-
-opus
 
 ## Description
 

@@ -1,10 +1,11 @@
+---
+name: code-audit-opus
+model: opus
+---
+
 # code-audit-opus
 
 Code audit agent using Claude Opus for thorough code review.
-
-## Model
-
-opus
 
 ## Description
 

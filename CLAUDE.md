@@ -102,7 +102,7 @@ prompt: |
 
 **Status:** Alpha 3 Development - Bug fixes, Curation enhancements, Kernel preset system.
 
-**Current Development Plan:** `docs/ALPHA3_DEVELOPMENT_PLAN.md`
+**Current Development Plan:** `.claude/agent-dev-plans/alpha-3.0.0/`
 
 ## Architecture: Six Systems
 
@@ -152,7 +152,7 @@ prompt: |
 | **Response Orchestration** | Execute pipelines in 3 modes: Synthesis, Compilation, Injection | - |
 | **The Council Kernel** | Hub: shared modules, event bus, hooks, state, presets, UI | - |
 
-**Full definitions:** `docs/SYSTEM_DEFINITIONS.md`
+**Full definitions:** `.claude/definitions/SYSTEM_DEFINITIONS.md`
 
 ## Current File Structure
 
@@ -204,21 +204,7 @@ TheCouncil/
 │   └── standard-pipeline.json  # Standard multi-phase pipeline
 │
 ├── docs/                       # Documentation
-│   ├── ALPHA3_DEVELOPMENT_PLAN.md # Active Alpha 3 development plan ⬅️
-│   ├── SYSTEM_DEFINITIONS.md   # Comprehensive system definitions
-│   ├── DEFAULT_PIPELINE.md     # Pipeline structure documentation
-│   ├── VIEWS.md                # Exhaustive UI views map & testing checklist
-│   ├── UI_TESTING.md           # Browser automation testing guide
-│   ├── UI_BEHAVIOR.md          # Expected UI behavior spec (generated)
-│   ├── UI_BEHAVIOR_REPORT.md   # UI test results (generated)
-│   ├── archive/                # Archived development plans
-│   │   ├── ACTION_PLAN_v2.md   # Alpha 2 implementation roadmap
-│   │   └── DEVELOPMENT_PLAN.md # Alpha 2 session-based plan
-│   ├── testing/                # Test reports
-│   │   └── UI_REPORT-*.md      # Timestamped test reports
-│   └── tasks/                  # Development tasks
-│       └── alpha3/             # Alpha 3 tasks
-│           └── CURRENT_SUGGESTED_TASKS.md
+│   └── archive/                # Archived documentation
 │
 ├── tests/                      # Test files
 │   ├── integration-test.js     # Integration tests
@@ -230,12 +216,29 @@ TheCouncil/
 │
 └── .claude/                    # Claude Code configuration
     ├── settings.local.json     # Local settings
-    ├── commands/               # Slash commands
-    │   ├── task.md             # Single task runner
-    │   ├── tasks.md            # Phase task runner
-    │   └── ui-test.md          # UI testing pipeline (parallel agents)
-    └── handoffs/               # Session handoff documents
-        └── archive/            # Completed handoffs from Alpha 2
+    ├── definitions/            # Project definitions (source of truth)
+    │   ├── index.md            # Definition index
+    │   ├── SYSTEM_DEFINITIONS.md # Six-system architecture
+    │   ├── VIEWS.md            # UI views map & testing checklist
+    │   ├── UI_BEHAVIOR.md      # Expected UI behavior spec
+    │   └── DEFAULT_PIPELINE.md # Pipeline structure docs
+    ├── agent-dev-plans/        # Development plans
+    │   ├── state.md            # Global dev state
+    │   └── alpha-3.0.0/        # Active plan ⬅️
+    │       ├── index.md        # Plan index
+    │       ├── plan-overview.md
+    │       ├── task-list.md
+    │       ├── status.md
+    │       ├── progress-tracker.md
+    │       ├── assignments.md
+    │       ├── reference.md
+    │       └── tasks/          # Individual task files
+    ├── agent-workflows/        # Workflow documentation
+    │   └── UI_TESTING.md       # Browser automation guide
+    └── commands/               # Slash commands
+        ├── tasks.md            # Task runner
+        ├── ui-test.md          # UI testing pipeline
+        └── add-to-dev-plan.md  # Add tasks to plan
 ```
 
 ## Orchestration Modes
@@ -315,25 +318,22 @@ const SystemName = {
 
 | Document | Purpose |
 |----------|---------|
-| `docs/ALPHA3_DEVELOPMENT_PLAN.md` | **Active development plan with tasks** |
-| `docs/SYSTEM_DEFINITIONS.md` | Comprehensive system definitions |
-| `docs/VIEWS.md` | Exhaustive UI views map and testing checklist |
-| `docs/UI_TESTING.md` | Browser automation testing guide |
-| `docs/UI_BEHAVIOR.md` | Expected UI behavior spec (test reference) |
-| `docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md` | UI test-generated task suggestions |
+| `.claude/agent-dev-plans/alpha-3.0.0/` | **Active development plan with tasks** |
+| `.claude/definitions/SYSTEM_DEFINITIONS.md` | Comprehensive system definitions |
+| `.claude/definitions/VIEWS.md` | Exhaustive UI views map and testing checklist |
+| `.claude/agent-workflows/UI_TESTING.md` | Browser automation testing guide |
+| `.claude/definitions/UI_BEHAVIOR.md` | Expected UI behavior spec (test reference) |
 
 ## Quick Reference
 
 | What | Where |
 |------|-------|
-| **Development plan** | `docs/ALPHA3_DEVELOPMENT_PLAN.md` |
-| System definitions | `docs/SYSTEM_DEFINITIONS.md` |
-| UI views & testing | `docs/VIEWS.md` |
-| UI test tasks | `docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md` |
+| **Development plan** | `.claude/agent-dev-plans/alpha-3.0.0/` |
+| System definitions | `.claude/definitions/SYSTEM_DEFINITIONS.md` |
+| UI views & testing | `.claude/definitions/VIEWS.md` |
 | All schemas | `schemas/systems.js` |
 | Presets | `data/presets/*.json` |
-| Archived plans | `docs/archive/*.md` |
-| Archived handoffs | `.claude/handoffs/archive/*.md` |
+| Archived docs | `docs/archive/*.md` |
 
 ## Slash Commands
 
@@ -352,8 +352,8 @@ This project is configured with browser automation for UI testing via MCP (Model
 
 | Document | Purpose |
 |----------|---------|
-| `docs/VIEWS.md` | Complete UI map with all views, states, buttons, interactions |
-| `docs/UI_TESTING.md` | MCP setup, tools reference, troubleshooting |
+| `.claude/definitions/VIEWS.md` | Complete UI map with all views, states, buttons, interactions |
+| `.claude/agent-workflows/UI_TESTING.md` | MCP setup, tools reference, troubleshooting |
 
 ### Quick Start
 
@@ -389,7 +389,7 @@ claude mcp list
 
 ### UI Testing Checklist
 
-Use `docs/VIEWS.md` as a testing checklist. It documents:
+Use `.claude/definitions/VIEWS.md` as a testing checklist. It documents:
 - **6 modals**: Navigation, Curation, Character, Pipeline, Injection, Gavel
 - **26+ sub-views** across all tabs
 - **150+ UI elements** with expected behavior
@@ -410,8 +410,8 @@ claude mcp add browsermcp -s user -- npx -y @browsermcp/mcp@latest
 # Restart Claude Code session
 ```
 
-**Full MCP documentation:** `docs/UI_TESTING.md`
-**Full UI views map:** `docs/VIEWS.md`
+**Full MCP documentation:** `.claude/agent-workflows/UI_TESTING.md`
+**Full UI views map:** `.claude/definitions/VIEWS.md`
 
 ## Structural Code Search (ast-grep)
 

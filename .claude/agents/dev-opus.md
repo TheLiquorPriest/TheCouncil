@@ -1,10 +1,11 @@
+---
+name: dev-opus
+model: opus
+---
+
 # dev-opus
 
 Development agent using Claude Opus for complex implementation tasks.
-
-## Model
-
-opus
 
 ## Description
 

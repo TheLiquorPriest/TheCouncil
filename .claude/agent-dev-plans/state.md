@@ -28,11 +28,11 @@ Currently no agents actively running.
 
 ## Blockers
 
-None currently.
+We have yet to verify that all features of all systems are fully functional through the UI and meet the requirements and adhere to the design specifications set forth in the definitions.
 
 ## Next Milestone
 
-**Group 2 Complete**: All 5 Curation Enhancement tasks
+**Group 4**
 
 ## Quick Commands
 

@@ -1,10 +1,11 @@
+---
+name: dev-haiku
+model: haiku
+---
+
 # dev-haiku
 
 Development agent using Claude Haiku for simple, mechanical tasks.
-
-## Model
-
-haiku
 
 ## Description
 

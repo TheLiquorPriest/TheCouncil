@@ -1,10 +1,11 @@
+---
+name: dev-sonnet
+model: sonnet
+---
+
 # dev-sonnet
 
 Development agent using Claude Sonnet for standard implementation tasks.
-
-## Model
-
-sonnet
 
 ## Description
 

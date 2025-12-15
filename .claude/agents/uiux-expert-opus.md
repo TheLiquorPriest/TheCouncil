@@ -1,10 +1,11 @@
+---
+name: uiux-expert-opus
+model: opus
+---
+
 # uiux-expert-opus
 
 UI/UX expert advisor using Claude Opus for design guidance.
-
-## Model
-
-opus
 
 ## Description
 

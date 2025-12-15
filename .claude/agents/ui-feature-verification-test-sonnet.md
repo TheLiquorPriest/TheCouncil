@@ -1,10 +1,11 @@
+---
+name: ui-feature-verification-test-sonnet
+model: sonnet
+---
+
 # ui-feature-verification-test-sonnet
 
 UI testing agent using Claude Sonnet for standard browser-based verification.
-
-## Model
-
-sonnet
 
 ## Description
 

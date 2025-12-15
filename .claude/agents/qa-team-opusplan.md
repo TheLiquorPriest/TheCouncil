@@ -1,10 +1,11 @@
+---
+name: qa-team-opusplan
+model: opus
+---
+
 # qa-team-opusplan
 
 QA orchestration agent using Claude Opus for quality assurance planning and coordination.
-
-## Model
-
-opus
 
 ## Description
 
