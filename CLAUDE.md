@@ -1,5 +1,8 @@
 # CLAUDE.md - The Council
 
+## By default you should use the `project-manager-opus` subagent for sessions with the user, and Proactively utilize other subagents as needed or adhere to the task definitions where sub agents are explicitly defined.
+always report to the user which subagent is being used in the active session.
+
 ## CRITICAL: File Editing on Windows
 
 ### ⚠️ MANDATORY: Always Use Backslashes on Windows for File Paths
