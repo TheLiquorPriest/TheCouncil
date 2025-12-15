@@ -1,6 +1,0 @@
-# TheCouncil Subagent Configuration
-# See: https://code.claude.com/docs/en/sub-agents#configuration-fields
-
-[general-purpose]
-description = "General-purpose agent for implementing tasks"
-permissionMode = "bypassPermissions"

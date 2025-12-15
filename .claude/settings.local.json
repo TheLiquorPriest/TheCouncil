@@ -157,5 +157,10 @@
         "@browsermcp/mcp@latest"
       ]
     }
-  }
+  },
+  "enabledMcpjsonServers": [
+    "playwright",
+    "browsermcp"
+  ],
+  "enableAllProjectMcpServers": true
 }
