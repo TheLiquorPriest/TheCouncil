@@ -37,7 +37,7 @@ TypeError: Cannot read properties of undefined (reading 'toUpperCase')
 
 ---
 
-## Enhancements (Optional)
+## Enhancements
 
 ### 5.2.1: Add Pipeline Count Badges to Curation Modal Tabs
 

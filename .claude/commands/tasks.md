@@ -26,9 +26,21 @@ You are running **$ARGUMENTS**.
 
 ---
 
-## MANDATORY: Session Initialization
+## OBSERVABILITY CHECKPOINT #0: Read the Bible
 
-**ALWAYS start with memory-keeper:**
+**MANDATORY: Read PROCESS_README.md FIRST.**
+
+```javascript
+Read(".claude/PROCESS_README.md")  // The authoritative process document
+```
+
+This document defines ALL paths, conventions, and requirements. Follow it exactly.
+
+---
+
+## OBSERVABILITY CHECKPOINT #1: Session Initialization
+
+**MANDATORY: Initialize memory-keeper and CONFIRM:**
 
 ```javascript
 mcp__memory-keeper__context_session_start({
@@ -45,55 +57,169 @@ mcp__memory-keeper__context_get({ category: "progress" })
 mcp__memory-keeper__context_get({ category: "error" })
 ```
 
----
+### Confirmation Report #1
 
-## MANDATORY: Tool Preferences
+**You MUST output this confirmation before proceeding:**
 
-### Code Analysis
+```markdown
+## Initialization Confirmed
 
-**Use ast-grep FIRST** for any code exploration:
-
-```bash
-# Find system structure
-ast-grep run --pattern 'const $NAME = { VERSION: $V, $$$REST }' --lang javascript core/
-
-# Find event emissions
-ast-grep run --pattern 'this._kernel.emit($EVENT, $DATA)' --lang javascript .
-
-# Find method definitions
-ast-grep run --pattern '$METHOD($$$ARGS) { $$$BODY }' --lang javascript .
-```
-
-### Browser Testing
-
-**For parallel verification, USE concurrent-browser:**
-```javascript
-mcp__concurrent-browser__browser_create_instance({ instanceId: "task-verify" })
-mcp__concurrent-browser__browser_navigate({ instanceId: "task-verify", url: "http://127.0.0.1:8000/" })
-mcp__concurrent-browser__browser_close_instance({ instanceId: "task-verify" })
-```
-
-**For sequential testing, playwright is acceptable:**
-```javascript
-mcp__playwright__browser_navigate({ url: "http://127.0.0.1:8000/" })
+- [ ] PROCESS_README.md read: YES
+- [ ] Memory-keeper session started: [session ID]
+- [ ] Previous context retrieved: [count] items found
+- [ ] Errors from previous runs: [count or "none"]
 ```
 
 ---
 
-## Step 0: Read Development Plan
+## OBSERVABILITY CHECKPOINT #2: Dynamic Discovery - Index Files
 
-Read the current development plan from `.claude/agent-dev-plans/`:
+**MANDATORY: Read ALL index files for dynamic discovery. DO NOT HARDCODE PATHS.**
 
-1. Find the active plan directory (e.g., `alpha-3.0.0/`)
-2. Read `index.md` for plan overview
-3. Read `task-list.md` for all tasks
-4. Find the specific task(s) for $ARGUMENTS
-5. Read `assignments.md` for model assignments
+### Required Index Files
 
-**Store these values:**
-- `PLAN_VERSION` = version (e.g., "alpha-3.0.0")
-- `TARGET_BRANCH` = target branch (e.g., "alpha-3.0.0")
-- `TASK_HIERARCHY` = group.block.task structure
+```javascript
+// Read these files IN ORDER:
+1. Read(".claude/definitions/index.md")     // Definition discovery
+2. Read(".claude/agents/index.md")          // Agent discovery
+3. Read(".claude/agent-workflows/index.md") // Workflow discovery
+```
+
+### Confirmation Report #2
+
+**You MUST output this confirmation before proceeding:**
+
+```markdown
+## Dynamic Discovery Confirmed
+
+### Definitions Index (`.claude/definitions/index.md`)
+- [ ] File read: YES
+- [ ] Core definitions listed: [list filenames]
+- [ ] Context-specific definitions listed: [list filenames]
+
+### Agents Index (`.claude/agents/index.md`)
+- [ ] File read: YES
+- [ ] Development agents available: [list names]
+- [ ] QA agents available: [list names]
+- [ ] Expert agents available: [list names]
+
+### Workflows Index (`.claude/agent-workflows/index.md`)
+- [ ] File read: YES
+- [ ] Agent registry found: YES
+- [ ] Task lifecycle documented: YES
+```
+
+---
+
+## OBSERVABILITY CHECKPOINT #3: Load Required Definitions
+
+**MANDATORY: Load definitions dynamically from the index.**
+
+Based on `.claude/definitions/index.md`, load:
+
+```javascript
+// Core Definitions (ALWAYS load):
+Read(".claude/definitions/SYSTEM_DEFINITIONS.md")
+Read(".claude/definitions/VIEWS.md")
+
+// Context-Specific (load if relevant to task):
+// - DEFAULT_PIPELINE.md if working on pipelines
+// - UI_BEHAVIOR.md if doing UI testing
+```
+
+### Confirmation Report #3
+
+**You MUST output this confirmation before proceeding:**
+
+```markdown
+## Definitions Loaded
+
+| Definition | Loaded | Relevant Sections |
+|------------|--------|-------------------|
+| SYSTEM_DEFINITIONS.md | YES/NO | [list sections read] |
+| VIEWS.md | YES/NO | [list sections read] |
+| DEFAULT_PIPELINE.md | YES/NO/N/A | [list sections read] |
+| UI_BEHAVIOR.md | YES/NO/N/A | [list sections read] |
+```
+
+---
+
+## OBSERVABILITY CHECKPOINT #4: Development Plan Discovery
+
+**MANDATORY: Discover and load the active development plan.**
+
+```javascript
+// Step 1: Find active plan
+Read(".claude/agent-dev-plans/state.md")  // Global state points to active plan
+
+// Step 2: Load plan files
+const PLAN_DIR = ".claude/agent-dev-plans/{version}/"
+Read(PLAN_DIR + "index.md")        // Plan overview
+Read(PLAN_DIR + "task-list.md")    // All tasks
+Read(PLAN_DIR + "status.md")       // Current status
+Read(PLAN_DIR + "assignments.md")  // CRITICAL: Agent assignments
+```
+
+### Confirmation Report #4
+
+**You MUST output this confirmation before proceeding:**
+
+```markdown
+## Development Plan Loaded
+
+- [ ] Active plan version: [version]
+- [ ] Target branch: [branch name]
+- [ ] Plan index read: YES
+- [ ] Task list read: YES (total tasks: [count])
+- [ ] Status read: YES (completed: [X], pending: [Y], blocked: [Z])
+- [ ] **Assignments read: YES** (CRITICAL)
+
+### Tasks for $ARGUMENTS
+
+| Task ID | Name | Priority | Assigned Agent | Status |
+|---------|------|----------|----------------|--------|
+| X.X.X | [name] | P0-P3 | [agent name] | [status] |
+```
+
+---
+
+## OBSERVABILITY CHECKPOINT #5: Agent Resolution
+
+**MANDATORY: For EACH task, resolve the assigned agent.**
+
+### Agent Resolution Process
+
+1. **Read `assignments.md`** to get the agent name for the task
+2. **Read `.claude/agents/index.md`** to find the agent file
+3. **Read the agent definition file** from `.claude/agents/{agent-name}.md`
+4. **Extract model** from frontmatter
+5. **Extract full instructions** from the agent definition
+
+### Confirmation Report #5
+
+**For EACH task, you MUST output this confirmation:**
+
+```markdown
+## Agent Resolution for Task [X.X.X]
+
+- [ ] Assignment lookup: Agent `[agent-name]` assigned in assignments.md
+- [ ] Agent index lookup: Found in `.claude/agents/index.md`: YES
+- [ ] Agent definition read: `.claude/agents/[agent-name].md`
+- [ ] Model extracted: [opus/sonnet/haiku]
+- [ ] MANDATORY sections found:
+  - [ ] Session Initialization: YES
+  - [ ] Tool Preferences: YES
+  - [ ] Context Saving: YES
+- [ ] Full instructions captured: [line count] lines
+
+### Agent Summary
+| Field | Value |
+|-------|-------|
+| Agent Name | [name] |
+| Model | [opus/sonnet/haiku] |
+| Definition File | `.claude/agents/[name].md` |
+| Instruction Length | [X] lines |
+```
 
 ---
 
@@ -117,7 +243,7 @@ TASK_ID = full task ID if single task mode (e.g., "1.1.1")
 
 Before running any task, check:
 1. `.claude/agent-dev-plans/{version}/tasks/task-X.X.X.md` for status
-2. `.claude/handoffs/task-X.X.X.md` for handoff
+2. `.claude/agent-dev-plans/{version}/handoffs/task-X.X.X.md` for handoff
 
 If status is `COMPLETE`, **skip that task** and report:
 ```
@@ -161,83 +287,60 @@ git checkout $BRANCH_NAME
 
 ---
 
-## Step 4: Run Task(s)
+## Step 4: Run Task(s) - SPAWNING CUSTOM AGENTS
 
-For each task, spawn an agent using the Task tool with the model specified in assignments.md.
+### CRITICAL: Agent Spawn Process
 
-**Task Agent Instructions (include in prompt):**
+For each task, you have completed Observability Checkpoint #5 and have:
+- The agent name from `assignments.md`
+- The full agent instructions from `.claude/agents/{agent-name}.md`
+- The model from the agent frontmatter
 
-```
+### Task Tool Invocation
+
+```javascript
+Task({
+  description: "Task [TASK_ID]: [task-name]",
+  subagent_type: "general-purpose",  // REQUIRED: Built-in type
+  model: "[MODEL]",                   // FROM agent frontmatter: opus/sonnet/haiku
+  prompt: `
+## Agent Instructions
+
+[PASTE FULL CONTENTS OF .claude/agents/{AGENT_NAME}.md HERE]
+[Include ALL MANDATORY sections from the agent definition]
+
+---
+
+## Task-Specific Context
+
 You are implementing Task [TASK_ID] for The Council project.
 
-## MANDATORY: Session Initialization
-
-ALWAYS start with memory-keeper:
-
-mcp__memory-keeper__context_session_start({
-  name: "TheCouncil-Task-[TASK_ID]",
-  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
-})
-
-Retrieve relevant context:
-mcp__memory-keeper__context_search({ query: "[TASK_ID]" })
-mcp__memory-keeper__context_get({ category: "decision" })
-
-## MANDATORY: Tool Preferences
-
-**Use ast-grep FIRST** for code exploration:
-ast-grep run --pattern '$PATTERN' --lang javascript [path]
-
-Use Grep only for simple text searches when ast-grep is insufficient.
-
-## Agent Info
-Model: [MODEL_USED]
-Task Complexity: [opus=architectural | sonnet=standard | haiku=simple]
-
-## Branch
+### Branch
 You are working on branch: [BRANCH_NAME]
 
-## Required Reading
-1. CLAUDE.md
-2. .claude/agent-dev-plans/{version}/tasks/task-[TASK_ID].md
+### Task Definition
+[PASTE CONTENTS OF .claude/agent-dev-plans/{version}/tasks/task-[TASK_ID].md HERE]
 
-## Your Mission
-1. Read the task definition
-2. Implement ALL deliverables
-3. Test against acceptance criteria
-4. Save progress to memory-keeper
-5. Write handoff to .claude/{agent-dev-plans}/{version}/handoffs/task-[TASK_ID].md
+### Required Definitions (from index)
+You MUST read these definitions before implementing:
+1. .claude/definitions/SYSTEM_DEFINITIONS.md - Architecture reference
+2. [Any task-specific definitions based on task type]
 
-## Context Saving
+### Required Actions
+1. Follow ALL MANDATORY sections from agent instructions above
+2. Initialize memory-keeper session
+3. Read the task definition completely
+4. Read required definitions from the index
+5. Implement ALL deliverables
+6. Test against acceptance criteria
+7. Save progress to memory-keeper
+8. Write handoff to .claude/agent-dev-plans/{version}/handoffs/task-[TASK_ID].md
 
-Save progress as you work:
-mcp__memory-keeper__context_save({
-  key: "task-[TASK_ID]-progress",
-  value: "Completed: [what]",
-  category: "progress",
-  priority: "normal"
-})
-
-Save decisions:
-mcp__memory-keeper__context_save({
-  key: "task-[TASK_ID]-decision-{topic}",
-  value: "[decision and rationale]",
-  category: "decision",
-  priority: "high"
-})
-
-Save issues:
-mcp__memory-keeper__context_save({
-  key: "task-[TASK_ID]-issue",
-  value: "[issue description]",
-  category: "error",
-  priority: "high"
-})
-
-## Handoff Format
+### Handoff Format
 Your handoff file MUST include:
 - Status: COMPLETE | PARTIAL | BLOCKED
-- Model Used: [MODEL_USED]
+- Agent Used: [AGENT_NAME]
+- Model Used: [MODEL]
 - What Was Implemented
 - Files Modified
 - Acceptance Criteria Results (checklist with pass/fail)
@@ -245,21 +348,40 @@ Your handoff file MUST include:
 - Issues Encountered
 - Browser Test Required: [YES/NO based on task]
 
-## On Completion
+### On Completion
 Commit your changes with message:
-"Task [TASK_ID]: [brief description]
+"Task [TASK_ID]: [brief description]"
 
 Do NOT push. Do NOT merge.
 
-## Context Budget
+### Context Budget
 Stop at 70% context and write your handoff summary.
 
 Begin now.
+`
+})
+```
+
+### Spawn Confirmation
+
+**For EACH spawned task, output this confirmation:**
+
+```markdown
+## Task Spawn Confirmation
+
+| Field | Value |
+|-------|-------|
+| Task ID | [X.X.X] |
+| Agent Name | [from assignments.md] |
+| Model | [from agent frontmatter] |
+| Agent Definition | `.claude/agents/[name].md` |
+| Instructions Included | [X] lines |
+| MANDATORY Sections | [list sections included] |
 ```
 
 ### After Each Task Implementation
 
-1. Check `.claude/handoffs/task-[ID].md` for status
+1. Check `.claude/agent-dev-plans/{version}/handoffs/task-[ID].md` for status
 2. If **BLOCKED**: Stop immediately, save to memory, report to user
 3. If **COMPLETE** or **PARTIAL**: Proceed to Browser Verification
 
@@ -271,89 +393,52 @@ Begin now.
 
 After each task completes, spawn a verification agent.
 
-**Browser Verification Agent Instructions:**
+### Agent Selection for Verification
 
-```
+1. Read `.claude/agents/index.md` for verification agents
+2. For standard verification: `ui-feature-verification-test-sonnet`
+3. For complex verification: `ui-feature-verification-test-opus`
+
+### Verification Task Spawn
+
+```javascript
+Task({
+  description: "Verify Task [TASK_ID]",
+  subagent_type: "general-purpose",
+  model: "sonnet",  // or "opus" for complex
+  prompt: `
+## Agent Instructions
+
+[PASTE FULL CONTENTS OF .claude/agents/ui-feature-verification-test-sonnet.md HERE]
+
+---
+
+## Verification Context
+
 You are verifying Task [TASK_ID] implementation for The Council project.
 
-## MANDATORY: Session Initialization
+### Required Reading (from definitions index)
+1. .claude/definitions/VIEWS.md - UI navigation reference
+2. .claude/definitions/UI_BEHAVIOR.md - Expected behavior
+3. .claude/agent-dev-plans/{version}/handoffs/task-[TASK_ID].md - What was implemented
+4. .claude/agent-dev-plans/{version}/tasks/task-[TASK_ID].md - Acceptance criteria
 
-mcp__memory-keeper__context_session_start({
-  name: "TheCouncil-Verify-[TASK_ID]",
-  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+### Your Mission
+1. Initialize memory-keeper session
+2. Navigate to SillyTavern: http://127.0.0.1:8000/
+3. Open The Council extension
+4. Navigate to the relevant UI
+5. Test each acceptance criterion
+6. Check console for errors
+7. Document findings
+8. Save results to memory-keeper
+
+### Test Report
+Create .claude/agent-dev-plans/{version}/handoffs/task-[TASK_ID]-verification.md with results.
+
+Begin verification now.
+`
 })
-
-Retrieve task context:
-mcp__memory-keeper__context_search({ query: "task-[TASK_ID]" })
-
-## Your Role
-Browser Test Verification Agent
-
-## Browser Tools
-
-For this sequential verification, use playwright:
-mcp__playwright__browser_navigate({ url: "http://127.0.0.1:8000/" })
-mcp__playwright__browser_snapshot()
-mcp__playwright__browser_click({ element: "...", ref: "..." })
-mcp__playwright__browser_console_messages()
-mcp__playwright__browser_take_screenshot()
-
-## Required Reading
-1. .claude/agent-dev-plans/{version}/tasks/task-[TASK_ID].md - Acceptance criteria
-2. docs/VIEWS.md - UI navigation reference
-3. .claude/handoffs/task-[TASK_ID].md - What was implemented
-
-## Your Mission
-
-1. Navigate to SillyTavern: http://127.0.0.1:8000/
-2. Open The Council extension
-3. Navigate to the relevant UI
-4. Test each acceptance criterion
-5. Check console for errors
-6. Document findings
-
-## Save Results to Memory
-
-mcp__memory-keeper__context_save({
-  key: "verify-[TASK_ID]-result",
-  value: "Result: [PASS/FAIL]\\nTests: [N] pass, [M] fail\\nIssues: [list]",
-  category: "progress",
-  priority: "normal"
-})
-
-## Test Report Format
-
-Create `.claude/handoffs/task-[TASK_ID]-verification.md`:
-
-# Task [TASK_ID] Browser Verification
-
-## Test Date: [timestamp]
-## Tester: Verification Agent
-
-## Acceptance Criteria Tests
-
-| Criterion | Test Action | Expected | Actual | Status |
-|-----------|-------------|----------|--------|--------|
-| [criterion] | [action] | [expected] | [actual] | ✅ PASS / ❌ FAIL |
-
-## Console Errors
-[any errors observed, or "None"]
-
-## Memory Keys Saved
-[list keys saved]
-
-## Overall Result: PASS / FAIL
-
-## Issues Found
-[list issues]
-
-## On Failure
-Document exactly what failed. Set Overall Result to FAIL.
-
-## On Success
-Set Overall Result to PASS. Commit the verification report.
-
-Do NOT fix code yourself. Only test and report.
 ```
 
 ### After Browser Verification
@@ -371,117 +456,58 @@ Do NOT fix code yourself. Only test and report.
 
 **Skip this step in Single Task Mode or Block Mode.**
 
-After ALL tasks in the group are complete and verified, spawn an **Opus Audit Agent**.
+After ALL tasks in the group are complete and verified, spawn the `code-audit-opus` agent.
 
-**Group Audit Agent Instructions:**
+### Audit Agent Resolution
 
+```javascript
+// Read agent from index
+Read(".claude/agents/index.md")  // Find code-audit-opus
+Read(".claude/agents/code-audit-opus.md")  // Get full instructions
 ```
-You are the Group Completion Auditor for The Council project.
 
-## MANDATORY: Session Initialization
+### Audit Task Spawn
 
-mcp__memory-keeper__context_session_start({
-  name: "TheCouncil-Audit-Group-[GROUP_NUMBER]",
-  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
-})
+```javascript
+Task({
+  description: "Audit Group [GROUP_NUMBER]",
+  subagent_type: "general-purpose",
+  model: "opus",
+  prompt: `
+## Agent Instructions
 
-Retrieve all group context:
-mcp__memory-keeper__context_search({ query: "group-[GROUP_NUMBER]" })
-mcp__memory-keeper__context_search({ query: "task-[GROUP_NUMBER]" })
-mcp__memory-keeper__context_get({ category: "error" })
+[PASTE FULL CONTENTS OF .claude/agents/code-audit-opus.md HERE]
 
-## MANDATORY: Tool Preferences
+---
 
-**Use ast-grep FIRST** for code review:
-ast-grep run --pattern 'console.log($$$)' --lang javascript .
-ast-grep run --pattern 'try { $$$BODY } catch ($E) { $$$HANDLER }' --lang javascript .
+## Audit Context
 
-## Your Role
-Opus Auditor - Final gate before group merge
+You are auditing Group [GROUP_NUMBER] for The Council project.
 
-## Context
+### Context
 Group [GROUP_NUMBER] implementation is complete. All tasks report COMPLETE status.
 You must verify the group is truly ready to merge.
 
-## Required Reading
-1. .claude/agent-dev-plans/{version}/task-list.md - Group [GROUP_NUMBER] tasks
-2. All handoff files: .claude/handoffs/task-[GROUP_NUMBER].*
-3. All verification reports: .claude/handoffs/task-[GROUP_NUMBER].*-verification.md
-4. Git diff: git diff [TARGET_BRANCH]..[BRANCH_NAME]
+### Required Reading (from definitions index)
+1. .claude/definitions/SYSTEM_DEFINITIONS.md - Architecture reference
+2. .claude/agent-dev-plans/{version}/task-list.md - Group [GROUP_NUMBER] tasks
+3. All handoff files: .claude/agent-dev-plans/{version}/handoffs/task-[GROUP_NUMBER].*
+4. All verification reports: .claude/agent-dev-plans/{version}/handoffs/task-[GROUP_NUMBER].*-verification.md
 
-## Audit Checklist
+### Audit Actions
+1. Initialize memory-keeper session
+2. Review git diff: git diff [TARGET_BRANCH]..[BRANCH_NAME]
+3. Review all handoffs
+4. Verify code quality
+5. Check for regressions
+6. Save findings to memory-keeper
 
-### 1. Handoff Review
-For each task:
-- [ ] Handoff file exists
-- [ ] Status is COMPLETE
-- [ ] All acceptance criteria passed
-- [ ] Memory keys documented
+### Audit Report
+Create .claude/agent-dev-plans/{version}/code-audits/group-[GROUP_NUMBER]-audit.md with results.
 
-### 2. Browser Verification Review
-For each task with browser tests:
-- [ ] Verification report exists
-- [ ] Overall Result is PASS
-- [ ] No unresolved console errors
-
-### 3. Code Review (use ast-grep)
-- [ ] Changes are scoped to task requirements
-- [ ] No obvious bugs or regressions
-- [ ] No debug code or console.logs
-- [ ] Code follows project conventions
-
-### 4. Integration Check
-- [ ] All modified files committed
-- [ ] No merge conflicts with target
-- [ ] Changes don't break other systems
-
-## Save Audit Results
-
-mcp__memory-keeper__context_save({
-  key: "audit-group-[GROUP_NUMBER]",
-  value: "Result: [APPROVED/REVISION]\\nTasks: [N]\\nIssues: [list]",
-  category: "progress",
-  priority: "high"
+Begin audit now.
+`
 })
-
-## Audit Report Format
-
-Create `.claude/handoffs/group-[GROUP_NUMBER]-audit.md`:
-
-# Group [GROUP_NUMBER] Completion Audit
-
-## Audit Date: [timestamp]
-## Auditor: Opus Audit Agent
-
-## Summary
-- Tasks in Group: [count]
-- Tasks Complete: [count]
-- Browser Tests Passed: [count]
-
-## Task-by-Task Review
-
-### Task X.X.X: [name]
-- Handoff: ✅ Complete
-- Verification: ✅ Passed
-- Code Review: ✅ Acceptable
-- Notes: [observations]
-
-## ast-grep Analysis
-[Patterns found, issues identified]
-
-## Integration Assessment
-[How changes work together]
-
-## Issues Found
-[List or "None"]
-
-## Memory Keys Referenced
-[Keys retrieved from memory-keeper]
-
-## Final Verdict: APPROVED / REVISION REQUIRED
-
-## Recommendation
-[MERGE / REVISE with guidance]
 ```
 
 ### After Audit
@@ -502,30 +528,52 @@ Create `.claude/handoffs/group-[GROUP_NUMBER]-audit.md`:
 ```javascript
 mcp__memory-keeper__context_save({
   key: "run-$ARGUMENTS-complete",
-  value: "Tasks: [list]\\nResult: [APPROVED/NEEDS_REVISION]\\nBranch: [BRANCH_NAME]",
+  value: "Tasks: [list]\nResult: [APPROVED/NEEDS_REVISION]\nBranch: [BRANCH_NAME]",
   category: "progress",
   priority: "high"
 })
 ```
 
-**Report to user:**
+---
+
+## OBSERVABILITY CHECKPOINT #6: Final Report
+
+**MANDATORY: Output final report to user:**
 
 ```markdown
-## [GROUP/BLOCK/TASK] Complete
+## Task Run Complete: $ARGUMENTS
+
+### Observability Summary
+
+| Checkpoint | Status |
+|------------|--------|
+| #0 PROCESS_README.md | READ |
+| #1 Session Init | CONFIRMED |
+| #2 Dynamic Discovery | CONFIRMED |
+| #3 Definitions Loaded | CONFIRMED |
+| #4 Dev Plan Loaded | CONFIRMED |
+| #5 Agents Resolved | CONFIRMED |
+| #6 Final Report | THIS |
 
 ### Branch: [BRANCH_NAME]
 ### Target: [TARGET_BRANCH]
 
-### Tasks Completed:
-- Task X.X.X: [status] - [summary] - Browser: [PASS/FAIL/SKIPPED]
+### Tasks Executed
 
-### Audit Result: [APPROVED/REVISION REQUIRED]
+| Task | Agent | Model | Agent Def | Status | Browser |
+|------|-------|-------|-----------|--------|---------|
+| X.X.X | [name] | [model] | `.claude/agents/[name].md` | [status] | [PASS/FAIL/SKIP] |
 
-### Memory Context Saved:
-- [list key memory keys]
+### Definitions Used
+- [list all definitions that were loaded]
 
-### Files Changed:
+### Memory Keys Saved
+- [list all keys saved to memory-keeper]
+
+### Files Changed
 [key files modified]
+
+### Audit Result: [APPROVED/REVISION REQUIRED/N/A]
 
 ### Ready for Review
 
@@ -574,10 +622,33 @@ mcp__memory-keeper__context_save({
 
 | Step | Group Mode | Block Mode | Single Task Mode |
 |------|------------|------------|------------------|
-| Memory Init | ✅ | ✅ | ✅ |
-| Branch Setup | ✅ | ✅ | ✅ |
+| Observability #1-5 | REQUIRED | REQUIRED | REQUIRED |
+| Branch Setup | YES | YES | YES |
 | Run Tasks | All in group | All in block | Just one |
 | Browser Verify | Each task | Each task | The task |
-| Group Audit | ✅ (Opus) | ❌ Skip | ❌ Skip |
-| Review Gate | ✅ | ✅ | ✅ |
-| Save to Memory | ✅ | ✅ | ✅ |
+| Group Audit | YES (code-audit-opus) | NO | NO |
+| Observability #6 | REQUIRED | REQUIRED | REQUIRED |
+
+---
+
+## Troubleshooting
+
+### Agent Not Found
+If `assignments.md` references an agent not in `.claude/agents/index.md`:
+1. Check for typos in agent name
+2. Verify agent file exists in `.claude/agents/`
+3. Add agent to index if missing
+4. Report to user if unresolvable
+
+### MCP Tools Not Available
+If spawned agent reports MCP tools unavailable:
+1. MCP tools (memory-keeper, playwright, concurrent-browser) may not pass to subagents
+2. The orchestrating agent (you) must handle MCP-dependent operations
+3. Restructure task to have subagent do non-MCP work, orchestrator does MCP work
+
+### Definition Not Found
+If a definition file from the index doesn't exist:
+1. Check `.claude/definitions/index.md` for correct path
+2. Create the definition if it should exist
+3. Update index if path is wrong
+4. Report to user if unresolvable

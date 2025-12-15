@@ -86,7 +86,7 @@ These tasks are formatted for use with the `/task` slash command.
 
 ---
 
-## Medium Priority (P2) - Fix During Beta
+## Medium Priority (P2)
 
 ### Task: prompt-builder-mode-switch-error
 
@@ -226,7 +226,7 @@ Update Section 5.4 Quick Add Buttons table to:
 
 ### Task: test-pipeline-execution
 
-**Priority:** Backlog
+**Priority:** Urgent
 **Source:** UI Test - Untested Areas
 **Issue:** Pipeline execution flow not tested (requires configured pipeline)
 **Expected:** Full test of Run/Stop buttons, state transitions, progress indicators
@@ -263,7 +263,7 @@ Update Section 5.4 Quick Add Buttons table to:
 
 ### Task: test-drag-drop
 
-**Priority:** Backlog
+**Priority:** Urgent
 **Source:** UI Test - Untested Areas
 **Issue:** Drag-and-drop functionality not tested
 

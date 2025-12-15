@@ -1,8 +1,5 @@
 # CLAUDE.md - The Council
 
-## By default you should use the `project-manager-opus` subagent for sessions with the user, and Proactively utilize other subagents as needed or adhere to the task definitions where sub agents are explicitly defined.
-always report to the user which subagent is being used in the active session.
-
 ## CRITICAL: File Editing on Windows
 
 ### ⚠️ MANDATORY: Always Use Backslashes on Windows for File Paths
@@ -20,6 +17,90 @@ MultiEdit(file_path: "D:/repos/project/file.tsx", ...)
 Edit(file_path: "D:\repos\project\file.tsx", ...)
 MultiEdit(file_path: "D:\repos\project\file.tsx", ...)
 ```
+
+
+## THE BIBLE: `.claude/PROCESS_README.md`
+
+**READ `.claude/PROCESS_README.md` FIRST IN EVERY SESSION.**
+
+This is the authoritative process document that defines:
+- ALL directory structures and paths
+- File naming conventions
+- Dynamic discovery via index files
+- Agent usage patterns
+- Handoff and task formats
+
+**NEVER guess paths. ALWAYS follow PROCESS_README.md.**
+
+---
+
+## CRITICAL: Dynamic Discovery via Index Files
+
+**DO NOT HARDCODE PATHS. Always use index files for dynamic discovery.**
+
+### Master Index Files
+
+| Index File | Purpose | MUST Read |
+|------------|---------|-----------|
+| `.claude/PROCESS_README.md` | **THE BIBLE** - Authoritative process | ALWAYS FIRST |
+| `.claude/definitions/index.md` | Definition discovery | Always |
+| `.claude/agents/index.md` | Agent discovery | When spawning agents |
+| `.claude/agent-workflows/index.md` | Workflow/process discovery | For tasks/commands |
+
+### Session Start Checklist
+
+**EVERY session MUST begin with:**
+
+```markdown
+## Session Initialization Confirmed
+
+- [ ] `.claude/PROCESS_README.md` read (THE BIBLE)
+- [ ] Memory-keeper session started
+- [ ] `.claude/definitions/index.md` read
+- [ ] `.claude/agents/index.md` read
+- [ ] Required definitions loaded (from definitions index)
+- [ ] Operating as: [agent name]
+```
+
+---
+
+## Default Agent: project-manager-opus
+
+**For all user sessions**, operate as the `project-manager-opus` agent by default.
+
+**At session start:**
+1. Read `.claude/agents/index.md` to find the agent
+2. Read `.claude/agents/project-manager-opus.md` for your role and instructions
+3. Follow ALL MANDATORY sections in that agent definition
+4. Report to user: "Operating as project-manager-opus"
+
+**When spawning subagents via Task tool:**
+1. Read `.claude/agents/index.md` to find available agents
+2. Check `assignments.md` for the correct agent for each task
+3. Read the agent definition from `.claude/agents/{agent-name}.md`
+4. **Include the FULL agent instructions** in the Task tool prompt
+5. Use the model specified in the agent's frontmatter (opus, sonnet, haiku)
+6. **Output spawn confirmation** showing agent name, model, and definition file
+
+---
+
+## Custom Agents (via `.claude/agents/index.md`)
+
+**ALWAYS read `.claude/agents/index.md`** to discover available agents. Do not hardcode.
+
+The index contains:
+- Development agents (dev-opus, dev-sonnet, dev-haiku)
+- Quality agents (code-audit-opus, ui-feature-verification-test-*)
+- Expert advisors (uiux-expert-opus, api-expert-opus, sillytavern-expert-opus)
+- Management (project-manager-opus)
+
+**CRITICAL: When using Task tool, ALWAYS:**
+1. Read `.claude/agents/index.md` to find the agent
+2. Read the agent definition file
+3. Include the agent's full instructions in the prompt
+4. Use the correct model from the agent's frontmatter
+5. Output confirmation of agent used
+
 
 ## Session Context (memory-keeper)
 
@@ -238,11 +319,20 @@ TheCouncil/
 └── .claude/                    # Claude Code configuration
     ├── settings.local.json     # Local settings
     ├── definitions/            # Project definitions (source of truth)
-    │   ├── index.md            # Definition index
+    │   ├── index.md            # ⭐ DEFINITION INDEX (read first!)
     │   ├── SYSTEM_DEFINITIONS.md # Six-system architecture
     │   ├── VIEWS.md            # UI views map & testing checklist
     │   ├── UI_BEHAVIOR.md      # Expected UI behavior spec
     │   └── DEFAULT_PIPELINE.md # Pipeline structure docs
+    ├── agents/                 # Custom agent definitions
+    │   ├── index.md            # ⭐ AGENT INDEX (read first!)
+    │   ├── project-manager-opus.md  # Default session agent
+    │   ├── dev-opus.md         # Complex development
+    │   ├── dev-sonnet.md       # Standard development
+    │   ├── dev-haiku.md        # Simple tasks
+    │   ├── code-audit-opus.md  # Code auditing
+    │   ├── ui-feature-verification-test-*.md  # UI testing
+    │   └── [other agents]      # See index for full list
     ├── agent-dev-plans/        # Development plans
     │   ├── state.md            # Global dev state
     │   └── alpha-3.0.0/        # Active plan ⬅️
@@ -251,14 +341,15 @@ TheCouncil/
     │       ├── task-list.md
     │       ├── status.md
     │       ├── progress-tracker.md
-    │       ├── assignments.md
+    │       ├── assignments.md  # ⭐ Task-to-agent mapping
     │       ├── reference.md
     │       └── tasks/          # Individual task files
     ├── agent-workflows/        # Workflow documentation
+    │   ├── index.md            # ⭐ WORKFLOW INDEX (read first!)
     │   └── UI_TESTING.md       # Browser automation guide
     └── commands/               # Slash commands
-        ├── tasks.md            # Task runner
-        ├── ui-test.md          # UI testing pipeline
+        ├── tasks.md            # Task runner (with observability)
+        ├── ui-test.md          # UI testing pipeline (with observability)
         └── add-to-dev-plan.md  # Add tasks to plan
 ```
 
@@ -337,25 +428,42 @@ const SystemName = {
 
 ## Key Documentation
 
+### Index Files (READ THESE FIRST)
+
+| Index File | Purpose | Contains |
+|------------|---------|----------|
+| `.claude/definitions/index.md` | **Definition discovery** | Lists all definition files to load |
+| `.claude/agents/index.md` | **Agent discovery** | Lists all custom agents with models |
+| `.claude/agent-workflows/index.md` | **Workflow discovery** | Agent registry, task lifecycle |
+
+### Definition Files (via definitions index)
+
 | Document | Purpose |
 |----------|---------|
-| `.claude/agent-dev-plans/alpha-3.0.0/` | **Active development plan with tasks** |
-| `.claude/definitions/SYSTEM_DEFINITIONS.md` | Comprehensive system definitions |
-| `.claude/definitions/VIEWS.md` | Exhaustive UI views map and testing checklist |
-| `.claude/agent-workflows/UI_TESTING.md` | Browser automation testing guide |
-| `.claude/definitions/UI_BEHAVIOR.md` | Expected UI behavior spec (test reference) |
-| `.claude/PROCESS_README.md` | **Process documentation** |
+| `SYSTEM_DEFINITIONS.md` | Six-system architecture |
+| `VIEWS.md` | UI views map and testing checklist |
+| `UI_BEHAVIOR.md` | Expected UI behavior spec |
+| `DEFAULT_PIPELINE.md` | Pipeline structure docs |
+
+### Development Plan
+
+| Document | Purpose |
+|----------|---------|
+| `.claude/agent-dev-plans/alpha-3.0.0/` | **Active development plan** |
+| `assignments.md` | Task-to-agent mapping |
+| `task-list.md` | All tasks |
+| `status.md` | Current progress |
 
 ## Quick Reference
 
 | What | Where |
 |------|-------|
+| **Index files** | `.claude/definitions/index.md`, `.claude/agents/index.md` |
 | **Development plan** | `.claude/agent-dev-plans/alpha-3.0.0/` |
-| System definitions | `.claude/definitions/SYSTEM_DEFINITIONS.md` |
-| UI views & testing | `.claude/definitions/VIEWS.md` |
+| System definitions | `.claude/definitions/` (via index) |
+| Custom agents | `.claude/agents/` (via index) |
 | All schemas | `schemas/systems.js` |
 | Presets | `data/presets/*.json` |
-| Archived docs | `docs/archive/*.md` |
 
 ## Slash Commands
 

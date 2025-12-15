@@ -2,6 +2,12 @@
 
 **This file is the single source of truth for all project definitions.**
 
+## THE BIBLE: `.claude/PROCESS_README.md`
+
+**READ PROCESS_README.md FIRST** for authoritative process documentation including all paths, conventions, and requirements.
+
+---
+
 Every agent, command, and workflow MUST read this index first and load the definitions listed here dynamically. DO NOT hardcode definition paths elsewhere - always reference this index.
 
 ---
@@ -16,13 +22,14 @@ When starting any session, load definitions in this order:
 |------|---------|----------|
 | `SYSTEM_DEFINITIONS.md` | Six-system architecture, data schemas, event patterns | **Critical** |
 | `VIEWS.md` | Complete UI element inventory, modal structure, testing reference | **Critical** |
+| `UI_BEHAVIOR.md` | Expected UI behavior spec for testing | Running UI tests | **Critical** |
 
 ### 2. Context-Specific Definitions (Load When Relevant)
 
 | File | Purpose | Load When |
 |------|---------|-----------|
 | `DEFAULT_PIPELINE.md` | Pipeline structure, agent/team/phase definitions | Working on pipelines |
-| `UI_BEHAVIOR.md` | Expected UI behavior spec for testing | Running UI tests |
+
 
 ---
 

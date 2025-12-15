@@ -17,9 +17,21 @@ You are orchestrating a UI testing pipeline for The Council extension.
 
 ---
 
-## MANDATORY: Session Initialization
+## OBSERVABILITY CHECKPOINT #0: Read the Bible
 
-**ALWAYS start with memory-keeper:**
+**MANDATORY: Read PROCESS_README.md FIRST.**
+
+```javascript
+Read(".claude/PROCESS_README.md")  // The authoritative process document
+```
+
+This document defines ALL paths, conventions, and requirements. Follow it exactly.
+
+---
+
+## OBSERVABILITY CHECKPOINT #1: Session Initialization
+
+**MANDATORY: Initialize memory-keeper and CONFIRM:**
 
 ```javascript
 mcp__memory-keeper__context_session_start({
@@ -34,6 +46,177 @@ mcp__memory-keeper__context_session_start({
 mcp__memory-keeper__context_search({ query: "ui-test" })
 mcp__memory-keeper__context_search({ query: "modal" })
 mcp__memory-keeper__context_get({ category: "error" })
+```
+
+### Confirmation Report #1
+
+**You MUST output this confirmation before proceeding:**
+
+```markdown
+## Initialization Confirmed
+
+- [ ] PROCESS_README.md read: YES
+- [ ] Memory-keeper session started: [session ID]
+- [ ] Previous UI test context retrieved: [count] items found
+- [ ] Previous modal tests found: [count] items
+- [ ] Errors from previous runs: [count or "none"]
+```
+
+---
+
+## OBSERVABILITY CHECKPOINT #2: Dynamic Discovery - Index Files
+
+**MANDATORY: Read ALL index files for dynamic discovery. DO NOT HARDCODE PATHS.**
+
+### Required Index Files
+
+```javascript
+// Read these files IN ORDER:
+1. Read(".claude/definitions/index.md")     // Definition discovery
+2. Read(".claude/agents/index.md")          // Agent discovery
+3. Read(".claude/agent-workflows/index.md") // Workflow discovery
+```
+
+### Confirmation Report #2
+
+**You MUST output this confirmation before proceeding:**
+
+```markdown
+## Dynamic Discovery Confirmed
+
+### Definitions Index (`.claude/definitions/index.md`)
+- [ ] File read: YES
+- [ ] Core definitions listed: [list filenames]
+- [ ] UI-specific definitions: VIEWS.md, UI_BEHAVIOR.md
+
+### Agents Index (`.claude/agents/index.md`)
+- [ ] File read: YES
+- [ ] UI testing agents available: [list names]
+- [ ] Expert agents available: [list names]
+
+### Workflows Index (`.claude/agent-workflows/index.md`)
+- [ ] File read: YES
+- [ ] UI testing workflow documented: YES
+```
+
+---
+
+## OBSERVABILITY CHECKPOINT #3: Load Required Definitions
+
+**MANDATORY: Load definitions dynamically from the index.**
+
+For UI testing, these definitions are REQUIRED:
+
+```javascript
+// From definitions index - REQUIRED for UI testing:
+Read(".claude/definitions/VIEWS.md")        // UI element inventory
+Read(".claude/definitions/UI_BEHAVIOR.md")  // Expected behavior spec
+Read(".claude/definitions/SYSTEM_DEFINITIONS.md")  // Architecture context
+```
+
+### Confirmation Report #3
+
+**You MUST output this confirmation before proceeding:**
+
+```markdown
+## Definitions Loaded
+
+| Definition | Loaded | Relevant Sections |
+|------------|--------|-------------------|
+| VIEWS.md | YES | [list modal sections] |
+| UI_BEHAVIOR.md | YES | [list modal sections] |
+| SYSTEM_DEFINITIONS.md | YES | [list system sections] |
+
+### UI Inventory Confirmed
+- Total modals documented: [count]
+- Total UI elements documented: [count]
+- Total expected behaviors documented: [count]
+```
+
+---
+
+## OBSERVABILITY CHECKPOINT #4: Agent Resolution
+
+**MANDATORY: Resolve ALL agents needed for the testing pipeline.**
+
+### Agents Required for UI Testing
+
+Based on `.claude/agents/index.md`, resolve these agents:
+
+| Phase | Agent | Purpose |
+|-------|-------|---------|
+| Phase 1 (Spec) | `uiux-expert-opus` | Create/update UI_BEHAVIOR.md |
+| Phase 2 (Test) | `ui-feature-verification-test-sonnet` | Test each modal |
+| Phase 3 (Review) | `code-audit-opus` | Review results, generate tasks |
+
+### Agent Resolution Process
+
+For EACH agent:
+1. **Read `.claude/agents/index.md`** to find the agent
+2. **Read the agent definition file** from `.claude/agents/{agent-name}.md`
+3. **Extract model** from frontmatter
+4. **Extract full instructions** from the agent definition
+
+### Confirmation Report #4
+
+**You MUST output this confirmation for EACH agent:**
+
+```markdown
+## Agent Resolution Summary
+
+### uiux-expert-opus (Phase 1)
+- [ ] Found in agents index: YES
+- [ ] Definition read: `.claude/agents/uiux-expert-opus.md`
+- [ ] Model: opus
+- [ ] MANDATORY sections present: [list]
+- [ ] Instructions captured: [line count] lines
+
+### ui-feature-verification-test-sonnet (Phase 2)
+- [ ] Found in agents index: YES
+- [ ] Definition read: `.claude/agents/ui-feature-verification-test-sonnet.md`
+- [ ] Model: sonnet
+- [ ] MANDATORY sections present: [list]
+- [ ] Instructions captured: [line count] lines
+
+### code-audit-opus (Phase 3)
+- [ ] Found in agents index: YES
+- [ ] Definition read: `.claude/agents/code-audit-opus.md`
+- [ ] Model: opus
+- [ ] MANDATORY sections present: [list]
+- [ ] Instructions captured: [line count] lines
+```
+
+---
+
+## Prerequisites
+
+1. **Verify browser automation is available:**
+```bash
+claude mcp list
+```
+Expected: `playwright: ✓ Connected` AND `concurrent-browser: ✓ Connected`
+
+2. **SillyTavern must be running at:** `http://127.0.0.1:8000/`
+
+3. **Initialize the report file:**
+Create `docs/UI_BEHAVIOR_REPORT.md` with header:
+```markdown
+# The Council - UI Behavior Test Report
+
+**Generated:** [TIMESTAMP]
+**Version:** 2.1.0-alpha
+
+---
+```
+
+4. **Save initialization to memory:**
+```javascript
+mcp__memory-keeper__context_save({
+  key: "ui-test-init",
+  value: "UI Test started: [timestamp]\nTarget: $ARGUMENTS",
+  category: "progress",
+  priority: "normal"
+})
 ```
 
 ---
@@ -77,103 +260,57 @@ mcp__playwright__browser_snapshot()
 
 ---
 
-## MANDATORY: Definition Loading
+## Phase 1: Create/Update Expected Behavior Spec (uiux-expert-opus)
 
-**Read the definitions index first:**
+**First, spawn the uiux-expert-opus agent to create or update the behavior specification.**
 
-```javascript
-// Read .claude/definitions/index.md to discover required definitions
-// Load the definitions listed there dynamically
-// DO NOT hardcode definition paths - always check the index
-```
+### Spawn Confirmation for Phase 1
 
----
+**Output this confirmation before spawning:**
 
-## Prerequisites
-
-1. **Verify browser automation is available:**
-```bash
-claude mcp list
-```
-Expected: `playwright: ✓ Connected` AND `concurrent-browser: ✓ Connected`
-
-2. **SillyTavern must be running at:** `http://127.0.0.1:8000/`
-
-3. **Initialize the report file:**
-Create `docs/UI_BEHAVIOR_REPORT.md` with header:
 ```markdown
-# The Council - UI Behavior Test Report
+## Phase 1 Spawn Confirmation
 
-**Generated:** [TIMESTAMP]
-**Version:** 2.1.0-alpha
-
----
+| Field | Value |
+|-------|-------|
+| Agent | uiux-expert-opus |
+| Model | opus |
+| Definition | `.claude/agents/uiux-expert-opus.md` |
+| Instructions | [X] lines included |
+| Task | Create/update UI_BEHAVIOR.md |
 ```
 
-4. **Save initialization to memory:**
+### Phase 1 Task Spawn
+
 ```javascript
-mcp__memory-keeper__context_save({
-  key: "ui-test-init",
-  value: "UI Test started: [timestamp]\\nTarget: $ARGUMENTS",
-  category: "progress",
-  priority: "normal"
-})
-```
+Task({
+  description: "Create UI Behavior Spec",
+  subagent_type: "general-purpose",
+  model: "opus",
+  prompt: `
+## Agent Instructions
+
+[PASTE FULL CONTENTS OF .claude/agents/uiux-expert-opus.md HERE]
 
 ---
 
-## Phase 1: Create/Update Expected Behavior Spec (Opus)
+## Task-Specific Context
 
-**First, spawn an Opus agent to create or update the behavior specification:**
+You are creating the authoritative UI behavior specification for The Council extension.
 
-```
-subagent_type: "general-purpose"
-model: "opus"
-prompt: |
-  You are creating the authoritative UI behavior specification for The Council extension.
+### Required Reading (from definitions index)
+1. .claude/definitions/SYSTEM_DEFINITIONS.md - System architecture
+2. .claude/definitions/VIEWS.md - UI element inventory
 
-  ## MANDATORY: Session Initialization
+### Your Task
+Create or update .claude/definitions/UI_BEHAVIOR.md with comprehensive expected behavior.
 
-  mcp__memory-keeper__context_session_start({
-    name: "TheCouncil-UISpec",
-    projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
-  })
+### Output
+When complete, report: "UI_BEHAVIOR.md created/updated with [N] modal definitions"
 
-  ## MANDATORY: Definition Loading
-
-  Read `.claude/definitions/index.md` first to discover which definitions to load.
-  Load ALL definitions listed in the index - these are your ground truth.
-
-  ## MANDATORY: Tool Preferences
-
-  **Use ast-grep** to analyze UI code structure:
-  ast-grep run --pattern 'show() { $$$BODY }' --lang javascript ui/
-  ast-grep run --pattern 'addEventListener($EVENT, $HANDLER)' --lang javascript ui/
-
-  ## Your Task
-  Create or update `docs/UI_BEHAVIOR.md` with comprehensive expected behavior.
-
-  ## Required Reading (from definitions index)
-  1. CLAUDE.md - Project overview
-  2. All definitions from .claude/definitions/index.md
-  3. docs/VIEWS.md - UI element inventory
-
-  ## Context Saving
-
-  Save key findings:
-  mcp__memory-keeper__context_save({
-    key: "ui-spec-update",
-    value: "Updated sections: [list]",
-    category: "progress",
-    priority: "normal"
-  })
-
-  ## Output Format
-  [Full UI_BEHAVIOR.md structure - see VIEWS.md for reference]
-
-  Do NOT use browser automation tools (you're just reading and writing docs).
-
-  When complete, report: "UI_BEHAVIOR.md created/updated with [N] modal definitions"
+Do NOT use browser automation tools (you're just reading and writing docs).
+`
+})
 ```
 
 **Wait for this agent to complete before proceeding to Phase 2.**
@@ -184,118 +321,76 @@ prompt: |
 
 **IMPORTANT: Use concurrent-browser MCP to enable parallel testing without conflicts.**
 
-After Phase 1 completes, spawn all 6 testing agents in parallel. Each agent gets its own browser instance.
+After Phase 1 completes, spawn all 6 testing agents in parallel.
 
-### Testing Agent Template
+### Spawn Confirmation for Phase 2
 
-Each agent follows the same pattern with different modal assignments:
+**Output this confirmation for EACH agent before spawning:**
 
+```markdown
+## Phase 2 Spawn Confirmation - [MODAL_NAME]
+
+| Field | Value |
+|-------|-------|
+| Agent | ui-feature-verification-test-sonnet |
+| Model | sonnet |
+| Definition | `.claude/agents/ui-feature-verification-test-sonnet.md` |
+| Instructions | [X] lines included |
+| Modal | [MODAL_NAME] |
+| Instance ID | [ui-XXX] |
+| UI_BEHAVIOR.md Section | [N] |
+| VIEWS.md Section | [N] |
 ```
-subagent_type: "general-purpose"
-model: "sonnet"
-prompt: |
-  You are testing [MODAL_NAME] for The Council extension.
 
-  ## MANDATORY: Session Initialization
+### Testing Agent Spawn Template
 
-  mcp__memory-keeper__context_session_start({
-    name: "TheCouncil-UITest-[MODAL_NAME]",
-    projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
-  })
+```javascript
+Task({
+  description: "Test [MODAL_NAME] Modal",
+  subagent_type: "general-purpose",
+  model: "sonnet",
+  prompt: `
+## Agent Instructions
 
-  Retrieve previous context:
-  mcp__memory-keeper__context_search({ query: "[MODAL_NAME]" })
+[PASTE FULL CONTENTS OF .claude/agents/ui-feature-verification-test-sonnet.md HERE]
 
-  ## MANDATORY: Definition Loading
+---
 
-  Read `.claude/definitions/index.md` to discover required definitions.
-  Load ALL listed definitions for ground truth.
+## Test Assignment
 
-  ## MANDATORY: Browser Tools (concurrent-browser)
+You are testing **[MODAL_NAME]** for The Council extension.
 
-  Use concurrent-browser with your assigned instance ID:
+### Your Assignment
+- Modal: **[MODAL_NAME]**
+- Instance ID: **[INSTANCE_ID]**
+- UI_BEHAVIOR.md Section: **[N]**
+- VIEWS.md Section: **[N]**
 
-  mcp__concurrent-browser__browser_create_instance({ instanceId: "[INSTANCE_ID]" })
-  mcp__concurrent-browser__browser_navigate({ instanceId: "[INSTANCE_ID]", url: "http://127.0.0.1:8000/" })
-  mcp__concurrent-browser__browser_snapshot({ instanceId: "[INSTANCE_ID]" })
-  mcp__concurrent-browser__browser_click({ instanceId: "[INSTANCE_ID]", element: "...", ref: "..." })
-  mcp__concurrent-browser__browser_console_logs({ instanceId: "[INSTANCE_ID]" })
-  mcp__concurrent-browser__browser_screenshot({ instanceId: "[INSTANCE_ID]" })
-  mcp__concurrent-browser__browser_close_instance({ instanceId: "[INSTANCE_ID]" })
+### Required Reading (from definitions index)
+1. .claude/definitions/UI_BEHAVIOR.md - Expected behavior (Section [N])
+2. .claude/definitions/VIEWS.md - Element reference (Section [N])
 
-  ## Required Reading
-  1. docs/UI_BEHAVIOR.md - Expected behavior (Section [N])
-  2. docs/VIEWS.md - Element reference (Section [N])
-  3. docs/UI_TESTING.md - Browser tools reference
+### Testing Workflow
 
-  ## Your Assignment
-  Modal: **[MODAL_NAME]**
-  Instance ID: **[INSTANCE_ID]**
+1. **Create browser instance** with your assigned ID
+2. **Navigate to SillyTavern** at http://127.0.0.1:8000/
+3. **Get snapshot** to find elements
+4. **Open the modal** (if not Navigation Modal)
+5. **Test each state and interaction** defined in UI_BEHAVIOR.md
+6. **Document findings** for each test:
+   - ✅ PASS: Behavior matches expected
+   - ⚠️ PARTIAL: Behavior differs slightly (describe)
+   - ❌ FAIL: Behavior missing or broken (describe)
+   - 🔍 UNTESTABLE: Cannot test (explain why)
+7. **Close browser instance** when done
 
-  ## Testing Workflow
+### Output
 
-  1. **Create browser instance** with your assigned ID
-  2. **Navigate to SillyTavern** at http://127.0.0.1:8000/
-  3. **Get snapshot** to find elements
-  4. **Open the modal** (if not Navigation Modal)
-  5. **Test each state and interaction** defined in UI_BEHAVIOR.md
-  6. **Document findings** for each test:
-     - ✅ PASS: Behavior matches expected
-     - ⚠️ PARTIAL: Behavior differs slightly (describe)
-     - ❌ FAIL: Behavior missing or broken (describe)
-     - 🔍 UNTESTABLE: Cannot test (explain why)
-  7. **Close browser instance** when done
+Append your findings to docs/UI_BEHAVIOR_REPORT.md with the format from your agent instructions.
 
-  ## Context Saving
-
-  Save test results to memory:
-  mcp__memory-keeper__context_save({
-    key: "ui-test-[MODAL_NAME]-result",
-    value: "Pass: [N], Fail: [M], Issues: [list]",
-    category: "progress",
-    priority: "normal"
-  })
-
-  Save any issues found:
-  mcp__memory-keeper__context_save({
-    key: "ui-test-[MODAL_NAME]-issue-{N}",
-    value: "[issue description]",
-    category: "error",
-    priority: "high"
-  })
-
-  ## Output
-
-  Append your findings to `docs/UI_BEHAVIOR_REPORT.md`:
-
-  ## [MODAL_NAME] Test Results
-
-  **Tested By:** Sonnet Agent
-  **Instance ID:** [INSTANCE_ID]
-  **Timestamp:** [ISO timestamp]
-
-  ### Summary
-  - Total Tests: [N]
-  - Passed: [N]
-  - Partial: [N]
-  - Failed: [N]
-  - Untestable: [N]
-
-  ### Detailed Results
-  [Results tables...]
-
-  ### Issues Found
-  [Numbered list with reproduction steps...]
-
-  ### Console Errors
-  [From browser console logs]
-
-  ### Memory Keys Saved
-  [List of keys saved to memory-keeper]
-
-  ---
-
-  Report when done: "[MODAL_NAME] testing complete: [X] passed, [Y] issues found"
+Report when done: "[MODAL_NAME] testing complete: [X] passed, [Y] issues found"
+`
+})
 ```
 
 ### Agent Assignments (Run in Parallel)
@@ -313,125 +408,69 @@ prompt: |
 
 ---
 
-## Phase 3: Review and Task Generation (Opus)
+## Phase 3: Review and Task Generation (code-audit-opus)
 
-**After all 6 testing agents complete, spawn an Opus agent to review and generate tasks:**
+**After all 6 testing agents complete, spawn the code-audit-opus agent to review and generate tasks.**
 
+### Spawn Confirmation for Phase 3
+
+**Output this confirmation before spawning:**
+
+```markdown
+## Phase 3 Spawn Confirmation
+
+| Field | Value |
+|-------|-------|
+| Agent | code-audit-opus |
+| Model | opus |
+| Definition | `.claude/agents/code-audit-opus.md` |
+| Instructions | [X] lines included |
+| Task | Review results, generate tasks |
 ```
-subagent_type: "general-purpose"
-model: "opus"
-prompt: |
-  You are reviewing UI test results and generating development tasks.
 
-  ## MANDATORY: Session Initialization
+### Phase 3 Task Spawn
 
-  mcp__memory-keeper__context_session_start({
-    name: "TheCouncil-UIReview",
-    projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
-  })
+```javascript
+Task({
+  description: "Review UI Test Results",
+  subagent_type: "general-purpose",
+  model: "opus",
+  prompt: `
+## Agent Instructions
 
-  Retrieve all test results:
-  mcp__memory-keeper__context_search({ query: "ui-test" })
-  mcp__memory-keeper__context_get({ category: "error" })
+[PASTE FULL CONTENTS OF .claude/agents/code-audit-opus.md HERE]
 
-  ## MANDATORY: Definition Loading
+---
 
-  Read `.claude/definitions/index.md` to discover required definitions.
-  Load ALL listed definitions for context.
+## Review Context
 
-  ## MANDATORY: ast-grep Analysis
+You are reviewing UI test results and generating development tasks.
 
-  Use ast-grep to correlate issues with code:
-  ast-grep run --pattern 'show() { $$$BODY }' --lang javascript ui/
-  ast-grep run --pattern '_handle$NAME($$$) { $$$BODY }' --lang javascript ui/
+### Required Reading (from definitions index)
+1. .claude/definitions/UI_BEHAVIOR.md - Expected behavior
+2. docs/UI_BEHAVIOR_REPORT.md - Test results from 6 agents
 
-  ## Required Reading
-  1. docs/UI_BEHAVIOR.md - Expected behavior
-  2. docs/UI_BEHAVIOR_REPORT.md - Test results from 6 agents
+### Your Tasks
 
-  ## Your Tasks
+#### Task 1: Generate Test Summary Report
 
-  ### Task 1: Generate Test Summary Report
+Create docs/testing/UI_REPORT-[YYYYMMDD-HHMM].md with:
+- Executive summary table (Modal | Tests | Pass | Partial | Fail | Untestable)
+- Overall health score percentage
+- ast-grep code analysis (patterns found that relate to issues)
+- Memory context retrieved
+- Issues by priority (P0, P1, P2, P3)
+- Patterns observed across modals
+- Recommendations
 
-  Create `docs/testing/UI_REPORT-[YYYYMMDD-HHMM].md`:
+#### Task 2: Generate Development Tasks
 
-  # UI Test Report
+Create or update the development plan with suggested tasks based on findings.
 
-  **Date:** [timestamp]
-  **Tested By:** 6 Parallel Sonnet Agents (concurrent-browser)
-  **Version:** 2.1.0-alpha
-
-  ## Executive Summary
-
-  | Modal | Tests | Pass | Partial | Fail | Untestable |
-  |-------|-------|------|---------|------|------------|
-  | Navigation | ... | ... | ... | ... | ... |
-  | Curation | ... | ... | ... | ... | ... |
-  | Character | ... | ... | ... | ... | ... |
-  | Pipeline | ... | ... | ... | ... | ... |
-  | Injection | ... | ... | ... | ... | ... |
-  | Gavel | ... | ... | ... | ... | ... |
-  | **Total** | **...** | **...** | **...** | **...** | **...** |
-
-  ## Overall Health Score: [X]%
-
-  ## ast-grep Code Analysis
-  [Patterns found that relate to issues]
-
-  ## Memory Context Retrieved
-  [Keys retrieved from memory-keeper]
-
-  ## Critical Issues (P0)
-  [Issues that break core functionality]
-
-  ## High Priority Issues (P1)
-  [Issues that impact user experience significantly]
-
-  ## Medium Priority Issues (P2)
-  [Issues that should be fixed but aren't blockers]
-
-  ## Low Priority Issues (P3)
-  [Polish, edge cases, nice-to-haves]
-
-  ## Patterns Observed
-  [Common issues across modals]
-
-  ## Recommendations
-  [High-level suggestions]
-
-  ### Task 2: Generate Development Tasks
-
-  Create or update `docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md`:
-
-  # Alpha 3 Suggested Tasks
-
-  Generated from UI testing on [date].
-  Memory context from: [list memory keys used]
-
-  ## Task Format
-
-  ### Task: [short-name]
-  **Priority:** P0/P1/P2/P3
-  **Source:** UI Test - [Modal Name]
-  **Issue:** [Description]
-  **Expected:** [What should happen]
-  **Actual:** [What actually happens]
-  **Files:** [Likely files - use ast-grep to identify]
-  **Complexity:** simple/moderate/complex
-
-  ---
-
-  ## Context Saving
-
-  Save review results:
-  mcp__memory-keeper__context_save({
-    key: "ui-test-review-[date]",
-    value: "Total: [N] tests, Pass: [M], Fail: [K]\\nTasks generated: [X]",
-    category: "progress",
-    priority: "high"
-  })
-
-  Report when done: "Review complete. Generated [N] tasks. See docs/testing/UI_REPORT-[timestamp].md"
+### Output
+Report when done: "Review complete. Generated [N] tasks. See docs/testing/UI_REPORT-[timestamp].md"
+`
+})
 ```
 
 ---
@@ -441,7 +480,7 @@ prompt: |
 If `$ARGUMENTS` is provided (e.g., `/ui-test nav`):
 
 1. Skip Phase 1 (assume UI_BEHAVIOR.md exists)
-2. Spawn only the relevant agent from Phase 2 (sequential with playwright is acceptable for single modal)
+2. Spawn only the relevant testing agent from Phase 2 (sequential with playwright is acceptable)
 3. Run Phase 3 for review
 
 | Argument | Modal | Instance ID |
@@ -460,38 +499,52 @@ mcp__playwright__browser_navigate({ url: "http://127.0.0.1:8000/" })
 
 ---
 
-## Final Output
+## OBSERVABILITY CHECKPOINT #5: Final Report
 
-When complete, save summary and report to user:
-
-```javascript
-mcp__memory-keeper__context_save({
-  key: "ui-test-complete-[date]",
-  value: "Full test run complete\\nModals: 6\\nIssues: [N]\\nTasks: [M]",
-  category: "progress",
-  priority: "high"
-})
-```
+**MANDATORY: Output final report when complete:**
 
 ```markdown
 ## UI Testing Complete
 
+### Observability Summary
+
+| Checkpoint | Status |
+|------------|--------|
+| #0 PROCESS_README.md | READ |
+| #1 Session Init | CONFIRMED |
+| #2 Dynamic Discovery | CONFIRMED |
+| #3 Definitions Loaded | CONFIRMED |
+| #4 Agents Resolved | CONFIRMED |
+| #5 Final Report | THIS |
+
 ### Phase 1: Behavior Spec
-- docs/UI_BEHAVIOR.md: [created/updated]
+- Agent: uiux-expert-opus
+- Definition: `.claude/agents/uiux-expert-opus.md`
+- .claude/definitions/UI_BEHAVIOR.md: [created/updated]
 
 ### Phase 2: Modal Testing (Parallel via concurrent-browser)
-| Modal | Instance | Result |
-|-------|----------|--------|
-| Navigation | ui-nav | [X pass, Y issues] |
-| Curation | ui-curation | [X pass, Y issues] |
-| Character | ui-character | [X pass, Y issues] |
-| Pipeline | ui-pipeline | [X pass, Y issues] |
-| Injection | ui-injection | [X pass, Y issues] |
-| Gavel + Components | ui-gavel | [X pass, Y issues] |
+- Agent: ui-feature-verification-test-sonnet (x6)
+- Definition: `.claude/agents/ui-feature-verification-test-sonnet.md`
+
+| Modal | Instance | Agent Confirmed | Result |
+|-------|----------|-----------------|--------|
+| Navigation | ui-nav | YES | [X pass, Y issues] |
+| Curation | ui-curation | YES | [X pass, Y issues] |
+| Character | ui-character | YES | [X pass, Y issues] |
+| Pipeline | ui-pipeline | YES | [X pass, Y issues] |
+| Injection | ui-injection | YES | [X pass, Y issues] |
+| Gavel + Components | ui-gavel | YES | [X pass, Y issues] |
 
 ### Phase 3: Review
+- Agent: code-audit-opus
+- Definition: `.claude/agents/code-audit-opus.md`
 - Report: docs/testing/UI_REPORT-[timestamp].md
-- Tasks: docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md
+- Tasks: [generated task list location]
+
+### Definitions Used
+- .claude/definitions/VIEWS.md
+- .claude/definitions/UI_BEHAVIOR.md
+- .claude/definitions/SYSTEM_DEFINITIONS.md
 
 ### Memory Context
 - Keys saved: [list]
@@ -499,8 +552,19 @@ mcp__memory-keeper__context_save({
 
 ### Next Steps
 1. Review the test report
-2. Run `/task [task-name]` to fix issues
+2. Run `/tasks [task-id]` to fix issues
 3. Re-run `/ui-test` to verify fixes
+```
+
+**Save final status to memory:**
+
+```javascript
+mcp__memory-keeper__context_save({
+  key: "ui-test-complete-[date]",
+  value: "Full test run complete\nModals: 6\nIssues: [N]\nTasks: [M]",
+  category: "progress",
+  priority: "high"
+})
 ```
 
 ---
@@ -527,3 +591,16 @@ mcp__concurrent-browser__browser_close_all_instances()
 mcp__memory-keeper__context_summarize()
 mcp__memory-keeper__context_get({ category: "error" })
 ```
+
+### Agent Not Found
+If an agent isn't found in `.claude/agents/index.md`:
+1. Check for typos in agent name
+2. Verify agent file exists in `.claude/agents/`
+3. Add agent to index if missing
+4. Report to user if unresolvable
+
+### MCP Tools Not Available to Subagents
+If spawned agents report they don't have MCP tools:
+1. MCP tools (memory-keeper, playwright, concurrent-browser) may not pass through to Task subagents
+2. The orchestrating agent (you) must handle MCP-dependent operations
+3. Have subagents report what they need tested, then run tests from orchestrator

@@ -2,6 +2,31 @@
 
 This document defines the agentic development process for The Council project.
 
+## THE BIBLE: `.claude/PROCESS_README.md`
+
+**READ PROCESS_README.md FIRST.** It is the authoritative source for:
+- All directory structures and file paths
+- Handoff and task file locations
+- Agent spawn patterns
+- Observability requirements
+
+---
+
+## CRITICAL: Index Files
+
+**Always read these files in order:**
+
+| Order | File | Purpose |
+|-------|------|---------|
+| 1 | `.claude/PROCESS_README.md` | **THE BIBLE** - Authoritative process |
+| 2 | `.claude/definitions/index.md` | Definition discovery |
+| 3 | `.claude/agents/index.md` | Agent discovery |
+| 4 | `.claude/agent-workflows/index.md` | Workflow reference (this file) |
+
+**DO NOT hardcode paths. Always use index files.**
+
+---
+
 ## Overview
 
 Development is orchestrated through specialized Claude agents, each with defined roles and capabilities. Work is organized into development plans with a hierarchical task structure.
@@ -24,6 +49,10 @@ Development Plan (e.g., alpha-3.0.0)
 **Example**: `1.2.1` = Group 1, Block 2, Task 1
 
 ## Agent Registry
+
+**IMPORTANT: For the authoritative agent list, always read `.claude/agents/index.md`**
+
+The following is a summary. For full details, models, and usage, see the agents index.
 
 ### Development Agents
 
@@ -55,7 +84,16 @@ Development Plan (e.g., alpha-3.0.0)
 
 | Agent | Model | Role |
 |-------|-------|------|
-| `project-manager-opus` | opus | Coordination, planning, status |
+| `project-manager-opus` | opus | **DEFAULT SESSION AGENT** - Coordination, planning |
+
+### Using Agents
+
+To use an agent:
+1. **Read `.claude/agents/index.md`** to find the agent
+2. **Read the agent definition** from `.claude/agents/{name}.md`
+3. **Extract model** from frontmatter
+4. **Include FULL instructions** in Task prompt
+5. **Output confirmation** of agent used
 
 ## Development Workflow
 
@@ -204,43 +242,84 @@ qa-team-opusplan: Go/no-go decision
 
 ## Spawning Agents
 
-Use the Task tool to spawn agents:
+**CRITICAL: The Task tool only accepts built-in subagent_types.** To use custom agents:
+
+### Before Spawning
+
+1. **Read `.claude/agents/index.md`** to find the agent
+2. **Read the agent definition** from `.claude/agents/{name}.md`
+3. **Extract the model** from frontmatter
+4. **Extract FULL instructions** from the definition
+
+### Spawn with Full Instructions
 
 ```javascript
-// Spawn a development agent
+// CORRECT: Include full agent instructions
 Task({
-  subagent_type: "dev-sonnet",
+  description: "Task 1.2.1: feature-name",
+  subagent_type: "general-purpose",  // Built-in type required
+  model: "sonnet",                    // From agent frontmatter
   prompt: `
-    Complete task 1.2.1 from .claude/agent-dev-plans/alpha-3.0.0/tasks/
+## Agent Instructions
 
-    Read the task file first, then implement the changes.
-    Create a handoff document when complete.
-  `,
-  model: "sonnet"
+[PASTE FULL CONTENTS OF .claude/agents/dev-sonnet.md HERE]
+
+---
+
+## Task-Specific Context
+
+Complete task 1.2.1 from .claude/agent-dev-plans/alpha-3.0.0/tasks/
+
+Read the task file first, then implement the changes.
+Create a handoff document when complete.
+`
 })
+```
 
-// Spawn an audit agent
-Task({
-  subagent_type: "code-audit-opus",
-  prompt: `
-    Audit the implementation for Group 1.
+### Spawn Confirmation (MANDATORY)
 
-    Review all handoffs in .claude/agent-dev-plans/alpha-3.0.0/handoffs/
-    Create audit report at .claude/agent-dev-plans/alpha-3.0.0/code-audits/
-  `,
-  model: "opus"
-})
+**After every spawn, output this confirmation:**
+
+```markdown
+## Spawn Confirmation
+
+| Field | Value |
+|-------|-------|
+| Task | [description] |
+| Agent | [name from assignments.md] |
+| Model | [from agent frontmatter] |
+| Definition | `.claude/agents/[name].md` |
+| Instructions | [line count] lines included |
 ```
 
 ## Parallel Execution
 
-Independent tasks can run in parallel:
+Independent tasks can run in parallel. For each, read the agent definition first:
 
 ```javascript
 // Run multiple tasks in parallel (single message with multiple Task calls)
-Task({ subagent_type: "dev-haiku", prompt: "Task 1.4.1..." })
-Task({ subagent_type: "dev-haiku", prompt: "Task 1.4.2..." })
-Task({ subagent_type: "dev-sonnet", prompt: "Task 1.3.1..." })
+// EACH task must include full agent instructions from .claude/agents/
+
+Task({
+  description: "Task 1.4.1",
+  subagent_type: "general-purpose",
+  model: "haiku",  // from dev-haiku.md frontmatter
+  prompt: "[full dev-haiku.md instructions]\n---\nTask 1.4.1 context..."
+})
+
+Task({
+  description: "Task 1.4.2",
+  subagent_type: "general-purpose",
+  model: "haiku",
+  prompt: "[full dev-haiku.md instructions]\n---\nTask 1.4.2 context..."
+})
+
+Task({
+  description: "Task 1.3.1",
+  subagent_type: "general-purpose",
+  model: "sonnet",  // from dev-sonnet.md frontmatter
+  prompt: "[full dev-sonnet.md instructions]\n---\nTask 1.3.1 context..."
+})
 ```
 
 ## Quality Gates
