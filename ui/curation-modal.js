@@ -194,7 +194,7 @@ const CurationModal = {
     // Create overlay
     this._elements.overlay = document.createElement("div");
     this._elements.overlay.className = "council-curation-overlay";
-    this._elements.overlay.addEventListener("click", () => this.hide());
+    this._elements.overlay.addEventListener("click", () => this._kernel.hideModal("curation"));
 
     // Create modal container
     this._elements.modal = document.createElement("div");
@@ -312,7 +312,7 @@ const CurationModal = {
     // Close on escape
     const escHandler = (e) => {
       if (e.key === "Escape" && this._isVisible) {
-        this.hide();
+        this._kernel.hideModal("curation");
       }
     };
     document.addEventListener("keydown", escHandler);
@@ -1940,7 +1940,7 @@ const CurationModal = {
 
     switch (action) {
       case "close":
-        this.hide();
+        this._kernel.hideModal("curation");
         break;
 
       case "import":

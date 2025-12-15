@@ -170,7 +170,7 @@ const InjectionModal = {
     // Create backdrop
     const backdrop = document.createElement("div");
     backdrop.className = "council-modal-backdrop";
-    backdrop.addEventListener("click", () => this.hide());
+    backdrop.addEventListener("click", () => this._kernel.hideModal("injection"));
 
     // Create content wrapper
     const content = document.createElement("div");
@@ -274,7 +274,7 @@ const InjectionModal = {
   _bindEventHandlers(content) {
     // Close button
     const closeBtn = content.querySelector(".council-modal-close");
-    closeBtn.addEventListener("click", () => this.hide());
+    closeBtn.addEventListener("click", () => this._kernel.hideModal("injection"));
 
     // Enable toggle
     this._elements.enableToggle.addEventListener("change", (e) => {
@@ -296,7 +296,7 @@ const InjectionModal = {
     // Escape key to close
     const escHandler = (e) => {
       if (e.key === "Escape" && this._isVisible) {
-        this.hide();
+        this._kernel.hideModal("injection");
       }
     };
     document.addEventListener("keydown", escHandler);

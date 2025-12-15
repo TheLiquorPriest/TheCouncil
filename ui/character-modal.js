@@ -244,7 +244,7 @@ const CharacterModal = {
     // Close on overlay click
     const overlayClickHandler = (e) => {
       if (e.target === overlay) {
-        this.hide();
+        this._kernel.hideModal("character");
       }
     };
     overlay.addEventListener("click", overlayClickHandler);
@@ -268,7 +268,7 @@ const CharacterModal = {
     const headerClickHandler = (e) => {
       const action = e.target.closest("[data-action]")?.dataset.action;
       if (action === "close") {
-        this.hide();
+        this._kernel.hideModal("character");
       } else if (action === "sync") {
         this._syncWithCuration();
       }
@@ -311,7 +311,7 @@ const CharacterModal = {
     const keyHandler = (e) => {
       if (!this._isVisible) return;
       if (e.key === "Escape") {
-        this.hide();
+        this._kernel.hideModal("character");
       }
     };
     document.addEventListener("keydown", keyHandler);

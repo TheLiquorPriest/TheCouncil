@@ -749,7 +749,7 @@ const GavelModal = {
     }
 
     // Hide modal
-    this.hide();
+    this._kernel.hideModal("gavel");
 
     // Clear state
     this._currentRequest = null;

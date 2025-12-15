@@ -234,7 +234,7 @@ const PipelineModal = {
     // Create overlay
     this._elements.overlay = document.createElement("div");
     this._elements.overlay.className = "council-pipeline-overlay";
-    this._elements.overlay.addEventListener("click", () => this.hide());
+    this._elements.overlay.addEventListener("click", () => this._kernel.hideModal("pipeline"));
 
     // Create modal container
     this._elements.modal = document.createElement("div");
@@ -393,7 +393,7 @@ const PipelineModal = {
     // Close on escape
     const escHandler = (e) => {
       if (e.key === "Escape" && this._isVisible) {
-        this.hide();
+        this._kernel.hideModal("pipeline");
       }
     };
     document.addEventListener("keydown", escHandler);
@@ -2558,7 +2558,7 @@ const PipelineModal = {
 
     switch (action) {
       case "close":
-        this.hide();
+        this._kernel.hideModal("pipeline");
         break;
       case "import":
         this._showImportDialog();
