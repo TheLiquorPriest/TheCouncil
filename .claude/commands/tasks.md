@@ -38,6 +38,89 @@ This document defines ALL paths, conventions, and requirements. Follow it exactl
 
 ---
 
+## ⛔ OBSERVABILITY CHECKPOINT #0.5: MCP TOOL VERIFICATION GATE
+
+**MANDATORY: Verify MCP tools are available BEFORE any work.**
+
+### NO WORKAROUNDS POLICY
+
+**Reports like this are COMPLETELY UNACCEPTABLE:**
+> "Due to browser automation tools being unavailable in this session, verification was conducted through detailed code review..."
+
+**CODE REVIEW IS NOT A SUBSTITUTE FOR BROWSER TESTING. This is a HARD FAILURE.**
+
+### Tool Verification Process
+
+```javascript
+// VERIFY MCP TOOLS FIRST - BEFORE ANYTHING ELSE
+
+// Test 1: Memory-keeper (REQUIRED for ALL tasks)
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-TaskRunner-ToolVerify",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+// IF THIS FAILS → ABORT TASK IMMEDIATELY
+
+// Test 2: Browser automation (check which is available)
+// Try playwright:
+mcp__playwright__browser_navigate({ url: "about:blank" })
+// OR try concurrent-browser:
+mcp__concurrent-browser__browser_create_instance({ instanceId: "verify-test" })
+// CLOSE TEST INSTANCE IF CREATED
+mcp__concurrent-browser__browser_close_instance({ instanceId: "verify-test" })
+```
+
+### Confirmation Report #0.5 (MANDATORY)
+
+**You MUST output this confirmation BEFORE proceeding:**
+
+```markdown
+## ⛔ MCP TOOL VERIFICATION GATE
+
+| Tool | Required | Status | Evidence |
+|------|----------|--------|----------|
+| memory-keeper | YES | ✅ PASS / ❌ FAIL | [session ID or error] |
+| playwright | FOR VERIFICATION | ✅ PASS / ❌ FAIL | [result or error] |
+| concurrent-browser | FOR PARALLEL | ✅ PASS / ❌ FAIL | [result or error] |
+| ast-grep | FOR CODE SEARCH | ✅ PASS / ❌ FAIL | [version or error] |
+
+### GATE RESULT: PASS / FAIL
+
+If FAIL: STOP. Output failure report. Do not proceed.
+```
+
+### On Failure: ABORT IMMEDIATELY
+
+**If ANY required tool is unavailable:**
+
+```markdown
+## ⛔ TASK ABORTED: MCP TOOLS UNAVAILABLE
+
+### Missing Tools
+- [tool]: [error message]
+
+### Task Cannot Proceed
+The /tasks command requires MCP tools for:
+- Memory persistence (memory-keeper)
+- Browser verification (playwright/concurrent-browser)
+- Code exploration (ast-grep)
+
+### Resolution Required
+1. Run `claude mcp list` to check server status
+2. Restart Claude Code session if needed
+3. Re-run `/tasks $ARGUMENTS` when tools are available
+
+### WORKAROUNDS NOT ATTEMPTED
+Code review is NOT a substitute for browser testing.
+Static analysis is NOT a substitute for runtime verification.
+
+**STATUS: FAILED - TOOLS UNAVAILABLE**
+```
+
+**DO NOT PROCEED PAST THIS POINT IF GATE FAILS.**
+
+---
+
 ## OBSERVABILITY CHECKPOINT #1: Session Initialization
 
 **MANDATORY: Initialize memory-keeper and CONFIRM:**
@@ -304,6 +387,46 @@ Task({
   subagent_type: "general-purpose",  // REQUIRED: Built-in type
   model: "[MODEL]",                   // FROM agent frontmatter: opus/sonnet/haiku
   prompt: `
+## ⛔ MCP TOOL VERIFICATION (MANDATORY FIRST STEP)
+
+**BEFORE ANY OTHER WORK**, verify MCP tools are available:
+
+1. Call mcp__memory-keeper__context_session_start() - MUST SUCCEED
+2. If this is a UI/verification task, call a browser tool - MUST SUCCEED
+3. Output the Tool Verification Gate confirmation
+
+### NO WORKAROUNDS POLICY
+
+**If ANY required tool is unavailable:**
+- DO NOT proceed with the task
+- DO NOT substitute code review for browser testing
+- DO NOT substitute static analysis for runtime verification
+- Output: "⛔ TASK ABORTED: MCP TOOLS UNAVAILABLE"
+- List which tools failed and why
+- STOP IMMEDIATELY
+
+**The following is COMPLETELY UNACCEPTABLE:**
+> "Due to browser automation tools being unavailable, verification was conducted through code review..."
+
+This is a TASK FAILURE, not a workaround.
+
+### Tool Verification Output (REQUIRED)
+
+\`\`\`markdown
+## ⛔ MCP TOOL VERIFICATION GATE
+
+| Tool | Required | Status | Evidence |
+|------|----------|--------|----------|
+| memory-keeper | YES | ✅/❌ | [session ID or error] |
+| browser tools | [YES/NO] | ✅/❌/N/A | [result or error] |
+
+### GATE RESULT: PASS / FAIL
+\`\`\`
+
+**If GATE FAILS, stop here. Do not proceed.**
+
+---
+
 ## Agent Instructions
 
 [PASTE FULL CONTENTS OF .claude/agents/{AGENT_NAME}.md HERE]
@@ -327,26 +450,29 @@ You MUST read these definitions before implementing:
 2. [Any task-specific definitions based on task type]
 
 ### Required Actions
-1. Follow ALL MANDATORY sections from agent instructions above
-2. Initialize memory-keeper session
-3. Read the task definition completely
-4. Read required definitions from the index
-5. Implement ALL deliverables
-6. Test against acceptance criteria
-7. Save progress to memory-keeper
-8. Write handoff to .claude/agent-dev-plans/{version}/handoffs/task-[TASK_ID].md
+1. **FIRST: Complete MCP Tool Verification Gate** (above)
+2. Follow ALL MANDATORY sections from agent instructions above
+3. Initialize memory-keeper session (already done in verification)
+4. Read the task definition completely
+5. Read required definitions from the index
+6. Implement ALL deliverables
+7. Test against acceptance criteria (USE BROWSER TOOLS, NOT CODE REVIEW)
+8. Save progress to memory-keeper
+9. Write handoff to .claude/agent-dev-plans/{version}/handoffs/task-[TASK_ID].md
 
 ### Handoff Format
 Your handoff file MUST include:
-- Status: COMPLETE | PARTIAL | BLOCKED
+- Status: COMPLETE | PARTIAL | BLOCKED | **FAILED_TOOLS_UNAVAILABLE**
 - Agent Used: [AGENT_NAME]
 - Model Used: [MODEL]
+- MCP Tools Verified: YES (list tools) / **NO (TASK ABORTED)**
 - What Was Implemented
 - Files Modified
 - Acceptance Criteria Results (checklist with pass/fail)
 - Memory Keys Saved: [list keys saved to memory-keeper]
 - Issues Encountered
 - Browser Test Required: [YES/NO based on task]
+- **Browser Test Completed: YES/NO** (code review does NOT count)
 
 ### On Completion
 Commit your changes with message:
@@ -633,18 +759,39 @@ mcp__memory-keeper__context_save({
 
 ## Troubleshooting
 
+### ⛔ MCP Tools Not Available (CRITICAL - HARD FAILURE)
+
+**THIS IS NOT A WORKAROUND SCENARIO. THIS IS A TASK FAILURE.**
+
+If spawned agent reports MCP tools unavailable:
+
+1. **ABORT THE TASK IMMEDIATELY**
+2. **DO NOT restructure to work around missing tools**
+3. **DO NOT substitute code review for browser testing**
+4. **DO NOT substitute static analysis for runtime verification**
+5. Output: "⛔ TASK ABORTED: MCP TOOLS UNAVAILABLE"
+6. User must restart Claude Code session
+7. Re-run task only after tools are confirmed available
+
+**The following is COMPLETELY UNACCEPTABLE:**
+> "Due to browser automation tools being unavailable, verification was conducted through code review..."
+
+**This is a FAILURE, not a creative solution.**
+
+**Resolution:**
+```bash
+claude mcp list
+# Verify all required servers show ✓ Connected
+# Restart Claude Code if any are missing
+# Re-run /tasks command
+```
+
 ### Agent Not Found
 If `assignments.md` references an agent not in `.claude/agents/index.md`:
 1. Check for typos in agent name
 2. Verify agent file exists in `.claude/agents/`
 3. Add agent to index if missing
 4. Report to user if unresolvable
-
-### MCP Tools Not Available
-If spawned agent reports MCP tools unavailable:
-1. MCP tools (memory-keeper, playwright, concurrent-browser) may not pass to subagents
-2. The orchestrating agent (you) must handle MCP-dependent operations
-3. Restructure task to have subagent do non-MCP work, orchestrator does MCP work
 
 ### Definition Not Found
 If a definition file from the index doesn't exist:

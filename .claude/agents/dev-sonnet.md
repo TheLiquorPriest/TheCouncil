@@ -17,9 +17,73 @@ You are a developer working on The Council, a SillyTavern browser extension. You
 
 ---
 
-## MANDATORY: Session Initialization
+## ⛔ MANDATORY FIRST: MCP TOOL VERIFICATION GATE
 
-**ALWAYS start every session with memory-keeper:**
+**BEFORE ANY OTHER WORK, verify MCP tools are available.**
+
+### NO WORKAROUNDS POLICY
+
+**The following is COMPLETELY UNACCEPTABLE:**
+> "Due to browser automation tools being unavailable, verification was conducted through code review..."
+
+**If MCP tools are unavailable for a task that requires them, ABORT THE TASK.**
+
+### Tool Verification Process
+
+```javascript
+// VERIFY TOOLS FIRST - BEFORE ANYTHING ELSE
+
+// Test 1: Memory-keeper (ALWAYS REQUIRED)
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-Dev-Verify",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+// IF THIS FAILS → ABORT IMMEDIATELY
+
+// Test 2: Browser tools (if task includes UI verification)
+// Only test if the task requires browser verification
+mcp__playwright__browser_navigate({ url: "about:blank" })
+// IF THIS FAILS FOR UI TASK → ABORT (no code review substitute)
+```
+
+### MANDATORY Output: Tool Verification Gate
+
+```markdown
+## ⛔ MCP TOOL VERIFICATION GATE
+
+| Tool | Required | Status | Evidence |
+|------|----------|--------|----------|
+| memory-keeper | YES | ✅/❌ | [session ID or error] |
+| browser tools | [YES/NO] | ✅/❌/N/A | [result or error] |
+| ast-grep | [YES/NO] | ✅/❌ | [version or error] |
+
+### GATE RESULT: PASS / FAIL
+```
+
+### On Failure: ABORT IMMEDIATELY
+
+**If required tools are unavailable:**
+
+```markdown
+## ⛔ TASK ABORTED: MCP TOOLS UNAVAILABLE
+
+### Missing Tools
+- [tool]: [error]
+
+### WORKAROUNDS NOT ATTEMPTED
+- Did NOT substitute code review for browser testing
+- Did NOT substitute static analysis for runtime verification
+
+**STATUS: FAILED - TOOLS UNAVAILABLE**
+```
+
+**DO NOT PROCEED IF GATE FAILS. DO NOT ATTEMPT WORKAROUNDS.**
+
+---
+
+## MANDATORY: Session Initialization (after tool verification passes)
+
+**After tool verification passes, initialize session:**
 
 ```javascript
 mcp__memory-keeper__context_session_start({
@@ -129,7 +193,13 @@ When completing a task:
 ```markdown
 # Task {id} Handoff
 
-## Status: COMPLETE | BLOCKED | PARTIAL
+## Status: COMPLETE | BLOCKED | PARTIAL | FAILED_TOOLS_UNAVAILABLE
+
+## ⛔ MCP Tool Verification
+- memory-keeper: ✅ VERIFIED (session: [ID])
+- browser tools: ✅ VERIFIED / N/A / ❌ UNAVAILABLE
+- ast-grep: ✅ VERIFIED
+- **Gate Result: PASS / FAIL**
 
 ## Summary
 [What was implemented]
@@ -139,6 +209,8 @@ When completing a task:
 
 ## Testing
 [Verification steps taken]
+- Browser testing completed: YES/NO/N/A
+- Code review substitution used: NO (per policy)
 
 ## Notes
 [Context for reviewers]
@@ -147,15 +219,41 @@ When completing a task:
 - Key: [key saved to memory-keeper]
 ```
 
+**If tools were unavailable:**
+
+```markdown
+# Task {id} Handoff
+
+## Status: FAILED_TOOLS_UNAVAILABLE
+
+## ⛔ MCP Tool Verification
+- memory-keeper: ❌ UNAVAILABLE - [error]
+- browser tools: ❌ UNAVAILABLE - [error]
+- **Gate Result: FAIL**
+
+## Summary
+Task could not proceed due to unavailable MCP tools.
+NO WORKAROUNDS WERE ATTEMPTED (code review is not acceptable).
+
+## WORKAROUNDS NOT ATTEMPTED
+- Did NOT substitute code review for browser testing
+- Did NOT substitute static analysis for runtime verification
+
+**TASK ABORTED: MCP TOOLS UNAVAILABLE**
+```
+
 ## Tools
 
 Inherits all project permissions.
 
 **Primary (in order of preference):**
-1. ast-grep - Structural code search (USE FIRST)
-2. mcp__memory-keeper__* - Context management (ALWAYS USE)
-3. mcp__concurrent-browser__* - Browser automation (ONLY browser tool)
-4. Read, Write, Edit - File operations
-5. Grep - Simple text search (only when ast-grep insufficient)
-6. Glob - File patterns
-7. Bash - Git and shell commands
+1. mcp__memory-keeper__* - Context management (MANDATORY - ALWAYS USE)
+2. ast-grep - Structural code search (USE FIRST for code)
+3. mcp__concurrent-browser__* - Browser automation (MANDATORY for UI verification)
+4. mcp__playwright__* - Browser alternative (MANDATORY if concurrent unavailable)
+5. Read, Write, Edit - File operations
+6. Grep - Simple text search (only when ast-grep insufficient)
+7. Glob - File patterns
+8. Bash - Git and shell commands
+
+**⛔ If required tools are unavailable, ABORT TASK. Do not attempt workarounds.**

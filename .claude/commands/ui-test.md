@@ -29,6 +29,90 @@ This document defines ALL paths, conventions, and requirements. Follow it exactl
 
 ---
 
+## ⛔ OBSERVABILITY CHECKPOINT #0.5: MCP TOOL VERIFICATION GATE
+
+**MANDATORY: Verify MCP tools BEFORE any work. UI testing REQUIRES browser automation.**
+
+### NO WORKAROUNDS POLICY - ABSOLUTELY ENFORCED
+
+**Reports like this are COMPLETELY UNACCEPTABLE and constitute TASK FAILURE:**
+> "Due to browser automation tools being unavailable in this session, verification was conducted through detailed code review of modal implementations..."
+
+**CODE REVIEW IS NOT A SUBSTITUTE FOR BROWSER TESTING.**
+**THIS IS A UI TESTING COMMAND. BROWSER TOOLS ARE MANDATORY.**
+
+### Tool Verification Process
+
+```javascript
+// VERIFY MCP TOOLS FIRST - BEFORE ANYTHING ELSE
+
+// Test 1: Memory-keeper (REQUIRED)
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-UITest-ToolVerify",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+// IF THIS FAILS → ABORT IMMEDIATELY
+
+// Test 2: Browser automation (REQUIRED FOR UI TESTING)
+// For parallel testing (full run):
+mcp__concurrent-browser__browser_create_instance({ instanceId: "verify-test" })
+mcp__concurrent-browser__browser_close_instance({ instanceId: "verify-test" })
+// OR for sequential testing (single modal):
+mcp__playwright__browser_navigate({ url: "about:blank" })
+// IF THIS FAILS → ABORT IMMEDIATELY (NO CODE REVIEW SUBSTITUTE)
+```
+
+### Confirmation Report #0.5 (MANDATORY)
+
+**You MUST output this confirmation BEFORE proceeding:**
+
+```markdown
+## ⛔ MCP TOOL VERIFICATION GATE
+
+| Tool | Required | Status | Evidence |
+|------|----------|--------|----------|
+| memory-keeper | YES | ✅ PASS / ❌ FAIL | [session ID or error] |
+| playwright | YES (sequential) | ✅ PASS / ❌ FAIL | [result or error] |
+| concurrent-browser | YES (parallel) | ✅ PASS / ❌ FAIL | [result or error] |
+
+### GATE RESULT: PASS / FAIL
+
+If FAIL: STOP. Output failure report. Do not proceed.
+```
+
+### On Failure: ABORT IMMEDIATELY
+
+**If browser tools are unavailable:**
+
+```markdown
+## ⛔ UI TEST ABORTED: BROWSER TOOLS UNAVAILABLE
+
+### Missing Tools
+- [tool]: [error message]
+
+### UI Testing REQUIRES Browser Automation
+The /ui-test command performs ACTUAL BROWSER TESTING, not code review.
+Without browser tools, this command cannot function.
+
+### Resolution Required
+1. Run `claude mcp list` to check server status
+2. Verify playwright and/or concurrent-browser are connected
+3. Restart Claude Code session if needed
+4. Re-run `/ui-test` when browser tools are available
+
+### WORKAROUNDS NOT ATTEMPTED
+- Code review is NOT a substitute for UI testing
+- Static analysis is NOT a substitute for browser verification
+- Reading modal code is NOT equivalent to testing modal behavior
+
+**STATUS: FAILED - BROWSER TOOLS UNAVAILABLE**
+```
+
+**DO NOT PROCEED PAST THIS POINT IF GATE FAILS.**
+**CODE REVIEW IS NOT AN ACCEPTABLE ALTERNATIVE.**
+
+---
+
 ## OBSERVABILITY CHECKPOINT #1: Session Initialization
 
 **MANDATORY: Initialize memory-keeper and CONFIRM:**
@@ -350,6 +434,45 @@ Task({
   subagent_type: "general-purpose",
   model: "sonnet",
   prompt: `
+## ⛔ MCP TOOL VERIFICATION (MANDATORY FIRST STEP)
+
+**BEFORE ANY OTHER WORK**, verify browser tools are available:
+
+1. Call mcp__memory-keeper__context_session_start() - MUST SUCCEED
+2. Call mcp__concurrent-browser__browser_create_instance() or mcp__playwright__browser_navigate() - MUST SUCCEED
+3. Output the Tool Verification Gate confirmation
+
+### NO WORKAROUNDS POLICY
+
+**If browser tools are unavailable:**
+- DO NOT proceed with testing
+- DO NOT substitute code review for browser testing
+- DO NOT report "verification through code analysis"
+- Output: "⛔ TASK ABORTED: BROWSER TOOLS UNAVAILABLE"
+- STOP IMMEDIATELY
+
+**The following is COMPLETELY UNACCEPTABLE:**
+> "Due to browser automation tools being unavailable, verification was conducted through code review..."
+
+**THIS IS A UI TESTING TASK. CODE REVIEW DOES NOT COUNT.**
+
+### Tool Verification Output (REQUIRED)
+
+\`\`\`markdown
+## ⛔ MCP TOOL VERIFICATION GATE
+
+| Tool | Required | Status | Evidence |
+|------|----------|--------|----------|
+| memory-keeper | YES | ✅/❌ | [session ID or error] |
+| browser tool | YES | ✅/❌ | [instance ID or navigate result] |
+
+### GATE RESULT: PASS / FAIL
+\`\`\`
+
+**If GATE FAILS, stop here. Report failure. Do not proceed.**
+
+---
+
 ## Agent Instructions
 
 [PASTE FULL CONTENTS OF .claude/agents/ui-feature-verification-test-sonnet.md HERE]
@@ -370,25 +493,28 @@ You are testing **[MODAL_NAME]** for The Council extension.
 1. .claude/definitions/UI_BEHAVIOR.md - Expected behavior (Section [N])
 2. .claude/definitions/VIEWS.md - Element reference (Section [N])
 
-### Testing Workflow
+### Testing Workflow (REQUIRES BROWSER TOOLS)
 
-1. **Create browser instance** with your assigned ID
-2. **Navigate to SillyTavern** at http://127.0.0.1:8000/
-3. **Get snapshot** to find elements
-4. **Open the modal** (if not Navigation Modal)
-5. **Test each state and interaction** defined in UI_BEHAVIOR.md
-6. **Document findings** for each test:
-   - ✅ PASS: Behavior matches expected
+1. **FIRST: Complete MCP Tool Verification Gate** (above)
+2. **Create browser instance** with your assigned ID
+3. **Navigate to SillyTavern** at http://127.0.0.1:8000/
+4. **Get snapshot** to find elements
+5. **Open the modal** (if not Navigation Modal)
+6. **Test each state and interaction** defined in UI_BEHAVIOR.md
+7. **Document findings** for each test:
+   - ✅ PASS: Behavior matches expected (VERIFIED IN BROWSER)
    - ⚠️ PARTIAL: Behavior differs slightly (describe)
    - ❌ FAIL: Behavior missing or broken (describe)
-   - 🔍 UNTESTABLE: Cannot test (explain why)
-7. **Close browser instance** when done
+   - 🚫 TOOLS_UNAVAILABLE: Browser tools not available (TASK FAILS)
+8. **Close browser instance** when done
 
 ### Output
 
 Append your findings to docs/UI_BEHAVIOR_REPORT.md with the format from your agent instructions.
 
 Report when done: "[MODAL_NAME] testing complete: [X] passed, [Y] issues found"
+
+**If browser tools unavailable, report: "⛔ TASK ABORTED: BROWSER TOOLS UNAVAILABLE"**
 `
 })
 ```
@@ -571,10 +697,46 @@ mcp__memory-keeper__context_save({
 
 ## Troubleshooting
 
+### ⛔ Browser Tools Not Available (CRITICAL - HARD FAILURE)
+
+**THIS IS A UI TESTING COMMAND. BROWSER TOOLS ARE MANDATORY.**
+
+If browser tools are unavailable:
+
+1. **ABORT THE TEST IMMEDIATELY**
+2. **DO NOT substitute code review for browser testing**
+3. **DO NOT restructure to work around missing tools**
+4. Output: "⛔ UI TEST ABORTED: BROWSER TOOLS UNAVAILABLE"
+5. User must restart Claude Code session
+6. Re-run `/ui-test` only after browser tools are confirmed available
+
+**The following is COMPLETELY UNACCEPTABLE:**
+> "Due to browser automation tools being unavailable, verification was conducted through code review..."
+
+**This is a FAILURE, not a creative solution. Code review is NOT UI testing.**
+
+**Resolution:**
+```bash
+claude mcp list
+# Verify both playwright and concurrent-browser show ✓ Connected
+# Restart Claude Code if any are missing
+# Re-run /ui-test command
+```
+
 ### concurrent-browser Not Connected
+**This is a BLOCKING failure for parallel UI testing.**
 ```bash
 claude mcp add concurrent-browser -s user -- [installation command]
 # Restart Claude Code session
+# DO NOT attempt workarounds
+```
+
+### playwright Not Connected
+**This is a BLOCKING failure for sequential UI testing.**
+```bash
+claude mcp add playwright -s user -- npx -y @playwright/mcp@latest
+# Restart Claude Code session
+# DO NOT attempt workarounds
 ```
 
 ### SillyTavern Not Running
@@ -599,8 +761,16 @@ If an agent isn't found in `.claude/agents/index.md`:
 3. Add agent to index if missing
 4. Report to user if unresolvable
 
-### MCP Tools Not Available to Subagents
-If spawned agents report they don't have MCP tools:
-1. MCP tools (memory-keeper, playwright, concurrent-browser) may not pass through to Task subagents
-2. The orchestrating agent (you) must handle MCP-dependent operations
-3. Have subagents report what they need tested, then run tests from orchestrator
+### ⛔ MCP Tools Not Available to Subagents (HARD FAILURE)
+
+**If spawned agents report they don't have MCP tools:**
+
+1. **THIS IS A TASK FAILURE - NOT A WORKAROUND SCENARIO**
+2. **ABORT the test immediately**
+3. **DO NOT have subagents do "code review" instead**
+4. **DO NOT restructure tasks to avoid MCP usage**
+5. Output: "⛔ UI TEST ABORTED: SUBAGENT MCP TOOLS UNAVAILABLE"
+6. User must restart Claude Code session
+7. Re-run only after all MCP tools are verified
+
+**Code review is NOT equivalent to UI testing. Period.**

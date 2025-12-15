@@ -34,6 +34,122 @@ This is the authoritative process document that defines:
 
 ---
 
+## ⛔ CRITICAL: MCP TOOL VERIFICATION GATE (MANDATORY)
+
+### NO WORKAROUNDS POLICY
+
+**CODE REVIEW IS NOT A SUBSTITUTE FOR BROWSER TESTING.**
+
+Reports like this are **COMPLETELY UNACCEPTABLE**:
+> "Due to browser automation tools being unavailable in this session, verification was conducted through detailed code review..."
+
+**THIS IS A HARD FAILURE.** If MCP tools are unavailable, the task MUST FAIL immediately. Do NOT attempt workarounds.
+
+### MANDATORY Tool Verification (BEFORE ANY WORK)
+
+**EVERY agent and subagent MUST verify MCP tools FIRST, before any other work:**
+
+```javascript
+// STEP 1: VERIFY MCP TOOLS ARE AVAILABLE
+// Attempt to use each required MCP tool. If ANY fails, STOP IMMEDIATELY.
+
+// Test 1: Memory-keeper (ALWAYS REQUIRED)
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-ToolVerify",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+
+// Test 2: Browser automation (REQUIRED for UI tasks)
+// Choose based on task type:
+// - For parallel testing: mcp__concurrent-browser__browser_create_instance
+// - For sequential testing: mcp__playwright__browser_navigate
+```
+
+### Tool Verification Confirmation (MANDATORY OUTPUT)
+
+**You MUST output this BEFORE proceeding with ANY task:**
+
+```markdown
+## ⛔ MCP TOOL VERIFICATION GATE
+
+### Required Tools Status
+
+| Tool | Status | Verification Method |
+|------|--------|---------------------|
+| memory-keeper | ✅ PASS / ❌ FAIL | context_session_start succeeded |
+| playwright | ✅ PASS / ❌ FAIL / N/A | browser_navigate callable |
+| concurrent-browser | ✅ PASS / ❌ FAIL / N/A | browser_create_instance callable |
+| ast-grep | ✅ PASS / ❌ FAIL | Bash ast-grep --version succeeded |
+
+### Gate Result: PASS / FAIL
+
+If FAIL: **STOP IMMEDIATELY. Do not proceed. Report failure and exit.**
+```
+
+### HARD FAILURE Conditions
+
+**If ANY of these occur, IMMEDIATELY STOP and report:**
+
+1. **memory-keeper unavailable** → FAIL (ALL tasks require this)
+2. **Browser tools unavailable for UI tasks** → FAIL (no code review substitution)
+3. **ast-grep unavailable for code exploration** → FAIL (no grep substitution for structural searches)
+
+### Failure Report Format
+
+**If tools are unavailable, output this and STOP:**
+
+```markdown
+## ⛔ TASK ABORTED: MCP TOOLS UNAVAILABLE
+
+### Missing Tools
+- [tool name]: [error message]
+
+### Task Cannot Proceed
+This task REQUIRES the following MCP tools:
+- [list required tools]
+
+### Action Required
+1. Verify MCP servers are connected: `claude mcp list`
+2. Restart Claude Code session if needed
+3. Re-run the task after tools are available
+
+### NO WORKAROUNDS ATTEMPTED
+Code review, static analysis, or other substitutes are NOT acceptable for browser testing tasks.
+
+**TASK STATUS: FAILED - TOOLS UNAVAILABLE**
+```
+
+### What This Means for Subagents
+
+**When spawning subagents via Task tool:**
+
+1. **Include MCP verification gate** in EVERY agent prompt
+2. **Explicitly state** that workarounds are forbidden
+3. **Require** the verification output before any work
+4. **Check** the subagent's output for the verification gate
+
+**Add this to EVERY Task tool prompt:**
+
+```
+## ⛔ MCP TOOL VERIFICATION (MANDATORY FIRST STEP)
+
+Before doing ANYTHING else, verify MCP tools are available:
+
+1. Call mcp__memory-keeper__context_session_start()
+2. If this is a UI task, call mcp__playwright__browser_navigate() or mcp__concurrent-browser__browser_create_instance()
+3. Output the Tool Verification Gate confirmation
+
+IF ANY TOOL IS UNAVAILABLE:
+- DO NOT proceed with the task
+- DO NOT attempt workarounds like "code review"
+- Output the failure report
+- State: "TASK ABORTED: MCP TOOLS UNAVAILABLE"
+
+Code review is NOT a substitute for browser testing. Static analysis is NOT a substitute for runtime verification.
+```
+
+---
+
 ## CRITICAL: Dynamic Discovery via Index Files
 
 **DO NOT HARDCODE PATHS. Always use index files for dynamic discovery.**

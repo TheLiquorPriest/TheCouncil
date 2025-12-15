@@ -11,6 +11,108 @@ Every agent, command, and workflow MUST read this document. It defines:
 
 ---
 
+## ⛔ CRITICAL: MCP TOOL VERIFICATION GATE (MUST BE FIRST)
+
+### NO WORKAROUNDS - EVER
+
+**The following is COMPLETELY UNACCEPTABLE and constitutes a TASK FAILURE:**
+
+> "Due to browser automation tools being unavailable in this session, verification was conducted through detailed code review of modal implementations..."
+
+**CODE REVIEW IS NOT A SUBSTITUTE FOR BROWSER TESTING.**
+**STATIC ANALYSIS IS NOT A SUBSTITUTE FOR RUNTIME VERIFICATION.**
+
+If MCP tools are not available, the task MUST FAIL. No exceptions. No workarounds.
+
+### MANDATORY: Verify Tools BEFORE Any Work
+
+**Every agent MUST perform this verification as their FIRST action:**
+
+```javascript
+// STEP 1: VERIFY MCP TOOLS (BEFORE ANYTHING ELSE)
+
+// Test memory-keeper (ALWAYS REQUIRED)
+const memoryResult = mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-ToolVerify",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+// If this fails → ABORT TASK IMMEDIATELY
+
+// Test browser tools (REQUIRED for any UI/verification task)
+// Use playwright for sequential:
+const browserResult = mcp__playwright__browser_navigate({ url: "about:blank" })
+// OR use concurrent-browser for parallel:
+const browserResult = mcp__concurrent-browser__browser_create_instance({ instanceId: "verify" })
+// If this fails for UI task → ABORT TASK IMMEDIATELY
+```
+
+### MANDATORY Output: Tool Verification Gate
+
+**You MUST output this confirmation BEFORE any other work:**
+
+```markdown
+## ⛔ MCP TOOL VERIFICATION GATE
+
+| Tool | Required | Status | Evidence |
+|------|----------|--------|----------|
+| memory-keeper | YES | ✅/❌ | Session ID or error |
+| playwright | [YES/NO] | ✅/❌/N/A | Navigate result or error |
+| concurrent-browser | [YES/NO] | ✅/❌/N/A | Instance ID or error |
+| ast-grep | [YES/NO] | ✅/❌ | Version or error |
+
+### GATE RESULT: PASS / FAIL
+
+[If FAIL, task stops here]
+```
+
+### On Failure: ABORT IMMEDIATELY
+
+**If ANY required tool is unavailable:**
+
+```markdown
+## ⛔ TASK ABORTED: MCP TOOLS UNAVAILABLE
+
+### Missing Tools
+- [tool]: [error]
+
+### Required For This Task
+- [tool list]
+
+### Resolution Required
+1. Run `claude mcp list` to check server status
+2. Restart Claude Code session if needed
+3. Re-run task when tools are available
+
+### WORKAROUNDS NOT ATTEMPTED
+This task requires actual tool usage. Code review and static analysis are NOT acceptable substitutes.
+
+**STATUS: FAILED - TOOLS UNAVAILABLE**
+```
+
+### For Orchestrators: Include Gate in ALL Subagent Prompts
+
+**When using Task tool, ALWAYS include:**
+
+```
+## ⛔ MCP TOOL VERIFICATION (MANDATORY FIRST STEP)
+
+BEFORE ANY OTHER WORK, verify MCP tools:
+
+1. Call mcp__memory-keeper__context_session_start() - MUST SUCCEED
+2. For UI tasks: Call browser tool - MUST SUCCEED
+3. Output the verification gate confirmation
+
+IF ANY REQUIRED TOOL FAILS:
+- STOP IMMEDIATELY
+- Output failure report
+- DO NOT attempt workarounds
+- DO NOT substitute code review for browser testing
+
+Report: "TASK ABORTED: MCP TOOLS UNAVAILABLE"
+```
+
+---
+
 ## CRITICAL: Index File System
 
 **ALL discovery MUST be dynamic via index files. NEVER hardcode paths.**
@@ -460,10 +562,44 @@ Every group goes through:
 
 ## Troubleshooting
 
+### ⛔ MCP Tools Not Available (CRITICAL)
+
+**THIS IS A HARD FAILURE. DO NOT PROCEED.**
+
+```bash
+# Check MCP server status
+claude mcp list
+
+# Expected: All required servers show ✓ Connected
+# - memory-keeper: ✓ Connected
+# - playwright: ✓ Connected
+# - concurrent-browser: ✓ Connected
+```
+
+**If tools are unavailable:**
+1. **ABORT the current task immediately**
+2. **DO NOT attempt workarounds** (no code review, no static analysis)
+3. Report: "TASK ABORTED: MCP TOOLS UNAVAILABLE"
+4. User must restart Claude Code session
+5. Re-run task only after tools are confirmed available
+
+**NEVER substitute code review for browser testing. This is a FAILURE, not a workaround.**
+
 ### Memory-keeper not available
+**This is a BLOCKING failure for ALL tasks.**
 ```bash
 claude mcp list
 # Verify memory-keeper shows as connected
+# If not connected: ABORT TASK, restart session
+```
+
+### Browser tools not available
+**This is a BLOCKING failure for UI/verification tasks.**
+```bash
+claude mcp list
+# Verify playwright or concurrent-browser shows as connected
+# If not connected: ABORT TASK, restart session
+# DO NOT substitute with code review
 ```
 
 ### ast-grep not finding patterns
