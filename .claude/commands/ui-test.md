@@ -1,6 +1,6 @@
 # UI Behavior Testing Pipeline
 
-Comprehensive UI testing workflow that assesses each modal against expected behavior.
+Comprehensive UI testing workflow with memory persistence and parallel browser support.
 
 ## Usage
 `/ui-test` - Run full UI testing pipeline
@@ -15,13 +15,87 @@ Comprehensive UI testing workflow that assesses each modal against expected beha
 
 You are orchestrating a UI testing pipeline for The Council extension.
 
-### Prerequisites
+---
+
+## MANDATORY: Session Initialization
+
+**ALWAYS start with memory-keeper:**
+
+```javascript
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-UITest",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+```
+
+**Retrieve previous test context:**
+
+```javascript
+mcp__memory-keeper__context_search({ query: "ui-test" })
+mcp__memory-keeper__context_search({ query: "modal" })
+mcp__memory-keeper__context_get({ category: "error" })
+```
+
+---
+
+## MANDATORY: Tool Preferences
+
+### Code Analysis (when needed)
+
+**Use ast-grep FIRST:**
+
+```bash
+# Find UI elements
+ast-grep run --pattern 'document.createElement($TAG)' --lang javascript ui/
+
+# Find event handlers
+ast-grep run --pattern 'addEventListener($EVENT, $HANDLER)' --lang javascript ui/
+
+# Find modal methods
+ast-grep run --pattern 'show() { $$$BODY }' --lang javascript ui/
+```
+
+### Browser Automation
+
+**For parallel modal testing, USE concurrent-browser:**
+
+```javascript
+// Create instances for parallel testing
+mcp__concurrent-browser__browser_create_instance({ instanceId: "ui-test-1" })
+mcp__concurrent-browser__browser_create_instance({ instanceId: "ui-test-2" })
+mcp__concurrent-browser__browser_navigate({ instanceId: "ui-test-1", url: "http://127.0.0.1:8000/" })
+mcp__concurrent-browser__browser_snapshot({ instanceId: "ui-test-1" })
+mcp__concurrent-browser__browser_close_all_instances()
+```
+
+**For sequential testing, playwright is acceptable:**
+
+```javascript
+mcp__playwright__browser_navigate({ url: "http://127.0.0.1:8000/" })
+mcp__playwright__browser_snapshot()
+```
+
+---
+
+## MANDATORY: Definition Loading
+
+**Read the definitions index first:**
+
+```javascript
+// Read .claude/definitions/index.md to discover required definitions
+// Load the definitions listed there dynamically
+// DO NOT hardcode definition paths - always check the index
+```
+
+---
+
+## Prerequisites
 
 1. **Verify browser automation is available:**
 ```bash
 claude mcp list
 ```
-Expected: `playwright: ✓ Connected` or `browsermcp: ✓ Connected`
+Expected: `playwright: ✓ Connected` AND `concurrent-browser: ✓ Connected`
 
 2. **SillyTavern must be running at:** `http://127.0.0.1:8000/`
 
@@ -36,6 +110,16 @@ Create `docs/UI_BEHAVIOR_REPORT.md` with header:
 ---
 ```
 
+4. **Save initialization to memory:**
+```javascript
+mcp__memory-keeper__context_save({
+  key: "ui-test-init",
+  value: "UI Test started: [timestamp]\\nTarget: $ARGUMENTS",
+  category: "progress",
+  priority: "normal"
+})
+```
+
 ---
 
 ## Phase 1: Create/Update Expected Behavior Spec (Opus)
@@ -48,89 +132,59 @@ model: "opus"
 prompt: |
   You are creating the authoritative UI behavior specification for The Council extension.
 
-  ## Your Task
-  Create or update `docs/UI_BEHAVIOR.md` with comprehensive expected behavior for every UI element.
+  ## MANDATORY: Session Initialization
 
-  ## Required Reading (in order)
-  1. `CLAUDE.md` - Project overview
-  2. `docs/SYSTEM_DEFINITIONS.md` - System architecture
-  3. `docs/VIEWS.md` - UI element inventory
+  mcp__memory-keeper__context_session_start({
+    name: "TheCouncil-UISpec",
+    projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+  })
+
+  ## MANDATORY: Definition Loading
+
+  Read `.claude/definitions/index.md` first to discover which definitions to load.
+  Load ALL definitions listed in the index - these are your ground truth.
+
+  ## MANDATORY: Tool Preferences
+
+  **Use ast-grep** to analyze UI code structure:
+  ast-grep run --pattern 'show() { $$$BODY }' --lang javascript ui/
+  ast-grep run --pattern 'addEventListener($EVENT, $HANDLER)' --lang javascript ui/
+
+  ## Your Task
+  Create or update `docs/UI_BEHAVIOR.md` with comprehensive expected behavior.
+
+  ## Required Reading (from definitions index)
+  1. CLAUDE.md - Project overview
+  2. All definitions from .claude/definitions/index.md
+  3. docs/VIEWS.md - UI element inventory
+
+  ## Context Saving
+
+  Save key findings:
+  mcp__memory-keeper__context_save({
+    key: "ui-spec-update",
+    value: "Updated sections: [list]",
+    category: "progress",
+    priority: "normal"
+  })
 
   ## Output Format
+  [Full UI_BEHAVIOR.md structure - see VIEWS.md for reference]
 
-  Create `docs/UI_BEHAVIOR.md` with this structure:
+  Do NOT use browser automation tools (you're just reading and writing docs).
 
-  # The Council - Expected UI Behavior
-
-  Version: 2.1.0-alpha
-  Last Updated: [TODAY'S DATE]
-
-  ## Overview
-  This document defines the expected behavior for every UI element in The Council.
-  Use this as the ground truth for testing and validation.
-
-  ---
-
-  ## 1. Navigation Modal
-
-  ### 1.1 Initial State
-  - **Location**: Bottom-right corner of SillyTavern
-  - **Default State**: Expanded
-  - **Elements Visible**: Header, 6 action buttons, status bar
-
-  ### 1.2 Button Behaviors
-
-  | Button | Click Action | Expected Result |
-  |--------|--------------|-----------------|
-  | 📚 Curation | Opens modal | Curation Modal appears, Overview tab active |
-  | 👥 Characters | Opens modal | Character Modal appears, Characters tab active |
-  | ... | ... | ... |
-
-  ### 1.3 State Transitions
-  - Collapsed → Expanded: Click expand button (▶)
-  - Expanded → Collapsed: Click collapse button (▼)
-  - Idle → Running: Click Run button
-  - Running → Idle: Click Stop button OR pipeline completes
-
-  ### 1.4 Error States
-  - API Error: Status bar shows error message in red
-  - No pipeline loaded: Run button disabled, tooltip shows "No pipeline configured"
-
-  ---
-
-  ## 2. Curation Modal
-  [Continue for all 6 modals with same level of detail]
-
-  ---
-
-  ## 7. Shared Components
-  [Document Prompt Builder, Token Picker, etc.]
-
-  ## Key Requirements
-
-  1. **Be Specific**: Don't just say "button opens modal" - say which modal, which tab is active
-  2. **Include Edge Cases**: What happens when no data? When API fails? When user cancels?
-  3. **Define Visual States**: What color/style indicates active? disabled? error?
-  4. **Document Validation**: What input validation exists? What error messages?
-  5. **Cross-Reference Systems**: Link behaviors to SYSTEM_DEFINITIONS.md where relevant
-
-  ## Do NOT
-  - Use browser automation tools (you're just reading and writing docs)
-  - Create the report file (that's for testing agents)
-  - Run any tests (just define expected behavior)
-
-  When complete, report: "UI_BEHAVIOR.md created/updated with [N] modal definitions and [M] component definitions"
+  When complete, report: "UI_BEHAVIOR.md created/updated with [N] modal definitions"
 ```
 
 **Wait for this agent to complete before proceeding to Phase 2.**
 
 ---
 
-## Phase 2: Sequential Modal Testing (6 Sonnet Agents)
+## Phase 2: Parallel Modal Testing (6 Agents)
 
-**IMPORTANT: Browser automation shares a single context. Run these agents SEQUENTIALLY, not in parallel.**
+**IMPORTANT: Use concurrent-browser MCP to enable parallel testing without conflicts.**
 
-After Phase 1 completes, spawn each Sonnet agent one at a time, waiting for completion before starting the next.
+After Phase 1 completes, spawn all 6 testing agents in parallel. Each agent gets its own browser instance.
 
 ### Testing Agent Template
 
@@ -142,31 +196,73 @@ model: "sonnet"
 prompt: |
   You are testing [MODAL_NAME] for The Council extension.
 
+  ## MANDATORY: Session Initialization
+
+  mcp__memory-keeper__context_session_start({
+    name: "TheCouncil-UITest-[MODAL_NAME]",
+    projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+  })
+
+  Retrieve previous context:
+  mcp__memory-keeper__context_search({ query: "[MODAL_NAME]" })
+
+  ## MANDATORY: Definition Loading
+
+  Read `.claude/definitions/index.md` to discover required definitions.
+  Load ALL listed definitions for ground truth.
+
+  ## MANDATORY: Browser Tools (concurrent-browser)
+
+  Use concurrent-browser with your assigned instance ID:
+
+  mcp__concurrent-browser__browser_create_instance({ instanceId: "[INSTANCE_ID]" })
+  mcp__concurrent-browser__browser_navigate({ instanceId: "[INSTANCE_ID]", url: "http://127.0.0.1:8000/" })
+  mcp__concurrent-browser__browser_snapshot({ instanceId: "[INSTANCE_ID]" })
+  mcp__concurrent-browser__browser_click({ instanceId: "[INSTANCE_ID]", element: "...", ref: "..." })
+  mcp__concurrent-browser__browser_console_logs({ instanceId: "[INSTANCE_ID]" })
+  mcp__concurrent-browser__browser_screenshot({ instanceId: "[INSTANCE_ID]" })
+  mcp__concurrent-browser__browser_close_instance({ instanceId: "[INSTANCE_ID]" })
+
   ## Required Reading
-  1. `docs/UI_BEHAVIOR.md` - Expected behavior (Section [N])
-  2. `docs/VIEWS.md` - Element reference (Section [N])
-  3. `docs/UI_TESTING.md` - MCP tools reference
+  1. docs/UI_BEHAVIOR.md - Expected behavior (Section [N])
+  2. docs/VIEWS.md - Element reference (Section [N])
+  3. docs/UI_TESTING.md - Browser tools reference
 
   ## Your Assignment
   Modal: **[MODAL_NAME]**
+  Instance ID: **[INSTANCE_ID]**
 
   ## Testing Workflow
 
-  1. **Navigate to SillyTavern:**
-     mcp__playwright__browser_navigate(url: "http://127.0.0.1:8000/")
-     mcp__playwright__browser_snapshot()
-
-  2. **Open the modal** (if not Navigation Modal)
-
-  3. **Test each state and interaction** defined in UI_BEHAVIOR.md
-
-  4. **Document findings** for each test:
+  1. **Create browser instance** with your assigned ID
+  2. **Navigate to SillyTavern** at http://127.0.0.1:8000/
+  3. **Get snapshot** to find elements
+  4. **Open the modal** (if not Navigation Modal)
+  5. **Test each state and interaction** defined in UI_BEHAVIOR.md
+  6. **Document findings** for each test:
      - ✅ PASS: Behavior matches expected
      - ⚠️ PARTIAL: Behavior differs slightly (describe)
      - ❌ FAIL: Behavior missing or broken (describe)
      - 🔍 UNTESTABLE: Cannot test (explain why)
+  7. **Close browser instance** when done
 
-  5. **Close the modal** when done (return to clean state for next agent)
+  ## Context Saving
+
+  Save test results to memory:
+  mcp__memory-keeper__context_save({
+    key: "ui-test-[MODAL_NAME]-result",
+    value: "Pass: [N], Fail: [M], Issues: [list]",
+    category: "progress",
+    priority: "normal"
+  })
+
+  Save any issues found:
+  mcp__memory-keeper__context_save({
+    key: "ui-test-[MODAL_NAME]-issue-{N}",
+    value: "[issue description]",
+    category: "error",
+    priority: "high"
+  })
 
   ## Output
 
@@ -175,6 +271,7 @@ prompt: |
   ## [MODAL_NAME] Test Results
 
   **Tested By:** Sonnet Agent
+  **Instance ID:** [INSTANCE_ID]
   **Timestamp:** [ISO timestamp]
 
   ### Summary
@@ -185,52 +282,34 @@ prompt: |
   - Untestable: [N]
 
   ### Detailed Results
-  [Results tables for each section...]
+  [Results tables...]
 
   ### Issues Found
   [Numbered list with reproduction steps...]
 
   ### Console Errors
-  [From browser_console_messages]
+  [From browser console logs]
+
+  ### Memory Keys Saved
+  [List of keys saved to memory-keeper]
 
   ---
-
-  ## Important Notes
-  - Check console for errors after each major interaction
-  - Take a screenshot if you find a visual issue
-  - CLOSE THE MODAL when done to leave clean state
-  - If SillyTavern isn't running, report and exit
 
   Report when done: "[MODAL_NAME] testing complete: [X] passed, [Y] issues found"
 ```
 
-### Agent Execution Order
+### Agent Assignments (Run in Parallel)
 
-Run these **sequentially** (wait for each to complete):
+| Agent | Modal | Instance ID | Section |
+|-------|-------|-------------|---------|
+| 1 | Navigation | `ui-nav` | 1 |
+| 2 | Curation | `ui-curation` | 2 |
+| 3 | Character | `ui-character` | 3 |
+| 4 | Pipeline | `ui-pipeline` | 4 |
+| 5 | Injection | `ui-injection` | 5 |
+| 6 | Gavel + Components | `ui-gavel` | 6 & 7 |
 
-#### Agent 1: Navigation Modal
-- Section: 1
-- Tests: Initial state, button clicks, collapse/expand, status bar
-
-#### Agent 2: Curation Modal
-- Section: 2
-- Tests: All 5 tabs (Overview, Stores, Search, Team, Pipelines)
-
-#### Agent 3: Character Modal
-- Section: 3
-- Tests: All 3 tabs (Characters, Director, Settings)
-
-#### Agent 4: Pipeline Modal
-- Section: 4
-- Tests: All 10 tabs (Presets, Agents, Positions, Teams, Pipelines, Phases, Actions, Execution, Threads, Outputs)
-
-#### Agent 5: Injection Modal
-- Section: 5
-- Tests: Toggle, quick add buttons, mapping CRUD
-
-#### Agent 6: Gavel Modal + Shared Components
-- Sections: 6 & 7
-- Tests: Gavel (may need pipeline trigger), Prompt Builder, Token Picker, etc.
+**Spawn all 6 agents simultaneously using the Task tool with `run_in_background: true`.**
 
 ---
 
@@ -244,9 +323,31 @@ model: "opus"
 prompt: |
   You are reviewing UI test results and generating development tasks.
 
+  ## MANDATORY: Session Initialization
+
+  mcp__memory-keeper__context_session_start({
+    name: "TheCouncil-UIReview",
+    projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+  })
+
+  Retrieve all test results:
+  mcp__memory-keeper__context_search({ query: "ui-test" })
+  mcp__memory-keeper__context_get({ category: "error" })
+
+  ## MANDATORY: Definition Loading
+
+  Read `.claude/definitions/index.md` to discover required definitions.
+  Load ALL listed definitions for context.
+
+  ## MANDATORY: ast-grep Analysis
+
+  Use ast-grep to correlate issues with code:
+  ast-grep run --pattern 'show() { $$$BODY }' --lang javascript ui/
+  ast-grep run --pattern '_handle$NAME($$$) { $$$BODY }' --lang javascript ui/
+
   ## Required Reading
-  1. `docs/UI_BEHAVIOR.md` - Expected behavior
-  2. `docs/UI_BEHAVIOR_REPORT.md` - Test results from 6 agents
+  1. docs/UI_BEHAVIOR.md - Expected behavior
+  2. docs/UI_BEHAVIOR_REPORT.md - Test results from 6 agents
 
   ## Your Tasks
 
@@ -257,7 +358,7 @@ prompt: |
   # UI Test Report
 
   **Date:** [timestamp]
-  **Tested By:** 6 Sequential Sonnet Agents
+  **Tested By:** 6 Parallel Sonnet Agents (concurrent-browser)
   **Version:** 2.1.0-alpha
 
   ## Executive Summary
@@ -274,6 +375,12 @@ prompt: |
 
   ## Overall Health Score: [X]%
 
+  ## ast-grep Code Analysis
+  [Patterns found that relate to issues]
+
+  ## Memory Context Retrieved
+  [Keys retrieved from memory-keeper]
+
   ## Critical Issues (P0)
   [Issues that break core functionality]
 
@@ -287,10 +394,10 @@ prompt: |
   [Polish, edge cases, nice-to-haves]
 
   ## Patterns Observed
-  [Common issues across modals, systemic problems]
+  [Common issues across modals]
 
   ## Recommendations
-  [High-level suggestions for improvement]
+  [High-level suggestions]
 
   ### Task 2: Generate Development Tasks
 
@@ -299,107 +406,96 @@ prompt: |
   # Alpha 3 Suggested Tasks
 
   Generated from UI testing on [date].
+  Memory context from: [list memory keys used]
 
-  ## How to Use
-  These tasks are formatted for use with the `/task` slash command.
-
-  ---
-
-  ## Critical (P0) - Fix Immediately
+  ## Task Format
 
   ### Task: [short-name]
-  **Priority:** P0
+  **Priority:** P0/P1/P2/P3
   **Source:** UI Test - [Modal Name]
-  **Issue:** [Description of the issue]
+  **Issue:** [Description]
   **Expected:** [What should happen]
   **Actual:** [What actually happens]
-  **Files:** [Likely files to modify]
-  **Estimated Complexity:** [simple/moderate/complex]
+  **Files:** [Likely files - use ast-grep to identify]
+  **Complexity:** simple/moderate/complex
 
   ---
 
-  ## High Priority (P1)
-  [Continue pattern...]
+  ## Context Saving
 
-  ---
+  Save review results:
+  mcp__memory-keeper__context_save({
+    key: "ui-test-review-[date]",
+    value: "Total: [N] tests, Pass: [M], Fail: [K]\\nTasks generated: [X]",
+    category: "progress",
+    priority: "high"
+  })
 
-  ## Medium Priority (P2)
-  [Continue pattern...]
-
-  ---
-
-  ## Low Priority (P3)
-  [Continue pattern...]
-
-  ---
-
-  ## Task Dependency Graph
-  [Note any dependencies between tasks]
-
-  ---
-
-  ## Estimated Effort Summary
-
-  | Priority | Count | Simple | Moderate | Complex |
-  |----------|-------|--------|----------|---------|
-  | P0 | ... | ... | ... | ... |
-  | P1 | ... | ... | ... | ... |
-  | P2 | ... | ... | ... | ... |
-  | P3 | ... | ... | ... | ... |
-
-  ## Important Guidelines
-
-  1. **Be specific**: Each task should be actionable without additional research
-  2. **Include file paths**: Point directly to the files that need changes
-  3. **Prioritize ruthlessly**: P0 = blocking, P1 = important, P2 = nice, P3 = polish
-  4. **Group related tasks**: If 3 issues stem from one root cause, make it one task
-  5. **Estimate complexity**: simple = 1 file/30min, moderate = 2-3 files/2hrs, complex = 4+ files/4hrs+
-
-  Report when done: "Review complete. Generated [N] tasks across [M] priority levels. See docs/testing/UI_REPORT-[timestamp].md"
+  Report when done: "Review complete. Generated [N] tasks. See docs/testing/UI_REPORT-[timestamp].md"
 ```
 
 ---
 
 ## Handling Single Modal Testing
 
-If `$ARGUMENTS` is provided (e.g., `/ui-test nav`), skip Phase 1 (assume UI_BEHAVIOR.md exists) and spawn only the relevant agent from Phase 2.
+If `$ARGUMENTS` is provided (e.g., `/ui-test nav`):
 
-| Argument | Agent to Spawn |
-|----------|----------------|
-| `nav` | Agent 1 (Navigation) |
-| `curation` | Agent 2 (Curation) |
-| `character` | Agent 3 (Character) |
-| `pipeline` | Agent 4 (Pipeline) |
-| `injection` | Agent 5 (Injection) |
-| `gavel` | Agent 6 (Gavel + Components) |
+1. Skip Phase 1 (assume UI_BEHAVIOR.md exists)
+2. Spawn only the relevant agent from Phase 2 (sequential with playwright is acceptable for single modal)
+3. Run Phase 3 for review
 
-After the single agent completes, still run Phase 3 for review.
+| Argument | Modal | Instance ID |
+|----------|-------|-------------|
+| `nav` | Navigation | `ui-nav` |
+| `curation` | Curation | `ui-curation` |
+| `character` | Character | `ui-character` |
+| `pipeline` | Pipeline | `ui-pipeline` |
+| `injection` | Injection | `ui-injection` |
+| `gavel` | Gavel + Components | `ui-gavel` |
+
+**For single modal tests, playwright is acceptable:**
+```javascript
+mcp__playwright__browser_navigate({ url: "http://127.0.0.1:8000/" })
+```
 
 ---
 
-## Output
+## Final Output
 
-When complete, report to user:
+When complete, save summary and report to user:
 
+```javascript
+mcp__memory-keeper__context_save({
+  key: "ui-test-complete-[date]",
+  value: "Full test run complete\\nModals: 6\\nIssues: [N]\\nTasks: [M]",
+  category: "progress",
+  priority: "high"
+})
 ```
+
+```markdown
 ## UI Testing Complete
 
 ### Phase 1: Behavior Spec
 - docs/UI_BEHAVIOR.md: [created/updated]
 
-### Phase 2: Modal Testing (Sequential)
-| Order | Modal | Result |
-|-------|-------|--------|
-| 1 | Navigation | [X pass, Y issues] |
-| 2 | Curation | [X pass, Y issues] |
-| 3 | Character | [X pass, Y issues] |
-| 4 | Pipeline | [X pass, Y issues] |
-| 5 | Injection | [X pass, Y issues] |
-| 6 | Gavel + Components | [X pass, Y issues] |
+### Phase 2: Modal Testing (Parallel via concurrent-browser)
+| Modal | Instance | Result |
+|-------|----------|--------|
+| Navigation | ui-nav | [X pass, Y issues] |
+| Curation | ui-curation | [X pass, Y issues] |
+| Character | ui-character | [X pass, Y issues] |
+| Pipeline | ui-pipeline | [X pass, Y issues] |
+| Injection | ui-injection | [X pass, Y issues] |
+| Gavel + Components | ui-gavel | [X pass, Y issues] |
 
 ### Phase 3: Review
 - Report: docs/testing/UI_REPORT-[timestamp].md
 - Tasks: docs/tasks/alpha3/CURRENT_SUGGESTED_TASKS.md
+
+### Memory Context
+- Keys saved: [list]
+- Session: TheCouncil-UITest
 
 ### Next Steps
 1. Review the test report
@@ -411,20 +507,23 @@ When complete, report to user:
 
 ## Troubleshooting
 
-### MCP Not Connected
+### concurrent-browser Not Connected
 ```bash
-claude mcp add playwright -s user -- npx -y @playwright/mcp@latest
+claude mcp add concurrent-browser -s user -- [installation command]
 # Restart Claude Code session
 ```
 
 ### SillyTavern Not Running
-The testing agents will report this and exit. Start ST at port 8000.
+Testing agents will report this and exit. Start ST at port 8000.
 
-### Modal Not Opening
-Check console for JavaScript errors. May indicate extension loading issue.
-
-### Browser State Issues
-Each agent should close modals when done. If state is dirty, navigate fresh:
+### Browser Instance Conflicts
+concurrent-browser handles this automatically with instance IDs. If issues persist:
+```javascript
+mcp__concurrent-browser__browser_close_all_instances()
 ```
-mcp__playwright__browser_navigate(url: "http://127.0.0.1:8000/")
+
+### Memory Context Issues
+```javascript
+mcp__memory-keeper__context_summarize()
+mcp__memory-keeper__context_get({ category: "error" })
 ```

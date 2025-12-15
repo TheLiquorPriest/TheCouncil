@@ -1,4 +1,5 @@
 {
+  "defaultMode": "bypassPermissions",
   "permissions": {
     "allow": [
       "mcp__playwright__browser_navigate",
@@ -153,14 +154,9 @@
   "mcpServers": {
     "browsermcp": {
       "command": "npx",
-      "args": [
-        "@browsermcp/mcp@latest"
-      ]
+      "args": ["@browsermcp/mcp@latest"]
     }
   },
-  "enabledMcpjsonServers": [
-    "playwright",
-    "browsermcp"
-  ],
+  "enabledMcpjsonServers": ["playwright", "browsermcp"],
   "enableAllProjectMcpServers": true
 }

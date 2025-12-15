@@ -1,12 +1,12 @@
 # Task Runner
 
-Run tasks for a phase or a single task, with branch management, browser verification, and audit gates.
+Run tasks for a group/block or a single task, with branch management, browser verification, audit gates, and context persistence.
 
 ## Usage
 
 ```
-/tasks 1          # Run all Phase 1 tasks
-/tasks 2          # Run all Phase 2 tasks
+/tasks 1          # Run all Group 1 tasks
+/tasks 2.1        # Run all Block 2.1 tasks
 /tasks 1.1.1      # Run single task 1.1.1
 /tasks 2.3.1      # Run single task 2.3.1
 ```
@@ -17,18 +17,74 @@ You are running **$ARGUMENTS**.
 
 ---
 
+## MANDATORY: Session Initialization
+
+**ALWAYS start with memory-keeper:**
+
+```javascript
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-TaskRunner",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+```
+
+**Retrieve task context:**
+
+```javascript
+mcp__memory-keeper__context_search({ query: "task $ARGUMENTS" })
+mcp__memory-keeper__context_get({ category: "progress" })
+mcp__memory-keeper__context_get({ category: "error" })
+```
+
+---
+
+## MANDATORY: Tool Preferences
+
+### Code Analysis
+
+**Use ast-grep FIRST** for any code exploration:
+
+```bash
+# Find system structure
+ast-grep run --pattern 'const $NAME = { VERSION: $V, $$$REST }' --lang javascript core/
+
+# Find event emissions
+ast-grep run --pattern 'this._kernel.emit($EVENT, $DATA)' --lang javascript .
+
+# Find method definitions
+ast-grep run --pattern '$METHOD($$$ARGS) { $$$BODY }' --lang javascript .
+```
+
+### Browser Testing
+
+**For parallel verification, USE concurrent-browser:**
+```javascript
+mcp__concurrent-browser__browser_create_instance({ instanceId: "task-verify" })
+mcp__concurrent-browser__browser_navigate({ instanceId: "task-verify", url: "http://127.0.0.1:8000/" })
+mcp__concurrent-browser__browser_close_instance({ instanceId: "task-verify" })
+```
+
+**For sequential testing, playwright is acceptable:**
+```javascript
+mcp__playwright__browser_navigate({ url: "http://127.0.0.1:8000/" })
+```
+
+---
+
 ## Step 0: Read Development Plan
 
-Read `docs/DEVELOPMENT_PLAN.md` to get:
+Read the current development plan from `.claude/agent-dev-plans/`:
 
-1. **Version** - Extract the alpha version number (e.g., "3" from "Alpha 3" or "3-alpha")
-2. **Target Branch** - The branch to merge into (e.g., `alpha-3.0.0`)
-3. **Phase/Task Info** - Find the phase or specific task for $ARGUMENTS
-4. **Model Assignments** - Check the Quick Reference table for each task's assigned model
+1. Find the active plan directory (e.g., `alpha-3.0.0/`)
+2. Read `index.md` for plan overview
+3. Read `task-list.md` for all tasks
+4. Find the specific task(s) for $ARGUMENTS
+5. Read `assignments.md` for model assignments
 
 **Store these values:**
-- `ALPHA_VERSION` = version number (e.g., "3")
-- `TARGET_BRANCH` = target branch from plan (e.g., "alpha-3.0.0")
+- `PLAN_VERSION` = version (e.g., "alpha-3.0.0")
+- `TARGET_BRANCH` = target branch (e.g., "alpha-3.0.0")
+- `TASK_HIERARCHY` = group.block.task structure
 
 ---
 
@@ -36,11 +92,13 @@ Read `docs/DEVELOPMENT_PLAN.md` to get:
 
 Parse `$ARGUMENTS`:
 
-- If matches pattern `X` (single digit): **Phase Mode** - run all tasks in Phase X
-- If matches pattern `X.Y.Z` (dotted): **Single Task Mode** - run only that task
+- If matches pattern `X` (single digit): **Group Mode** - run all tasks in Group X
+- If matches pattern `X.Y` (two parts): **Block Mode** - run all tasks in Block X.Y
+- If matches pattern `X.Y.Z` (three parts): **Single Task Mode** - run only that task
 
 ```
-PHASE_NUMBER = extracted phase (1, 2, 3, etc.)
+GROUP_NUMBER = first digit (1, 2, 3, etc.)
+BLOCK_ID = first two parts if present (e.g., "1.1")
 TASK_ID = full task ID if single task mode (e.g., "1.1.1")
 ```
 
@@ -48,12 +106,23 @@ TASK_ID = full task ID if single task mode (e.g., "1.1.1")
 
 ## Step 2: Check for Completed Tasks
 
-Before running any task, check if a handoff file already exists:
-`.claude/handoffs/task-X.X.X.md`
+Before running any task, check:
+1. `.claude/agent-dev-plans/{version}/tasks/task-X.X.X.md` for status
+2. `.claude/handoffs/task-X.X.X.md` for handoff
 
-If the handoff exists and shows `Status: COMPLETE`, **skip that task** and report:
+If status is `COMPLETE`, **skip that task** and report:
 ```
-Task X.X.X: Already complete (see .claude/handoffs/task-X.X.X.md)
+Task X.X.X: Already complete (see handoff)
+```
+
+**Save skip to memory:**
+```javascript
+mcp__memory-keeper__context_save({
+  key: "task-skip-X.X.X",
+  value: "Task already complete, skipping",
+  category: "progress",
+  priority: "normal"
+})
 ```
 
 Continue to the next task (or exit if single task mode).
@@ -62,11 +131,11 @@ Continue to the next task (or exit if single task mode).
 
 ## Step 3: Branch Setup
 
-Base phase branches off of TARGET_BRANCH.
+Base branches off of TARGET_BRANCH.
 
 ```bash
-# Branch naming convention: alpha{VERSION}-phase-{PHASE}
-BRANCH_NAME="alpha${ALPHA_VERSION}-phase-${PHASE_NUMBER}"
+# Branch naming convention: {version}-group-{GROUP}
+BRANCH_NAME="${PLAN_VERSION}-group-${GROUP_NUMBER}"
 
 # Check if branch exists
 git branch --list $BRANCH_NAME
@@ -79,23 +148,38 @@ git checkout -b $BRANCH_NAME
 git checkout $BRANCH_NAME
 ```
 
-**Important:** Always derive branch name from the development plan's version, not hardcoded values.
+**Important:** Always derive branch name from the development plan's version.
 
 ---
 
 ## Step 4: Run Task(s)
 
-For each task, spawn an agent using the Task tool with the model specified in the Quick Reference table:
+For each task, spawn an agent using the Task tool with the model specified in assignments.md.
 
-```
-subagent_type: "general-purpose"
-model: [MODEL FROM QUICK REFERENCE TABLE - opus/sonnet/haiku]
-```
-
-**Prompt for each task agent:**
+**Task Agent Instructions (include in prompt):**
 
 ```
 You are implementing Task [TASK_ID] for The Council project.
+
+## MANDATORY: Session Initialization
+
+ALWAYS start with memory-keeper:
+
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-Task-[TASK_ID]",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+
+Retrieve relevant context:
+mcp__memory-keeper__context_search({ query: "[TASK_ID]" })
+mcp__memory-keeper__context_get({ category: "decision" })
+
+## MANDATORY: Tool Preferences
+
+**Use ast-grep FIRST** for code exploration:
+ast-grep run --pattern '$PATTERN' --lang javascript [path]
+
+Use Grep only for simple text searches when ast-grep is insufficient.
 
 ## Agent Info
 Model: [MODEL_USED]
@@ -106,14 +190,40 @@ You are working on branch: [BRANCH_NAME]
 
 ## Required Reading
 1. CLAUDE.md
-2. docs/SYSTEM_DEFINITIONS.md
-3. docs/DEVELOPMENT_PLAN.md - Find Task [TASK_ID]
+2. .claude/agent-dev-plans/{version}/tasks/task-[TASK_ID].md
 
 ## Your Mission
-1. Read the task description in DEVELOPMENT_PLAN.md
+1. Read the task definition
 2. Implement ALL deliverables
 3. Test against acceptance criteria
-4. Write handoff to .claude/handoffs/task-[TASK_ID].md
+4. Save progress to memory-keeper
+5. Write handoff to .claude/handoffs/task-[TASK_ID].md
+
+## Context Saving
+
+Save progress as you work:
+mcp__memory-keeper__context_save({
+  key: "task-[TASK_ID]-progress",
+  value: "Completed: [what]",
+  category: "progress",
+  priority: "normal"
+})
+
+Save decisions:
+mcp__memory-keeper__context_save({
+  key: "task-[TASK_ID]-decision-{topic}",
+  value: "[decision and rationale]",
+  category: "decision",
+  priority: "high"
+})
+
+Save issues:
+mcp__memory-keeper__context_save({
+  key: "task-[TASK_ID]-issue",
+  value: "[issue description]",
+  category: "error",
+  priority: "high"
+})
 
 ## Handoff Format
 Your handoff file MUST include:
@@ -122,16 +232,13 @@ Your handoff file MUST include:
 - What Was Implemented
 - Files Modified
 - Acceptance Criteria Results (checklist with pass/fail)
+- Memory Keys Saved: [list keys saved to memory-keeper]
 - Issues Encountered
 - Browser Test Required: [YES/NO based on task]
 
 ## On Completion
 Commit your changes with message:
-"Task [TASK_ID]: [brief description of what was done]
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+"Task [TASK_ID]: [brief description]
 
 Do NOT push. Do NOT merge.
 
@@ -144,91 +251,98 @@ Begin now.
 ### After Each Task Implementation
 
 1. Check `.claude/handoffs/task-[ID].md` for status
-2. If **BLOCKED**: Stop immediately, report to user
+2. If **BLOCKED**: Stop immediately, save to memory, report to user
 3. If **COMPLETE** or **PARTIAL**: Proceed to Browser Verification
 
 ---
 
 ## Step 5: Browser Test Verification
 
-**Skip this step ONLY if the task explicitly declares `browserTest: false` in the development plan.**
+**Skip this step ONLY if the task explicitly declares `browserTest: false`.**
 
-After each task completes, spawn an **Opus agent** to verify the implementation via browser testing:
+After each task completes, spawn a verification agent.
 
-```
-subagent_type: "general-purpose"
-model: opus
-```
-
-**Browser Verification Agent Prompt:**
+**Browser Verification Agent Instructions:**
 
 ```
 You are verifying Task [TASK_ID] implementation for The Council project.
 
-## Your Role
-Browser Test Verification Agent (Opus)
+## MANDATORY: Session Initialization
 
-## Context
-Task [TASK_ID] has been implemented. You must verify it works correctly in the browser.
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-Verify-[TASK_ID]",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+
+Retrieve task context:
+mcp__memory-keeper__context_search({ query: "task-[TASK_ID]" })
+
+## Your Role
+Browser Test Verification Agent
+
+## Browser Tools
+
+For this sequential verification, use playwright:
+mcp__playwright__browser_navigate({ url: "http://127.0.0.1:8000/" })
+mcp__playwright__browser_snapshot()
+mcp__playwright__browser_click({ element: "...", ref: "..." })
+mcp__playwright__browser_console_messages()
+mcp__playwright__browser_take_screenshot()
 
 ## Required Reading
-1. docs/DEVELOPMENT_PLAN.md - Find Task [TASK_ID] acceptance criteria
+1. .claude/agent-dev-plans/{version}/tasks/task-[TASK_ID].md - Acceptance criteria
 2. docs/VIEWS.md - UI navigation reference
-3. docs/UI_TESTING.md - MCP browser tools reference
-4. .claude/handoffs/task-[TASK_ID].md - What was implemented
+3. .claude/handoffs/task-[TASK_ID].md - What was implemented
 
 ## Your Mission
 
-1. **Navigate to SillyTavern**: Use mcp__playwright__browser_navigate to go to http://127.0.0.1:8000/
-2. **Open The Council**: Click the Council button/icon to open the extension
-3. **Navigate to the relevant UI**: Based on the task, navigate to the correct modal/tab
-4. **Test each acceptance criterion**:
-   - Perform the user action described
-   - Verify the expected behavior occurs
-   - Check console for errors: mcp__playwright__browser_console_messages
-   - Take screenshots as evidence: mcp__playwright__browser_take_screenshot
+1. Navigate to SillyTavern: http://127.0.0.1:8000/
+2. Open The Council extension
+3. Navigate to the relevant UI
+4. Test each acceptance criterion
+5. Check console for errors
+6. Document findings
+
+## Save Results to Memory
+
+mcp__memory-keeper__context_save({
+  key: "verify-[TASK_ID]-result",
+  value: "Result: [PASS/FAIL]\\nTests: [N] pass, [M] fail\\nIssues: [list]",
+  category: "progress",
+  priority: "normal"
+})
 
 ## Test Report Format
 
-Create/update `.claude/handoffs/task-[TASK_ID]-verification.md`:
+Create `.claude/handoffs/task-[TASK_ID]-verification.md`:
 
-```markdown
 # Task [TASK_ID] Browser Verification
 
 ## Test Date: [timestamp]
-## Tester: Opus Verification Agent
+## Tester: Verification Agent
 
 ## Acceptance Criteria Tests
 
 | Criterion | Test Action | Expected | Actual | Status |
 |-----------|-------------|----------|--------|--------|
-| [criterion 1] | [what you did] | [expected] | [actual] | ✅ PASS / ❌ FAIL |
-| [criterion 2] | [what you did] | [expected] | [actual] | ✅ PASS / ❌ FAIL |
+| [criterion] | [action] | [expected] | [actual] | ✅ PASS / ❌ FAIL |
 
 ## Console Errors
 [any errors observed, or "None"]
 
-## Screenshots
-[list of screenshot files taken]
+## Memory Keys Saved
+[list keys saved]
 
 ## Overall Result: PASS / FAIL
 
 ## Issues Found
-[list any issues that need fixing]
-```
+[list issues]
 
 ## On Failure
-
-If ANY test fails:
-1. Document exactly what failed and why
-2. Set Overall Result to FAIL
-3. The task will be sent back for revision
+Document exactly what failed. Set Overall Result to FAIL.
 
 ## On Success
-
-If ALL tests pass:
-1. Set Overall Result to PASS
-2. Commit the verification report
+Set Overall Result to PASS. Commit the verification report.
 
 Do NOT fix code yourself. Only test and report.
 ```
@@ -236,84 +350,103 @@ Do NOT fix code yourself. Only test and report.
 ### After Browser Verification
 
 1. Read the verification report
-2. If **PASS**: Continue to next task (or audit if phase complete)
+2. If **PASS**: Continue to next task (or audit if group complete)
 3. If **FAIL**:
-   - Report failure to the orchestrating agent
+   - Save failure to memory
    - Re-run the task implementation agent with the failure details
    - Loop until PASS or max 2 retry attempts
 
 ---
 
-## Step 6: Phase Completion Audit (Phase Mode Only)
+## Step 6: Group Completion Audit (Group Mode Only)
 
-**Skip this step in Single Task Mode.**
+**Skip this step in Single Task Mode or Block Mode.**
 
-After ALL tasks in the phase are complete and verified, spawn an **Opus Audit Agent**:
+After ALL tasks in the group are complete and verified, spawn an **Opus Audit Agent**.
 
-```
-subagent_type: "general-purpose"
-model: opus
-```
-
-**Phase Audit Agent Prompt:**
+**Group Audit Agent Instructions:**
 
 ```
-You are the Phase Completion Auditor for The Council project.
+You are the Group Completion Auditor for The Council project.
+
+## MANDATORY: Session Initialization
+
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-Audit-Group-[GROUP_NUMBER]",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+
+Retrieve all group context:
+mcp__memory-keeper__context_search({ query: "group-[GROUP_NUMBER]" })
+mcp__memory-keeper__context_search({ query: "task-[GROUP_NUMBER]" })
+mcp__memory-keeper__context_get({ category: "error" })
+
+## MANDATORY: Tool Preferences
+
+**Use ast-grep FIRST** for code review:
+ast-grep run --pattern 'console.log($$$)' --lang javascript .
+ast-grep run --pattern 'try { $$$BODY } catch ($E) { $$$HANDLER }' --lang javascript .
 
 ## Your Role
-Single Opus Auditor - Final gate before phase merge
+Opus Auditor - Final gate before group merge
 
 ## Context
-Phase [PHASE_NUMBER] implementation is complete. All tasks report COMPLETE status.
-You must verify the phase is truly ready to merge.
+Group [GROUP_NUMBER] implementation is complete. All tasks report COMPLETE status.
+You must verify the group is truly ready to merge.
 
 ## Required Reading
-1. docs/DEVELOPMENT_PLAN.md - Phase [PHASE_NUMBER] section with ALL tasks and acceptance criteria
-2. All handoff files: .claude/handoffs/task-[PHASE].*
-3. All verification reports: .claude/handoffs/task-[PHASE].*-verification.md
-4. Git diff of all changes: git diff [TARGET_BRANCH]..[BRANCH_NAME]
+1. .claude/agent-dev-plans/{version}/task-list.md - Group [GROUP_NUMBER] tasks
+2. All handoff files: .claude/handoffs/task-[GROUP_NUMBER].*
+3. All verification reports: .claude/handoffs/task-[GROUP_NUMBER].*-verification.md
+4. Git diff: git diff [TARGET_BRANCH]..[BRANCH_NAME]
 
 ## Audit Checklist
 
 ### 1. Handoff Review
-For each task in the phase:
+For each task:
 - [ ] Handoff file exists
-- [ ] Status is COMPLETE (not PARTIAL or BLOCKED)
-- [ ] All acceptance criteria marked as passed
-- [ ] Files modified list matches expected scope
+- [ ] Status is COMPLETE
+- [ ] All acceptance criteria passed
+- [ ] Memory keys documented
 
 ### 2. Browser Verification Review
 For each task with browser tests:
 - [ ] Verification report exists
 - [ ] Overall Result is PASS
 - [ ] No unresolved console errors
-- [ ] Screenshots confirm expected behavior
 
-### 3. Code Review
-- [ ] Changes are scoped to the task requirements (no scope creep)
-- [ ] No obvious bugs or regressions introduced
-- [ ] Code follows project conventions (check CLAUDE.md)
-- [ ] No debug code or console.logs left in
+### 3. Code Review (use ast-grep)
+- [ ] Changes are scoped to task requirements
+- [ ] No obvious bugs or regressions
+- [ ] No debug code or console.logs
+- [ ] Code follows project conventions
 
 ### 4. Integration Check
-- [ ] All modified files are committed
-- [ ] No merge conflicts with target branch
-- [ ] Changes don't break other systems (review imports/dependencies)
+- [ ] All modified files committed
+- [ ] No merge conflicts with target
+- [ ] Changes don't break other systems
+
+## Save Audit Results
+
+mcp__memory-keeper__context_save({
+  key: "audit-group-[GROUP_NUMBER]",
+  value: "Result: [APPROVED/REVISION]\\nTasks: [N]\\nIssues: [list]",
+  category: "progress",
+  priority: "high"
+})
 
 ## Audit Report Format
 
-Create `.claude/handoffs/phase-[PHASE]-audit.md`:
+Create `.claude/handoffs/group-[GROUP_NUMBER]-audit.md`:
 
-```markdown
-# Phase [PHASE_NUMBER] Completion Audit
+# Group [GROUP_NUMBER] Completion Audit
 
 ## Audit Date: [timestamp]
 ## Auditor: Opus Audit Agent
 
 ## Summary
-- Tasks in Phase: [count]
+- Tasks in Group: [count]
 - Tasks Complete: [count]
-- Tasks with Browser Tests: [count]
 - Browser Tests Passed: [count]
 
 ## Task-by-Task Review
@@ -322,51 +455,24 @@ Create `.claude/handoffs/phase-[PHASE]-audit.md`:
 - Handoff: ✅ Complete
 - Verification: ✅ Passed
 - Code Review: ✅ Acceptable
-- Notes: [any observations]
+- Notes: [observations]
 
-[repeat for each task]
+## ast-grep Analysis
+[Patterns found, issues identified]
 
 ## Integration Assessment
-[assessment of how changes work together]
+[How changes work together]
 
 ## Issues Found
-[list any issues, or "None"]
+[List or "None"]
 
-## Revision Tasks Required
-[if issues found, list specific tasks to add to development plan]
+## Memory Keys Referenced
+[Keys retrieved from memory-keeper]
 
 ## Final Verdict: APPROVED / REVISION REQUIRED
 
 ## Recommendation
-[MERGE / REVISE with specific guidance]
-```
-
-## On APPROVED
-
-Report to orchestrator that phase is ready for merge.
-
-## On REVISION REQUIRED
-
-1. Document specific issues
-2. Create revision task entries formatted for DEVELOPMENT_PLAN.md:
-
-```markdown
-### [PHASE].R1: [Revision Task Name]
-
-**Priority:** P0
-**File:** [primary file]
-**Issue:** [what needs fixing]
-
-**Implementation:**
-[specific steps]
-
-**Acceptance Criteria:**
-- [ ] [criterion 1]
-- [ ] [criterion 2]
-```
-
-3. Report to orchestrator that revisions are needed
-4. Orchestrator will insert revision tasks and re-run
+[MERGE / REVISE with guidance]
 ```
 
 ### After Audit
@@ -374,39 +480,51 @@ Report to orchestrator that phase is ready for merge.
 1. Read the audit report
 2. If **APPROVED**: Proceed to Review Gate
 3. If **REVISION REQUIRED**:
-   - Insert revision tasks into the development plan (or report them)
-   - Re-run the revision tasks
-   - Re-run audit after revisions complete
+   - Save revision tasks to memory
+   - Report to orchestrator
+   - Re-run after revisions
 
 ---
 
 ## Step 7: Review Gate
 
+**Save final status to memory:**
+
+```javascript
+mcp__memory-keeper__context_save({
+  key: "run-$ARGUMENTS-complete",
+  value: "Tasks: [list]\\nResult: [APPROVED/NEEDS_REVISION]\\nBranch: [BRANCH_NAME]",
+  category: "progress",
+  priority: "high"
+})
+```
+
 **Report to user:**
 
 ```markdown
-## Phase [PHASE_NUMBER] Complete
+## [GROUP/BLOCK/TASK] Complete
 
 ### Branch: [BRANCH_NAME]
 ### Target: [TARGET_BRANCH]
 
 ### Tasks Completed:
 - Task X.X.X: [status] - [summary] - Browser: [PASS/FAIL/SKIPPED]
-- Task X.X.X: [status] - [summary] - Browser: [PASS/FAIL/SKIPPED]
-- ...
 
 ### Audit Result: [APPROVED/REVISION REQUIRED]
 
+### Memory Context Saved:
+- [list key memory keys]
+
 ### Files Changed:
-[list key files modified]
+[key files modified]
 
 ### Ready for Review
 
 Please review the changes:
 
-\`\`\`bash
+```bash
 git diff [TARGET_BRANCH]..[BRANCH_NAME]
-\`\`\`
+```
 
 **Merge to [TARGET_BRANCH]?**
 - Reply "merge" to merge and continue
@@ -418,7 +536,7 @@ git diff [TARGET_BRANCH]..[BRANCH_NAME]
 If user says "merge":
 ```bash
 git checkout [TARGET_BRANCH]
-git merge [BRANCH_NAME] -m "Merge [BRANCH_NAME]: Phase [PHASE_NUMBER] complete"
+git merge [BRANCH_NAME] -m "Merge [BRANCH_NAME]: [GROUP/BLOCK/TASK] complete"
 ```
 
 ---
@@ -429,30 +547,28 @@ git merge [BRANCH_NAME] -m "Merge [BRANCH_NAME]: Phase [PHASE_NUMBER] complete"
 - If browser tests fail after 2 retries, escalate to user
 - If audit finds issues, report revision tasks needed
 - If git operations fail, report the error
-- Always leave the repo in a clean state (no uncommitted changes)
+- Always leave the repo in a clean state
+- **Always save errors to memory-keeper:**
 
----
-
-## Single Task Mode Summary
-
-When running a single task (e.g., `/tasks 1.1.1`):
-
-1. Read development plan
-2. Setup branch (same naming convention)
-3. Check if already complete
-4. Run the single task agent
-5. Run browser verification (unless browserTest: false)
-6. Report result to user (no audit step)
-7. User decides to merge or not
+```javascript
+mcp__memory-keeper__context_save({
+  key: "error-$ARGUMENTS",
+  value: "[error description]",
+  category: "error",
+  priority: "high"
+})
+```
 
 ---
 
 ## Quick Reference
 
-| Step | Phase Mode | Single Task Mode |
-|------|------------|------------------|
-| Branch Setup | ✅ | ✅ |
-| Run Tasks | All in phase | Just one |
-| Browser Verify | Each task | The task |
-| Phase Audit | ✅ (Opus) | ❌ Skip |
-| Review Gate | ✅ | ✅ (simplified) |
+| Step | Group Mode | Block Mode | Single Task Mode |
+|------|------------|------------|------------------|
+| Memory Init | ✅ | ✅ | ✅ |
+| Branch Setup | ✅ | ✅ | ✅ |
+| Run Tasks | All in group | All in block | Just one |
+| Browser Verify | Each task | Each task | The task |
+| Group Audit | ✅ (Opus) | ❌ Skip | ❌ Skip |
+| Review Gate | ✅ | ✅ | ✅ |
+| Save to Memory | ✅ | ✅ | ✅ |
