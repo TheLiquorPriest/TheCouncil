@@ -4,8 +4,8 @@
 
 The Council is a comprehensive multi-agent orchestration system that transforms SillyTavern's response generation into a full editorial production pipeline. It coordinates multiple specialized AI agents to produce high-quality, consistent narrative responses.
 
-**Version:** 2.1.0-alpha
-**Status:** Alpha Complete
+**Version:** 3.0.0-alpha
+**Status:** Proof of Concept
 
 ## Features
 
