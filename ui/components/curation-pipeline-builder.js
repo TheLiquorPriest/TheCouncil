@@ -506,7 +506,7 @@ const CurationPipelineBuilder = {
             isCRUD
               ? `
             <div class="cpb-pipeline-meta">
-              <span class="cpb-meta-badge cpb-op-${pipeline.operation}">${pipeline.operation.toUpperCase()}</span>
+              <span class="cpb-meta-badge cpb-op-${pipeline.operation || 'crud'}">${(pipeline.operation || 'crud').toUpperCase()}</span>
               <span class="cpb-meta-store">📁 ${pipeline.storeId}</span>
               <span class="cpb-meta-steps">📊 ${pipeline.actions?.length || pipeline.steps?.length || 0} steps</span>
             </div>
