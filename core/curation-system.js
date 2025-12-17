@@ -3405,40 +3405,47 @@ Return list of character IDs/names with relevance reasoning.`,
 
   /**
    * Execute a single pipeline step
-   * This is a skeleton method that will be fully implemented in tasks 5.7.2-5.7.4
+   * Integrates: input resolution (5.7.1), prompt building (5.7.2),
+   * agent/LLM calls (5.7.3), and output parsing (5.7.4)
    * @param {Object} step - Step configuration
    * @param {Object} executionContext - Current execution context
    * @returns {Promise<Object>} Step execution result
    */
   async _executeStep(step, executionContext) {
-    // 1. Resolve step input
+    // 1. Resolve step input (5.7.1)
     const stepInput = this._resolveStepInput(step, executionContext);
 
-    // 2. Resolve agent (5.7.3 will implement full agent resolution)
+    // 2. Resolve agent - validates inside _callAgentLLM (5.7.3)
     const agent = step.agentId ? this.getCurationAgent(step.agentId) : null;
 
-    // 3. Build prompt context (5.7.2 will implement)
+    // 3. Build prompt context (5.7.2)
     const promptContext = this._buildStepPromptContext(step, stepInput, executionContext);
 
-    // 4. Resolve prompt (5.7.2 will implement)
+    // 4. Resolve prompt with token substitution (5.7.2)
     const resolvedPrompt = await this._resolveStepPrompt(step, promptContext);
 
-    // 5. If preview mode, don't call LLM (5.7.5 will implement)
+    // 5. If preview mode, don't call LLM (5.7.5 will implement full preview)
     if (executionContext.preview) {
       return this._generatePreviewResult(step, resolvedPrompt, promptContext);
     }
 
-    // 6. Call LLM (5.7.3 will implement)
+    // 6. Call LLM with agent configuration (5.7.3)
+    // Validation happens inside _callAgentLLM
     const llmResponse = await this._callAgentLLM(agent, resolvedPrompt, step, executionContext);
 
-    // 7. Parse response (5.7.4 will implement)
+    // 7. Parse response based on expected format (5.7.4 will implement full parsing)
     const parsedOutput = this._parseStepOutput(step, llmResponse);
 
     return {
       input: stepInput,
       prompt: resolvedPrompt,
       rawResponse: llmResponse,
-      output: parsedOutput
+      output: parsedOutput,
+      agent: agent ? {
+        id: agent.id,
+        name: agent.name,
+        positionId: agent.positionId
+      } : null
     };
   },
 
@@ -3916,17 +3923,319 @@ Return list of character IDs/names with relevance reasoning.`,
   },
 
   /**
-   * Call LLM with agent configuration
-   * Skeleton method - will be fully implemented in 5.7.3
+   * Validate agent configuration for pipeline execution
    * @param {Object} agent - Agent configuration (may be null)
-   * @param {string} prompt - Resolved prompt
+   * @param {Object} step - Step configuration
+   * @returns {Object} { valid: boolean, errors: string[], warnings: string[] }
+   */
+  _validateAgentForExecution(agent, step) {
+    const result = {
+      valid: true,
+      errors: [],
+      warnings: []
+    };
+
+    // Check if step requires an agent
+    if (step.agentId && !agent) {
+      result.errors.push(this.ValidationErrors.AGENT_NOT_FOUND(step.agentId));
+      result.valid = false;
+      return result;
+    }
+
+    // If no agent specified, that's okay - we'll use default connection
+    if (!agent) {
+      result.warnings.push(`Step "${step.name}" has no agent - will use default ST connection`);
+      return result;
+    }
+
+    // Validate agent has required configuration
+    if (!agent.apiConfig) {
+      result.errors.push(`Agent "${agent.id}" missing apiConfig`);
+      result.valid = false;
+    }
+
+    // Validate system prompt configuration
+    if (!agent.systemPrompt) {
+      result.warnings.push(`Agent "${agent.id}" has no systemPrompt configuration`);
+    } else {
+      const source = agent.systemPrompt.source;
+      if (source === 'custom' && !agent.systemPrompt.customText) {
+        result.warnings.push(`Agent "${agent.id}" has custom prompt source but no customText`);
+      }
+      if (source === 'preset' && !agent.systemPrompt.presetName) {
+        result.warnings.push(`Agent "${agent.id}" has preset prompt source but no presetName`);
+      }
+      if (source === 'tokens' && (!agent.systemPrompt.tokens || agent.systemPrompt.tokens.length === 0)) {
+        result.warnings.push(`Agent "${agent.id}" has tokens prompt source but no tokens defined`);
+      }
+    }
+
+    // Validate apiConfig specifics
+    if (agent.apiConfig.useCurrentConnection === false) {
+      // Custom API endpoint required
+      if (!agent.apiConfig.endpoint) {
+        result.errors.push(`Agent "${agent.id}" requires endpoint when not using current ST connection`);
+        result.valid = false;
+      }
+    }
+
+    return result;
+  },
+
+  /**
+   * Build system prompt from agent's systemPrompt configuration
+   * @param {Object} agent - Agent configuration
+   * @param {Object} context - Execution context for token resolution
+   * @returns {Promise<string>} Resolved system prompt
+   */
+  async _buildAgentSystemPrompt(agent, context) {
+    if (!agent || !agent.systemPrompt) {
+      return '';
+    }
+
+    const promptBuilder = this._kernel?.getModule('promptBuilder');
+    const systemPromptConfig = agent.systemPrompt;
+    const source = systemPromptConfig.source || 'custom';
+
+    try {
+      switch (source) {
+        case 'preset':
+          // Load preset and resolve
+          return await this._resolvePresetPrompt(
+            systemPromptConfig.presetName || systemPromptConfig.presetId,
+            context,
+            promptBuilder
+          );
+
+        case 'tokens':
+          // Build from token stack
+          return await this._resolveTokenStackPrompt(
+            systemPromptConfig.tokens || [],
+            context,
+            promptBuilder
+          );
+
+        case 'custom':
+        default:
+          // Custom text with embedded tokens
+          return await this._resolveCustomPrompt(
+            systemPromptConfig.customText || '',
+            context,
+            promptBuilder
+          );
+      }
+    } catch (error) {
+      this._log('warn', `[CurationSystem] Error building agent system prompt: ${error.message}`);
+      // Fallback to raw custom text if available
+      return systemPromptConfig.customText || '';
+    }
+  },
+
+  /**
+   * Build LLM configuration from agent's apiConfig
+   * @param {Object} agent - Agent configuration (may be null)
+   * @param {Object} executionContext - Execution context
+   * @returns {Object} { apiConfig, generationConfig }
+   */
+  _buildLLMConfig(agent, executionContext) {
+    const pipeline = executionContext.pipeline || {};
+
+    // Default configuration
+    const defaultConfig = {
+      apiConfig: {
+        useCurrentConnection: true
+      },
+      generationConfig: {
+        temperature: 0.7,
+        maxTokens: 2000,
+        topP: 1,
+        frequencyPenalty: 0,
+        presencePenalty: 0
+      }
+    };
+
+    // If no agent, use defaults
+    if (!agent || !agent.apiConfig) {
+      return defaultConfig;
+    }
+
+    const agentApiConfig = agent.apiConfig;
+
+    // Build API configuration
+    const apiConfig = {
+      useCurrentConnection: agentApiConfig.useCurrentConnection !== false,
+      endpoint: agentApiConfig.endpoint || '',
+      apiKey: agentApiConfig.apiKey || '',
+      model: agentApiConfig.model || ''
+    };
+
+    // Build generation configuration
+    const generationConfig = {
+      temperature: agentApiConfig.temperature ?? 0.7,
+      maxTokens: agentApiConfig.maxTokens || 2000,
+      topP: agentApiConfig.topP ?? 1,
+      topK: agentApiConfig.topK, // May be undefined
+      frequencyPenalty: agentApiConfig.frequencyPenalty ?? 0,
+      presencePenalty: agentApiConfig.presencePenalty ?? 0
+    };
+
+    // Remove undefined values from generationConfig
+    Object.keys(generationConfig).forEach(key => {
+      if (generationConfig[key] === undefined) {
+        delete generationConfig[key];
+      }
+    });
+
+    return {
+      apiConfig,
+      generationConfig,
+      metadata: {
+        agentId: agent.id,
+        agentName: agent.name,
+        pipelineId: pipeline.id,
+        pipelineName: pipeline.name
+      }
+    };
+  },
+
+  /**
+   * Call LLM with agent configuration
+   * Full implementation for pipeline step execution
+   * @param {Object} agent - Agent configuration (may be null)
+   * @param {string} userPrompt - Resolved user prompt
    * @param {Object} step - Step configuration
    * @param {Object} executionContext - Execution context
-   * @returns {Promise<string>} LLM response
+   * @returns {Promise<string>} LLM response content
    */
-  async _callAgentLLM(agent, prompt, step, executionContext) {
-    // Skeleton implementation - 5.7.3 will add full LLM integration
-    throw new Error(`[CurationSystem] _callAgentLLM not implemented - Task 5.7.3 required`);
+  async _callAgentLLM(agent, userPrompt, step, executionContext) {
+    const startTime = performance.now();
+    const stepId = step.id || step.name || 'unknown';
+
+    // Emit start event
+    this._emit('pipeline:llm:start', {
+      stepId,
+      stepName: step.name,
+      agentId: agent?.id || null,
+      pipelineId: executionContext.pipeline?.id,
+      promptLength: userPrompt?.length || 0
+    });
+
+    try {
+      // Validate agent configuration
+      const validation = this._validateAgentForExecution(agent, step);
+      if (!validation.valid) {
+        const errorMsg = `Agent validation failed: ${validation.errors.join('; ')}`;
+        this._log('error', `[CurationSystem] ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
+
+      // Log any warnings
+      for (const warning of validation.warnings) {
+        this._log('warn', `[CurationSystem] ${warning}`);
+      }
+
+      // Build system prompt from agent configuration
+      const systemPrompt = await this._buildAgentSystemPrompt(agent, {
+        ...executionContext,
+        step,
+        input: executionContext.pipelineInput
+      });
+
+      // Build LLM configuration
+      const { apiConfig, generationConfig, metadata } = this._buildLLMConfig(agent, executionContext);
+
+      // Get ApiClient
+      const apiClient = this._apiClient || this._kernel?.getModule('apiClient');
+      if (!apiClient) {
+        throw new Error('ApiClient not available - cannot make LLM calls');
+      }
+
+      this._log('debug', `[CurationSystem] Calling LLM for step "${step.name}"`, {
+        agentId: agent?.id,
+        systemPromptLength: systemPrompt?.length || 0,
+        userPromptLength: userPrompt?.length || 0,
+        useCurrentConnection: apiConfig.useCurrentConnection
+      });
+
+      // Make the LLM call
+      const result = await apiClient.generate({
+        systemPrompt,
+        userPrompt,
+        apiConfig,
+        generationConfig
+      });
+
+      const duration = performance.now() - startTime;
+
+      // Check for errors
+      if (!result.success) {
+        const errorMsg = result.error || 'Unknown LLM error';
+        this._log('error', `[CurationSystem] LLM call failed: ${errorMsg}`);
+
+        this._emit('pipeline:llm:error', {
+          stepId,
+          stepName: step.name,
+          agentId: agent?.id || null,
+          pipelineId: executionContext.pipeline?.id,
+          error: errorMsg,
+          duration
+        });
+
+        throw new Error(`LLM call failed: ${errorMsg}`);
+      }
+
+      // Log success
+      this._log('info', `[CurationSystem] LLM call completed for step "${step.name}"`, {
+        duration: Math.round(duration),
+        model: result.model,
+        promptTokens: result.promptTokens,
+        responseTokens: result.responseTokens,
+        responseLength: result.content?.length || 0
+      });
+
+      // Emit completion event
+      this._emit('pipeline:llm:complete', {
+        stepId,
+        stepName: step.name,
+        agentId: agent?.id || null,
+        pipelineId: executionContext.pipeline?.id,
+        model: result.model,
+        promptTokens: result.promptTokens,
+        responseTokens: result.responseTokens,
+        duration
+      });
+
+      // Store LLM metadata in execution context for debugging/monitoring
+      if (!executionContext.llmCalls) {
+        executionContext.llmCalls = [];
+      }
+      executionContext.llmCalls.push({
+        stepId,
+        stepName: step.name,
+        agentId: agent?.id || null,
+        model: result.model,
+        promptTokens: result.promptTokens,
+        responseTokens: result.responseTokens,
+        duration,
+        timestamp: Date.now()
+      });
+
+      return result.content || '';
+
+    } catch (error) {
+      const duration = performance.now() - startTime;
+
+      this._emit('pipeline:llm:error', {
+        stepId,
+        stepName: step.name,
+        agentId: agent?.id || null,
+        pipelineId: executionContext.pipeline?.id,
+        error: error.message,
+        duration
+      });
+
+      throw error;
+    }
   },
 
   /**
