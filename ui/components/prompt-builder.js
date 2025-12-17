@@ -2361,11 +2361,12 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
         e.dataTransfer.dropEffect = "move";
       }
 
-      // Only show drag-over on the list itself, not on items
-      if (
+      // Show drag-over on the list itself, empty div, or children of empty div
+      const isEmptyOrChild =
         e.target === stackList ||
-        e.target.classList.contains("prompt-builder-stack-empty")
-      ) {
+        e.target.classList.contains("prompt-builder-stack-empty") ||
+        e.target.closest(".prompt-builder-stack-empty");
+      if (isEmptyOrChild) {
         stackList.classList.add("drag-over");
       }
     });
@@ -2377,12 +2378,15 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
     });
 
     stackList.addEventListener("drop", (e) => {
-      // Only handle if dropping directly on stackList (not on items)
-      if (
+      // Handle if dropping on stackList, empty div, or children of empty div
+      const isEmptyOrChild =
         e.target === stackList ||
-        e.target.classList.contains("prompt-builder-stack-empty")
-      ) {
+        e.target.classList.contains("prompt-builder-stack-empty") ||
+        e.target.closest(".prompt-builder-stack-empty");
+
+      if (isEmptyOrChild) {
         e.preventDefault();
+        e.stopPropagation();
         stackList.classList.remove("drag-over");
 
         // Handle drop from available tokens
