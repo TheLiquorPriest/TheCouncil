@@ -2206,6 +2206,15 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
     const stackList = contentEl?.querySelector(".prompt-builder-stack-list");
     if (!stackList) return;
 
+    // Prevent duplicate listener registration
+    // Check if listeners are already attached to stackList
+    if (stackList.dataset.dragListenersAttached === "true") {
+      return;
+    }
+
+    // Mark that listeners have been attached
+    stackList.dataset.dragListenersAttached = "true";
+
     const items = stackList.querySelectorAll(".prompt-builder-stack-item");
 
     items.forEach((item) => {
