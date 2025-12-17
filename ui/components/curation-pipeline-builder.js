@@ -1003,7 +1003,9 @@ const CurationPipelineBuilder = {
           </div>
           <div class="cpb-form-group cpb-step-prompt-container" data-index="${index}">
             <label>Prompt Template</label>
-            <div class="cpb-step-prompt-builder" data-index="${index}" data-initial-prompt="${this._escapeHtml(step.promptTemplate || "")}"></div>
+            <div class="cpb-step-prompt-builder" data-index="${index}"
+                 data-initial-prompt="${this._escapeHtmlAttr(step.promptTemplate || "")}"
+                 data-prompt-config="${this._escapeHtmlAttr(JSON.stringify(step.promptConfig || {}))}"></div>
           </div>
         </div>
         ${index < steps.length - 1 ? '<div class="cpb-step-connector">↓</div>' : ""}
@@ -1233,10 +1235,23 @@ const CurationPipelineBuilder = {
       const index = parseInt(container.dataset.index);
       const initialPrompt = container.dataset.initialPrompt || "";
 
+      // Parse full prompt config if available
+      let promptConfig = {};
+      try {
+        const configStr = container.dataset.promptConfig;
+        if (configStr) {
+          promptConfig = JSON.parse(configStr);
+        }
+      } catch (e) {
+        this._log("warn", "Failed to parse prompt config, using defaults:", e);
+      }
+
       try {
         const pbInstance = window.PromptBuilder.createInstance({
-          initialMode: "custom",
-          initialPrompt: initialPrompt,
+          initialMode: promptConfig.mode || "custom",
+          initialPrompt: promptConfig.customPrompt || initialPrompt,
+          initialPreset: promptConfig.presetName || null,
+          initialTokens: promptConfig.tokens || [],
           onChange: () => {
             // Notify parent of change if needed
             if (instance.onChange) {
@@ -1453,6 +1468,8 @@ const CurationPipelineBuilder = {
           inputSource: action.inputSource || "pipeline_input",
           outputTarget: action.outputTarget || "next_step",
           promptTemplate: action.promptTemplate || "",
+          // Preserve prompt configuration for mode restoration
+          promptConfig: action.promptConfig || null,
           variableName: action.variableName || "",
           // Preserve original fields for reference
           positionId: action.positionId,
@@ -1535,6 +1552,8 @@ const CurationPipelineBuilder = {
           // Also store agentId for explicit agent reference
           agentId: agentId || "",
           promptTemplate: step.promptTemplate || "",
+          // Store full prompt configuration for proper mode restoration
+          promptConfig: step.promptConfig || null,
           inputSource: step.inputSource || "pipeline_input",
           outputTarget: step.outputTarget || "next_step",
           variableName: step.variableName || "",
@@ -1797,12 +1816,26 @@ const CurationPipelineBuilder = {
       const promptBuilderInstance = instance._promptBuilderInstances?.get(index);
       if (promptBuilderInstance) {
         const promptValue = promptBuilderInstance.getValue();
-        stepData.promptTemplate = promptValue?.customPrompt || promptValue?.resolvedPrompt || "";
+        // Save full prompt configuration for proper restoration
+        stepData.promptConfig = {
+          mode: promptValue?.mode || "custom",
+          customPrompt: promptValue?.customPrompt || "",
+          presetName: promptValue?.presetName || null,
+          tokens: promptValue?.tokens || [],
+        };
+        // Also save promptTemplate for backwards compatibility and execution
+        stepData.promptTemplate = promptValue?.generatedPrompt || promptValue?.customPrompt || "";
       } else {
         // Fallback to textarea
         const fallbackTextarea = stepEl.querySelector(".cpb-step-prompt-fallback");
         if (fallbackTextarea) {
           stepData.promptTemplate = fallbackTextarea.value || "";
+          stepData.promptConfig = {
+            mode: "custom",
+            customPrompt: fallbackTextarea.value || "",
+            presetName: null,
+            tokens: [],
+          };
         }
       }
 
@@ -2104,6 +2137,21 @@ const CurationPipelineBuilder = {
     const div = document.createElement("div");
     div.textContent = str;
     return div.innerHTML;
+  },
+
+  /**
+   * Escape HTML for use in attributes (also escapes quotes)
+   * @param {string} str - String to escape
+   * @returns {string} Escaped string safe for HTML attributes
+   */
+  _escapeHtmlAttr(str) {
+    if (!str) return "";
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   },
 
   /**

@@ -1811,6 +1811,10 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
     const stackList = contentEl.querySelector(".prompt-builder-stack-list");
     if (!stackList) return;
 
+    // Prevent duplicate event binding
+    if (stackList._stackActionsBound) return;
+    stackList._stackActionsBound = true;
+
     stackList.addEventListener("click", (e) => {
       const btn = e.target.closest(".prompt-builder-stack-btn");
       if (!btn) return;

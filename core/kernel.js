@@ -1030,8 +1030,8 @@ const TheCouncilKernel = {
       const stContext = window.SillyTavern?.getContext?.();
       if (stContext?.extensionSettings) {
         stContext.extensionSettings["TheCouncil_kernel_state"] = this._globalState;
-        if (window.saveSettingsDebounced) {
-          window.saveSettingsDebounced();
+        if (stContext.saveSettingsDebounced) {
+          stContext.saveSettingsDebounced();
         }
       } else {
         // Fallback to localStorage
@@ -1135,8 +1135,8 @@ const TheCouncilKernel = {
       const stContext = window.SillyTavern?.getContext?.();
       if (stContext?.extensionSettings) {
         stContext.extensionSettings["The_Council"] = this._settings;
-        if (window.saveSettingsDebounced) {
-          window.saveSettingsDebounced();
+        if (stContext.saveSettingsDebounced) {
+          stContext.saveSettingsDebounced();
         }
       }
       this._log("debug", "Settings saved");
@@ -1212,8 +1212,8 @@ const TheCouncilKernel = {
           stContext.extensionSettings[scopedKey] = data;
         }
 
-        if (window.saveSettingsDebounced) {
-          window.saveSettingsDebounced();
+        if (stContext.saveSettingsDebounced) {
+          stContext.saveSettingsDebounced();
         }
         this._log("debug", `Data saved: ${scopedKey}`);
         this._emit("kernel:storage:saved", { key: scopedKey, scope });
@@ -1308,8 +1308,8 @@ const TheCouncilKernel = {
           for (const k of keysToDelete) {
             delete stContext.extensionSettings[k];
           }
-          if (window.saveSettingsDebounced) {
-            window.saveSettingsDebounced();
+          if (stContext.saveSettingsDebounced) {
+            stContext.saveSettingsDebounced();
           }
           this._log("info", "All Council data cleared from ST storage");
         } else {
@@ -1335,8 +1335,8 @@ const TheCouncilKernel = {
 
         if (stContext?.extensionSettings) {
           delete stContext.extensionSettings[scopedKey];
-          if (window.saveSettingsDebounced) {
-            window.saveSettingsDebounced();
+          if (stContext.saveSettingsDebounced) {
+            stContext.saveSettingsDebounced();
           }
         } else {
           const storageKey = `TheCouncil_${scopedKey}`;

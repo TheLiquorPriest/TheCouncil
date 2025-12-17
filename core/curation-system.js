@@ -120,6 +120,13 @@ const CurationSystem = {
    */
   _indexCache: new Map(),
 
+  /**
+   * Promise for default CRUD pipelines loading
+   * Used to ensure saved pipelines load AFTER defaults
+   * @type {Promise|null}
+   */
+  _defaultPipelinesPromise: null,
+
   // ===== VALIDATION ERROR MESSAGES =====
 
   /**
@@ -196,8 +203,8 @@ const CurationSystem = {
     // Register default RAG pipelines
     this._registerDefaultRAGPipelines();
 
-    // Register default CRUD pipelines (async)
-    this._registerDefaultCRUDPipelines().catch((err) => {
+    // Register default CRUD pipelines (async) - store promise for loadPersistedData to wait on
+    this._defaultPipelinesPromise = this._registerDefaultCRUDPipelines().catch((err) => {
       this._log("warn", `Failed to load default CRUD pipelines: ${err.message}`);
     });
 
@@ -239,6 +246,12 @@ const CurationSystem = {
     this._log("info", "Loading persisted curation data...");
 
     try {
+      // Wait for default CRUD pipelines to load first, so saved versions can overwrite them
+      if (this._defaultPipelinesPromise) {
+        await this._defaultPipelinesPromise;
+        this._log("debug", "Default pipelines loaded, now loading saved pipelines");
+      }
+
       await Promise.all([this.loadAllStores(), this.loadPipelines()]);
 
       // Initialize index caches after loading data
@@ -2713,10 +2726,11 @@ Return list of character IDs/names with relevance reasoning.`,
       rag: Array.from(this._ragPipelines.values()),
     };
 
-    const success = await this._kernel.saveData("curation_pipelines", pipelineData);
+    // Use global scope - pipelines are system-wide definitions, not chat-specific
+    const success = await this._kernel.saveData("curation_pipelines", pipelineData, { scope: "global" });
 
     if (success) {
-      this._log("debug", "Saved curation pipelines");
+      this._log("debug", "Saved curation pipelines (global scope)");
     }
 
     return success;
@@ -2732,10 +2746,11 @@ Return list of character IDs/names with relevance reasoning.`,
       return false;
     }
 
-    const data = await this._kernel.loadData("curation_pipelines");
+    // Use global scope - pipelines are system-wide definitions, not chat-specific
+    const data = await this._kernel.loadData("curation_pipelines", { scope: "global" });
 
     if (!data) {
-      this._log("debug", "No saved pipelines found");
+      this._log("debug", "No saved pipelines found (global scope)");
       return false;
     }
 
