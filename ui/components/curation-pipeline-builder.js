@@ -53,6 +53,7 @@ const CurationPipelineBuilder = {
     PIPELINE_INPUT: "pipeline_input",
     PREVIOUS_STEP: "previous_step",
     STORE_DATA: "store_data",
+    STEP_PROMPT: "step_prompt",
     CUSTOM: "custom",
   },
 
@@ -270,6 +271,7 @@ const CurationPipelineBuilder = {
       onChange: options.onChange || null,
       onSave: options.onSave || null,
       onTest: options.onTest || null,
+      _promptBuilderInstances: new Map(), // Map<stepIndex, PromptBuilder instance>
     };
 
     this._instances.set(instanceId, instance);
@@ -285,6 +287,15 @@ const CurationPipelineBuilder = {
   destroyInstance(instanceId) {
     const instance = this._instances.get(instanceId);
     if (instance) {
+      // Clean up PromptBuilder instances
+      if (instance._promptBuilderInstances) {
+        instance._promptBuilderInstances.forEach((pbInstance) => {
+          if (pbInstance.destroy) {
+            pbInstance.destroy();
+          }
+        });
+        instance._promptBuilderInstances.clear();
+      }
       instance.container.innerHTML = "";
       this._instances.delete(instanceId);
     }
@@ -973,6 +984,7 @@ const CurationPipelineBuilder = {
                 <option value="pipeline_input" ${step.inputSource === "pipeline_input" ? "selected" : ""}>Pipeline Input</option>
                 <option value="previous_step" ${step.inputSource === "previous_step" ? "selected" : ""}>Previous Step Output</option>
                 <option value="store_data" ${step.inputSource === "store_data" ? "selected" : ""}>Store Data</option>
+                <option value="step_prompt" ${step.inputSource === "step_prompt" ? "selected" : ""}>Step Prompt</option>
                 <option value="custom" ${step.inputSource === "custom" ? "selected" : ""}>Custom</option>
               </select>
             </div>
@@ -984,15 +996,14 @@ const CurationPipelineBuilder = {
                 <option value="pipeline_output" ${step.outputTarget === "pipeline_output" ? "selected" : ""}>Pipeline Output</option>
                 <option value="variable" ${step.outputTarget === "variable" ? "selected" : ""}>Variable</option>
               </select>
+              <input type="text" class="cpb-input cpb-step-variable-name" data-index="${index}"
+                     placeholder="Variable name" value="${this._escapeHtml(step.variableName || "")}"
+                     style="margin-top: 8px; ${step.outputTarget === "variable" ? "" : "display: none;"}">
             </div>
           </div>
-          <div class="cpb-form-group">
+          <div class="cpb-form-group cpb-step-prompt-container" data-index="${index}">
             <label>Prompt Template</label>
-            <textarea class="cpb-textarea cpb-step-prompt" data-index="${index}" rows="4"
-                      placeholder="Enter the prompt for this step...">${this._escapeHtml(step.promptTemplate || "")}</textarea>
-            <div class="cpb-hint">
-              Tokens: <code>{{input}}</code>, <code>{{context}}</code>, <code>{{previousOutput}}</code>, <code>{{store.fieldName}}</code>
-            </div>
+            <div class="cpb-step-prompt-builder" data-index="${index}" data-initial-prompt="${this._escapeHtml(step.promptTemplate || "")}"></div>
           </div>
         </div>
         ${index < steps.length - 1 ? '<div class="cpb-step-connector">↓</div>' : ""}
@@ -1157,6 +1168,97 @@ const CurationPipelineBuilder = {
           this._updateFieldsSelector(instance);
         });
       });
+
+    // Initialize PromptBuilder instances for steps
+    this._initializeStepPromptBuilders(instance);
+
+    // Output target change handler (toggle variable name visibility)
+    wrapper.querySelectorAll(".cpb-step-output").forEach((select) => {
+      select.addEventListener("change", (e) => {
+        const index = e.target.dataset.index;
+        const variableInput = wrapper.querySelector(
+          `.cpb-step-variable-name[data-index="${index}"]`
+        );
+        if (variableInput) {
+          variableInput.style.display =
+            e.target.value === "variable" ? "" : "none";
+        }
+      });
+    });
+  },
+
+  /**
+   * Initialize PromptBuilder instances for each step
+   * @param {Object} instance - Instance
+   */
+  _initializeStepPromptBuilders(instance) {
+    const wrapper = instance.container.querySelector(".cpb-wrapper");
+    if (!wrapper) return;
+
+    // Clean up existing instances first
+    if (instance._promptBuilderInstances) {
+      instance._promptBuilderInstances.forEach((pbInstance) => {
+        if (pbInstance.destroy) {
+          pbInstance.destroy();
+        }
+      });
+      instance._promptBuilderInstances.clear();
+    } else {
+      instance._promptBuilderInstances = new Map();
+    }
+
+    // Initialize PromptBuilder for each step
+    const promptBuilderContainers = wrapper.querySelectorAll(
+      ".cpb-step-prompt-builder"
+    );
+
+    if (!window.PromptBuilder) {
+      this._log("warn", "PromptBuilder not available, falling back to textarea");
+      // Fallback: Replace with textarea if PromptBuilder is not available
+      promptBuilderContainers.forEach((container) => {
+        const index = container.dataset.index;
+        const initialPrompt = container.dataset.initialPrompt || "";
+        container.innerHTML = `
+          <textarea class="cpb-textarea cpb-step-prompt-fallback" data-index="${index}" rows="4"
+                    placeholder="Enter the prompt for this step...">${this._escapeHtml(initialPrompt)}</textarea>
+          <div class="cpb-hint">
+            Tokens: <code>{{input}}</code>, <code>{{context}}</code>, <code>{{previousOutput}}</code>, <code>{{store.fieldName}}</code>
+          </div>
+        `;
+      });
+      return;
+    }
+
+    promptBuilderContainers.forEach((container) => {
+      const index = parseInt(container.dataset.index);
+      const initialPrompt = container.dataset.initialPrompt || "";
+
+      try {
+        const pbInstance = window.PromptBuilder.createInstance({
+          initialMode: "custom",
+          initialPrompt: initialPrompt,
+          onChange: () => {
+            // Notify parent of change if needed
+            if (instance.onChange) {
+              instance.onChange(this._gatherFormData(instance));
+            }
+          },
+        });
+
+        pbInstance.render(container);
+        instance._promptBuilderInstances.set(index, pbInstance);
+      } catch (error) {
+        this._log("error", `Failed to initialize PromptBuilder for step ${index}:`, error);
+        // Fallback to textarea
+        container.innerHTML = `
+          <textarea class="cpb-textarea cpb-step-prompt-fallback" data-index="${index}" rows="4"
+                    placeholder="Enter the prompt for this step...">${this._escapeHtml(initialPrompt)}</textarea>
+          <div class="cpb-hint">
+            Tokens: <code>{{input}}</code>, <code>{{context}}</code>, <code>{{previousOutput}}</code>, <code>{{store.fieldName}}</code>
+          </div>
+        `;
+      }
+    });
   },
 
   /**
@@ -1348,15 +1450,10 @@ const CurationPipelineBuilder = {
           name: action.name || `Step ${index + 1}`,
           // Use resolved agent ID
           agentId: resolvedAgentId,
-          inputSource:
-            action.inputSource || action.inputMapping
-              ? "pipeline_input"
-              : "pipeline_input",
-          outputTarget:
-            action.outputTarget || action.outputMapping
-              ? "next_step"
-              : "next_step",
+          inputSource: action.inputSource || "pipeline_input",
+          outputTarget: action.outputTarget || "next_step",
           promptTemplate: action.promptTemplate || "",
+          variableName: action.variableName || "",
           // Preserve original fields for reference
           positionId: action.positionId,
           _originalPositionId: action.positionId,
@@ -1438,6 +1535,9 @@ const CurationPipelineBuilder = {
           // Also store agentId for explicit agent reference
           agentId: agentId || "",
           promptTemplate: step.promptTemplate || "",
+          inputSource: step.inputSource || "pipeline_input",
+          outputTarget: step.outputTarget || "next_step",
+          variableName: step.variableName || "",
           inputMapping: step._originalInputMapping || {},
           outputMapping: step._originalOutputMapping || {},
         };
@@ -1680,17 +1780,38 @@ const CurationPipelineBuilder = {
 
     // Gather steps
     wrapper.querySelectorAll(".cpb-step").forEach((stepEl, index) => {
-      pipeline.steps.push({
+      const outputTarget = stepEl.querySelector(".cpb-step-output")?.value || "next_step";
+      const stepData = {
         id: `step_${index}`,
         name:
           stepEl.querySelector(".cpb-step-name")?.value || `Step ${index + 1}`,
         agentId: stepEl.querySelector(".cpb-step-agent")?.value || "",
         inputSource:
           stepEl.querySelector(".cpb-step-input")?.value || "pipeline_input",
-        outputTarget:
-          stepEl.querySelector(".cpb-step-output")?.value || "next_step",
-        promptTemplate: stepEl.querySelector(".cpb-step-prompt")?.value || "",
-      });
+        outputTarget: outputTarget,
+        promptTemplate: "",
+        variableName: "",
+      };
+
+      // Get prompt from PromptBuilder instance if available, otherwise from fallback textarea
+      const promptBuilderInstance = instance._promptBuilderInstances?.get(index);
+      if (promptBuilderInstance) {
+        const promptValue = promptBuilderInstance.getValue();
+        stepData.promptTemplate = promptValue?.customPrompt || promptValue?.resolvedPrompt || "";
+      } else {
+        // Fallback to textarea
+        const fallbackTextarea = stepEl.querySelector(".cpb-step-prompt-fallback");
+        if (fallbackTextarea) {
+          stepData.promptTemplate = fallbackTextarea.value || "";
+        }
+      }
+
+      // Get variable name if output target is variable
+      if (outputTarget === "variable") {
+        stepData.variableName = stepEl.querySelector(".cpb-step-variable-name")?.value || "";
+      }
+
+      pipeline.steps.push(stepData);
     });
 
     // Parse schemas
@@ -1801,6 +1922,7 @@ const CurationPipelineBuilder = {
         pipeline.steps.length === 0 ? "pipeline_input" : "previous_step",
       outputTarget: "next_step",
       promptTemplate: "",
+      variableName: "",
     });
     instance.pipeline = pipeline;
     this._renderInstance(instance);
@@ -2342,7 +2464,7 @@ const CurationPipelineBuilder = {
         margin-bottom: 12px;
       }
 
-      .cpb-form-group label {
+      .cpb-form-group label:not(.prompt-builder-mode) {
         display: block;
         margin-bottom: 6px;
         font-size: 13px;
@@ -2756,6 +2878,32 @@ const CurationPipelineBuilder = {
 
       .cpb-toast-info {
         background: rgba(74, 158, 255, 0.9);
+      }
+
+      /* PromptBuilder Container in Steps */
+      .cpb-step-prompt-container {
+        margin-top: 8px;
+      }
+
+      .cpb-step-prompt-builder {
+        min-height: 150px;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+
+      /* Variable Name Input */
+      .cpb-step-variable-name {
+        width: 100%;
+        margin-top: 8px;
+      }
+
+      /* Fallback Textarea */
+      .cpb-step-prompt-fallback {
+        width: 100%;
+        min-height: 100px;
+        resize: vertical;
       }
     `;
 

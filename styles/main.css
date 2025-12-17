@@ -2013,3 +2013,11 @@
     background: #218838;
     border-color: #1e7e34;
 }
+
+.council-curation-content .council-btn {
+    background: var(--cobalt30a);
+}
+
+.cpb-wrapper .cpb-btn {
+    background: var(--ac-style-color-background);
+}

@@ -927,6 +927,11 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
    * @param {HTMLElement} contentEl - Content container
    */
   _renderTokensMode(instance, contentEl) {
+    // Defensive: ensure tokens array exists
+    if (!instance._config.tokens) {
+      instance._config.tokens = [];
+    }
+
     contentEl.innerHTML = `
       <div class="prompt-builder-tokens">
         <div class="prompt-builder-tokens-layout">
@@ -1715,7 +1720,8 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
    * @returns {string} HTML
    */
   _renderTokenStack(instance) {
-    if (instance._config.tokens.length === 0) {
+    // Defensive: ensure tokens array exists
+    if (!instance._config.tokens || instance._config.tokens.length === 0) {
       return `
         <div class="prompt-builder-stack-empty">
           <p>Drag tokens here or click to add</p>
@@ -1878,13 +1884,34 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
     );
 
     if (stackList) {
+      // Preserve scroll positions of all scrollable ancestors
+      const scrollPositions = [];
+      let parent = stackList.parentElement;
+      while (parent) {
+        if (parent.scrollTop > 0 || parent.scrollLeft > 0) {
+          scrollPositions.push({
+            element: parent,
+            top: parent.scrollTop,
+            left: parent.scrollLeft,
+          });
+        }
+        parent = parent.parentElement;
+      }
+
       stackList.innerHTML = this._renderTokenStack(instance);
       this._bindStackActions(instance, instance._container);
       this._initDragDrop(instance, instance._container);
+
+      // Restore scroll positions
+      scrollPositions.forEach(({ element, top, left }) => {
+        element.scrollTop = top;
+        element.scrollLeft = left;
+      });
     }
 
     if (stackCount) {
-      stackCount.textContent = `(${instance._config.tokens.length} items)`;
+      const tokenCount = instance._config.tokens?.length || 0;
+      stackCount.textContent = `(${tokenCount} items)`;
     }
   },
 
@@ -2444,6 +2471,7 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
           unresolvedTokens: [],
           macros: [],
           conditionals: [],
+          transforms: [],
         },
       };
     }
@@ -2692,6 +2720,8 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
         return "";
 
       case "tokens":
+        // Defensive: ensure tokens array exists
+        if (!config.tokens) return "";
         return config.tokens
           .map((item) => {
             const prefix = item.prefix || "";
@@ -2735,7 +2765,7 @@ Output: ${this._escapeHtml(presetData.output_sequence || "N/A")}</pre>
       mode: instance._config.mode,
       customPrompt: instance._config.customPrompt,
       presetName: instance._config.presetName,
-      tokens: [...instance._config.tokens],
+      tokens: [...(instance._config.tokens || [])],
       generatedPrompt: this._generatePrompt(instance),
     };
   },
