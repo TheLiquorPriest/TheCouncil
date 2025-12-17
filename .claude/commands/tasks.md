@@ -52,9 +52,13 @@ This document defines ALL paths, conventions, and requirements. Follow it exactl
 
 ---
 
-## ⛔ OBSERVABILITY CHECKPOINT #0.5: MCP TOOL VERIFICATION GATE
+## ⛔ OBSERVABILITY CHECKPOINT #0.5: MCP TOOL VERIFICATION GATE (AGENT TEST)
 
-**MANDATORY: Verify MCP tools are available BEFORE any work.**
+**MANDATORY: Verify that AGENTS can access MCP tools BEFORE spawning task agents.**
+
+### ⚠️ CRITICAL: THIS IS AN AGENT TEST, NOT AN ORCHESTRATOR TEST
+
+**DO NOT test MCP tools yourself (the orchestrator).** You calling MCP tools proves nothing about whether spawned agents can use them. You MUST spawn a test agent to verify agent tool access.
 
 ### NO WORKAROUNDS POLICY
 
@@ -63,42 +67,89 @@ This document defines ALL paths, conventions, and requirements. Follow it exactl
 
 **CODE REVIEW IS NOT A SUBSTITUTE FOR BROWSER TESTING. This is a HARD FAILURE.**
 
-### Tool Verification Process
+### Tool Verification Process: SPAWN A TEST AGENT
+
+**You MUST spawn a dev-haiku agent to verify MCP tools work for agents:**
 
 ```javascript
-// VERIFY THAT AGENTS CAN USE MCP TOOLS FIRST - BEFORE ANYTHING ELSE
-// 
-// SPAWN A dev-haiku agent to test
+Task({
+  description: "MCP Tool Verification Test",
+  subagent_type: "general-purpose",
+  model: "haiku",
+  prompt: `
+You are a tool verification agent. Your ONLY job is to test that MCP tools work.
 
-// Test 1: Memory-keeper (REQUIRED for ALL tasks and agents)
+## Required Tests
+
+Perform these tests IN ORDER and report results:
+
+### Test 1: Memory-keeper
+\`\`\`javascript
 mcp__memory-keeper__context_session_start({
-  name: "TheCouncil-TaskRunner-ToolVerify",
+  name: "TheCouncil-ToolVerify-Agent",
   projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
 })
-// IF THIS FAILS → ABORT TASK IMMEDIATELY
+\`\`\`
 
-// Test 2: Browser automation (check which is available)
-// Try playwright:
+### Test 2: Playwright Browser
+\`\`\`javascript
 mcp__playwright__browser_navigate({ url: "about:blank" })
-// OR try concurrent-browser:
-mcp__concurrent-browser__browser_create_instance({ instanceId: "verify-test" })
-// CLOSE TEST INSTANCE IF CREATED
-mcp__concurrent-browser__browser_close_instance({ instanceId: "verify-test" })
+\`\`\`
+
+### Test 3: Concurrent Browser
+\`\`\`javascript
+mcp__concurrent-browser__browser_create_instance({ metadata: { name: "verify-test" } })
+// If successful, close it:
+mcp__concurrent-browser__browser_close_instance({ instanceId: "[ID from above]" })
+\`\`\`
+
+### Test 4: ast-grep (via Bash)
+\`\`\`bash
+ast-grep --version
+\`\`\`
+
+## Required Output
+
+Output EXACTLY this format with your results:
+
+\`\`\`
+## ⛔ AGENT MCP TOOL VERIFICATION RESULTS
+
+| Tool | Status | Evidence |
+|------|--------|----------|
+| memory-keeper | ✅ PASS / ❌ FAIL | [session ID or error message] |
+| playwright | ✅ PASS / ❌ FAIL | [navigation result or error] |
+| concurrent-browser | ✅ PASS / ❌ FAIL | [instance ID or error] |
+| ast-grep | ✅ PASS / ❌ FAIL | [version or error] |
+
+### OVERALL RESULT: PASS / FAIL
+\`\`\`
+
+If ANY tool fails, output FAIL. Only output PASS if ALL tools work.
+
+Begin testing now.
+`
+})
 ```
 
 ### Confirmation Report #0.5 (MANDATORY)
 
-**You MUST output this confirmation BEFORE proceeding:**
+**After the test agent completes, output this confirmation:**
 
 ```markdown
-## ⛔ MCP TOOL VERIFICATION GATE
+## ⛔ MCP TOOL VERIFICATION GATE (AGENT TEST)
 
-| Tool | Required | Status | Evidence |
-|------|----------|--------|----------|
-| memory-keeper | YES | ✅ PASS / ❌ FAIL | [session ID or error] |
-| playwright | FOR VERIFICATION | ✅ PASS / ❌ FAIL | [result or error] |
-| concurrent-browser | FOR PARALLEL | ✅ PASS / ❌ FAIL | [result or error] |
-| ast-grep | FOR CODE SEARCH | ✅ PASS / ❌ FAIL | [version or error] |
+### Test Agent Spawned: YES
+### Test Agent Model: haiku
+
+### Agent-Reported Results
+
+| Tool | Required | Agent Status | Agent Evidence |
+|------|----------|--------------|----------------|
+| memory-keeper | YES | ✅ PASS / ❌ FAIL | [from agent output] |
+| playwright | FOR VERIFICATION | ✅ PASS / ❌ FAIL | [from agent output] |
+| concurrent-browser | FOR PARALLEL | ✅ PASS / ❌ FAIL | [from agent output] |
+| ast-grep | FOR CODE SEARCH | ✅ PASS / ❌ FAIL | [from agent output] |
 
 ### GATE RESULT: PASS / FAIL
 
@@ -107,16 +158,19 @@ If FAIL: STOP. Output failure report. Do not proceed.
 
 ### On Failure: ABORT IMMEDIATELY
 
-**If ANY required tool is unavailable:**
+**If the test agent reports ANY required tool is unavailable:**
 
 ```markdown
-## ⛔ TASK ABORTED: MCP TOOLS UNAVAILABLE
+## ⛔ TASK ABORTED: AGENTS CANNOT ACCESS MCP TOOLS
 
-### Missing Tools
-- [tool]: [error message]
+### Test Agent Report
+[Paste the agent's verification output here]
+
+### Missing Tools (Agent-Reported)
+- [tool]: [error message from agent]
 
 ### Task Cannot Proceed
-The /tasks command requires MCP tools for:
+The /tasks command requires agents to have MCP tool access for:
 - Memory persistence (memory-keeper)
 - Browser verification (playwright/concurrent-browser)
 - Code exploration (ast-grep)
@@ -130,7 +184,7 @@ The /tasks command requires MCP tools for:
 Code review is NOT a substitute for browser testing.
 Static analysis is NOT a substitute for runtime verification.
 
-**STATUS: FAILED - TOOLS UNAVAILABLE**
+**STATUS: FAILED - AGENTS CANNOT ACCESS MCP TOOLS**
 ```
 
 **DO NOT PROCEED PAST THIS POINT IF GATE FAILS.**
