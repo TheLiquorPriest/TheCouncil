@@ -192,13 +192,13 @@ Group 4:
 
 **Focus**: Curation System (with Kernel, Orchestration, Prompt Builder as always-present concerns)
 
-### Block 5.1: Known Critical Bugs (P0)
+### Block 5.1: Known Critical Bugs (P0) ✅ COMPLETE
 
 | ID | Task | Priority | Agent | Status |
 |----|------|----------|-------|--------|
-| 5.1.1 | prompt-builder-drag-drop-duplicates | P0 | dev-sonnet | ⏳ PENDING |
-| 5.1.2 | modal-color-readability | P0 | dev-sonnet | ⏳ PENDING |
-| 5.1.3 | curation-pipeline-builder-typeerror | P0 | dev-haiku | ⏳ PENDING |
+| 5.1.1 | prompt-builder-drag-drop-duplicates | P0 | dev-sonnet | ✅ COMPLETE |
+| 5.1.2 | modal-color-readability | P0 | dev-sonnet | ✅ COMPLETE |
+| 5.1.3 | curation-pipeline-builder-typeerror | P0 | dev-haiku | ✅ COMPLETE |
 
 ### Block 5.2: Curation Visual/UI Audit (P0)
 
@@ -240,6 +240,23 @@ Group 4:
 | 5.6.1 | curation-final-verification | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
 | 5.6.2 | group5-sign-off | P0 | project-manager-opus | ⏳ PENDING |
 
+### Block 5.7: CRUD Pipeline Execution Implementation (P0)
+
+**Problem**: `_executeCRUDPipeline` and `_executeCRUDPipelinePreview` in `curation-system.js` are stubs that return empty results without executing any pipeline steps. Users configure pipelines with steps, agents, and prompts, but "Preview" and "Run" produce no meaningful output.
+
+**Depends On**: Block 5.1 (Known Critical Bugs must be fixed first)
+
+| ID | Task | Priority | Agent | Status |
+|----|------|----------|-------|--------|
+| 5.7.1 | execution-context-step-runner | P0 | dev-opus | ✅ COMPLETE |
+| 5.7.2 | prompt-resolution-integration | P0 | dev-opus | ✅ COMPLETE |
+| 5.7.3 | agent-llm-call-integration | P0 | dev-opus | ✅ COMPLETE |
+| 5.7.4 | output-handling-store-integration | P0 | dev-opus | ✅ COMPLETE |
+| 5.7.5 | preview-mode-implementation | P0 | dev-opus | ⏳ PENDING |
+| 5.7.6 | progress-events-ui-updates | P1 | dev-sonnet | ⏳ PENDING |
+| 5.7.7 | error-handling-recovery | P1 | dev-sonnet | ⏳ PENDING |
+| 5.7.8 | pipeline-execution-testing | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+
 ---
 
 ## Group 5 Task Dependencies
@@ -247,20 +264,31 @@ Group 4:
 ```
 Block 5.1 (Known Bugs)
     ↓
+    ├──→ Block 5.7 (CRUD Pipeline Execution Implementation)
+    │         ↓ (5.7.1 → 5.7.2 → 5.7.3 → 5.7.4 → 5.7.5 → 5.7.6/5.7.7 → 5.7.8)
+    │
 Block 5.2 (Visual Audit) ──┬──→ Block 5.5 (Discovery Fixes)
 Block 5.3 (Functional Audit) ┘        ↓
     ↓                              Block 5.6 (Verification)
 Block 5.4 (Execution) ─────────────────┘
+    ↑
+    └── depends on Block 5.7 completion
 
 Specific dependencies:
   5.3.2 → depends on 5.1.3
   5.3.3 → depends on 5.1.3
   5.3.4 → depends on 5.1.1
   5.4.1 → depends on 5.2.3, 5.3.1
-  5.4.2 → depends on 5.3.2
+  5.4.2 → depends on 5.3.2, 5.7.8 (needs working execution)
   5.4.3 → depends on 5.3.3
-  5.6.1 → depends on all 5.1-5.5 tasks
+  5.6.1 → depends on all 5.1-5.5 tasks, 5.7.8
   5.6.2 → depends on 5.6.1
+
+Block 5.7 internal dependencies (sequential):
+  5.7.1 (context/runner) → 5.7.2 (prompt) → 5.7.3 (agent/LLM) → 5.7.4 (output/store)
+  5.7.4 → 5.7.5 (preview mode)
+  5.7.5 → 5.7.6 (progress events) + 5.7.7 (error handling) [parallel]
+  5.7.6 + 5.7.7 → 5.7.8 (testing)
 ```
 
 ---
@@ -269,8 +297,8 @@ Specific dependencies:
 
 | Status | Count |
 |--------|-------|
-| ✅ COMPLETE | 14 |
+| ✅ COMPLETE | 21 |
 | 🔄 IN_PROGRESS | 0 |
-| ⏳ PENDING | 33 |
+| ⏳ PENDING | 34 |
 | 🚫 BLOCKED | 0 |
-| **Total** | **47** |
+| **Total** | **55** |

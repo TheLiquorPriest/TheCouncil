@@ -343,6 +343,32 @@ const CurationModal = {
       });
       this._cleanupFns.push(unsubscribe);
     }
+
+    // Subscribe to pipeline execution progress events
+    const progressUnsubscribe = this._curationSystem.on('pipeline:execution:start', (data) => {
+      this._onPipelineStart(data);
+    });
+    this._cleanupFns.push(progressUnsubscribe);
+
+    const progressUpdateUnsubscribe = this._curationSystem.on('pipeline:progress', (data) => {
+      this._onPipelineProgress(data);
+    });
+    this._cleanupFns.push(progressUpdateUnsubscribe);
+
+    const stepCompleteUnsubscribe = this._curationSystem.on('pipeline:step:complete', (data) => {
+      this._onStepComplete(data);
+    });
+    this._cleanupFns.push(stepCompleteUnsubscribe);
+
+    const completeUnsubscribe = this._curationSystem.on('pipeline:execution:complete', (data) => {
+      this._onPipelineComplete(data);
+    });
+    this._cleanupFns.push(completeUnsubscribe);
+
+    const errorUnsubscribe = this._curationSystem.on('pipeline:execution:error', (data) => {
+      this._onPipelineError(data);
+    });
+    this._cleanupFns.push(errorUnsubscribe);
   },
 
   // ===== SHOW / HIDE =====
@@ -2845,6 +2871,185 @@ const CurationModal = {
   _truncate(str, maxLength) {
     if (!str || str.length <= maxLength) return str || "";
     return str.substring(0, maxLength) + "...";
+  },
+
+  // ===== PIPELINE EXECUTION PROGRESS =====
+
+  /**
+   * Handle pipeline execution start
+   * @param {Object} data - Event data
+   */
+  _onPipelineStart(data) {
+    this._log('info', `Pipeline started: ${data.pipelineName} (${data.totalSteps} steps)`);
+
+    // Find or create progress container
+    let progressContainer = document.querySelector('.pipeline-execution-progress');
+    if (!progressContainer) {
+      // Find a suitable parent (e.g., the content area of the active tab)
+      const contentArea = this._elements.content;
+      if (!contentArea) return;
+
+      progressContainer = document.createElement('div');
+      progressContainer.className = 'pipeline-execution-progress';
+      contentArea.insertBefore(progressContainer, contentArea.firstChild);
+    }
+
+    // Render initial progress HTML
+    progressContainer.innerHTML = this._renderExecutionProgressHTML({
+      pipelineName: data.pipelineName,
+      currentStep: 0,
+      totalSteps: data.totalSteps,
+      phase: 'starting',
+      phaseLabel: 'Starting pipeline...',
+      progress: 0,
+      completedSteps: []
+    });
+
+    progressContainer.style.display = 'block';
+  },
+
+  /**
+   * Handle pipeline progress update
+   * @param {Object} data - Event data
+   */
+  _onPipelineProgress(data) {
+    this._updateProgressUI(data);
+  },
+
+  /**
+   * Handle step complete
+   * @param {Object} data - Event data
+   */
+  _onStepComplete(data) {
+    // Add to completed steps list
+    const completedList = document.querySelector('.progress-completed-steps');
+    if (completedList) {
+      const item = document.createElement('div');
+      item.className = 'progress-completed-step';
+      item.innerHTML = `
+        <span class="progress-step-check">✓</span>
+        <span class="progress-step-name">${this._escapeHtml(data.stepName)}</span>
+        <span class="progress-step-duration">${Math.round(data.duration)}ms</span>
+      `;
+      completedList.appendChild(item);
+    }
+  },
+
+  /**
+   * Handle pipeline execution complete
+   * @param {Object} data - Event data
+   */
+  _onPipelineComplete(data) {
+    this._log('info', `Pipeline completed: ${data.pipelineName}`);
+
+    // Update progress to 100%
+    this._updateProgressUI({
+      pipelineName: data.pipelineName,
+      currentStep: data.totalSteps,
+      totalSteps: data.totalSteps,
+      phase: 'complete',
+      phaseLabel: 'Pipeline complete!',
+      progress: 100
+    });
+
+    // Hide progress after a delay
+    setTimeout(() => {
+      const progressContainer = document.querySelector('.pipeline-execution-progress');
+      if (progressContainer) {
+        progressContainer.style.display = 'none';
+      }
+    }, 3000);
+  },
+
+  /**
+   * Handle pipeline execution error
+   * @param {Object} data - Event data
+   */
+  _onPipelineError(data) {
+    this._log('error', `Pipeline failed: ${data.pipelineName} - ${data.error}`);
+
+    // Update progress to show error
+    const progressContainer = document.querySelector('.pipeline-execution-progress');
+    if (progressContainer) {
+      const phaseLabel = progressContainer.querySelector('.progress-phase-label');
+      if (phaseLabel) {
+        phaseLabel.textContent = `Error: ${data.error}`;
+        phaseLabel.style.color = 'var(--council-error, #ef4444)';
+      }
+    }
+
+    // Hide progress after a delay
+    setTimeout(() => {
+      if (progressContainer) {
+        progressContainer.style.display = 'none';
+      }
+    }, 5000);
+  },
+
+  /**
+   * Render execution progress HTML
+   * @param {Object} state - Progress state
+   * @returns {string} HTML string
+   */
+  _renderExecutionProgressHTML(state) {
+    return `
+      <div class="progress-header">
+        <h4 class="progress-title">${this._escapeHtml(state.pipelineName)}</h4>
+        <button class="progress-cancel-btn" data-action="cancel-pipeline" title="Cancel execution">
+          ✕
+        </button>
+      </div>
+
+      <div class="progress-bar-container">
+        <div class="progress-bar" style="width: ${state.progress}%"></div>
+      </div>
+
+      <div class="progress-info">
+        <span class="progress-step-counter">Step ${state.currentStep} of ${state.totalSteps}</span>
+        <span class="progress-phase-label">${this._escapeHtml(state.phaseLabel)}</span>
+        <span class="progress-percentage">${state.progress}%</span>
+      </div>
+
+      <div class="progress-completed-steps"></div>
+    `;
+  },
+
+  /**
+   * Update progress UI with new state
+   * @param {Object} state - Progress state
+   */
+  _updateProgressUI(state) {
+    const progressBar = document.querySelector('.progress-bar');
+    const stepCounter = document.querySelector('.progress-step-counter');
+    const phaseLabel = document.querySelector('.progress-phase-label');
+    const percentage = document.querySelector('.progress-percentage');
+
+    if (progressBar) {
+      progressBar.style.width = `${state.progress}%`;
+    }
+
+    if (stepCounter) {
+      stepCounter.textContent = `Step ${state.currentStep} of ${state.totalSteps}`;
+    }
+
+    if (phaseLabel) {
+      phaseLabel.textContent = state.phaseLabel;
+    }
+
+    if (percentage) {
+      percentage.textContent = `${state.progress}%`;
+    }
+  },
+
+  /**
+   * Escape HTML for safe insertion
+   * @param {string} str - String to escape
+   * @returns {string} Escaped string
+   */
+  _escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
   },
 
   /**

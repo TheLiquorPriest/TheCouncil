@@ -7,12 +7,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Tasks | 47 |
-| Completed | 14 |
+| Total Tasks | 55 |
+| Completed | 21 |
 | In Progress | 0 |
-| Pending | 33 |
+| Pending | 34 |
 | Blocked | 0 |
-| Progress | 30% |
+| Progress | 38% |
 
 ## Group Status
 
@@ -71,16 +71,17 @@
 **Audit**: Pending
 **Verification**: N/A (this IS the verification group)
 
-### Group 5: Curation System - Working Alpha ⏳ PENDING
+### Group 5: Curation System - Working Alpha 🔄 IN PROGRESS
 
 | Block | Tasks | Status |
 |-------|-------|--------|
-| 5.1 Known Critical Bugs | 0/3 | PENDING |
+| 5.1 Known Critical Bugs | 3/3 | ✅ COMPLETE |
 | 5.2 Curation Visual/UI Audit | 0/3 | PENDING |
 | 5.3 Curation Functional Audit | 0/4 | PENDING |
 | 5.4 Curation Pipeline Execution | 0/3 | PENDING |
 | 5.5 Discovery Fixes | TBD | PENDING |
 | 5.6 Curation Alpha Verification | 0/2 | PENDING |
+| 5.7 CRUD Pipeline Execution | 4/8 | IN PROGRESS |
 
 **Focus**: Curation System (Kernel, Orchestration, Prompt Builder as always-present concerns)
 **Philosophy**: Agent-driven discovery, real execution, no workarounds
@@ -92,7 +93,9 @@
 
 | Date | Activity |
 |------|----------|
-| 2025-12-17 | **Group 5 Added** - 15 tasks for Curation System working alpha |
+| 2025-12-17 | **Tasks 5.7.1-5.7.4 COMPLETE** - CRUD pipeline execution core implementation |
+| 2025-12-17 | **Block 5.1 COMPLETE** - All 3 known critical bugs fixed |
+| 2025-12-17 | **Group 5 Added** - 23 tasks for Curation System working alpha |
 | 2025-12-17 | `/ui-test` command updated to require opus agents with identity verification |
 | 2025-12-15 | **Blocks 4.8-4.9 Complete** - Integration and E2E verification passed |
 | 2025-12-15 | **Task 4.8.1 COMPLETE** - Cross-System Integration (8/8 PASS) |
@@ -109,14 +112,17 @@ None currently.
 
 ## Next Steps
 
-1. **Begin Group 5** - Fix known bugs first (Block 5.1)
-2. Run `/tasks 5.1.1` to fix prompt builder drag-drop duplicates
-3. Run `/tasks 5.1.2` to fix modal color readability
-4. Run `/tasks 5.1.3` to fix curation pipeline builder TypeError
-5. After 5.1 complete, run visual audits (Block 5.2)
-6. Then functional audits (Block 5.3) and execution tests (Block 5.4)
-7. Block 5.5 populated dynamically from audit findings
-8. Block 5.6 final verification and sign-off
+1. **Block 5.1 COMPLETE** - All known bugs fixed
+2. **Block 5.7 IN PROGRESS** - CRUD Pipeline Execution Implementation
+   - 5.7.1: COMPLETE (commit 3e553c0) - Execution context and step runner infrastructure
+   - 5.7.2: COMPLETE (commit 7a21be5) - Prompt resolution integration
+   - 5.7.3: COMPLETE (commit 0e31495) - Agent and LLM call integration
+   - 5.7.4: COMPLETE (commit f83dda5) - Output handling and store integration
+   - 5.7.5: NEXT - Preview mode implementation (dev-opus)
+3. **Parallel track**: Visual audits (Block 5.2) and Functional audits (Block 5.3)
+4. Block 5.4 (Execution tests) depends on 5.7 completion
+5. Block 5.5 populated dynamically from audit findings
+6. Block 5.6 final verification and sign-off
 
 ## Future Groups
 
