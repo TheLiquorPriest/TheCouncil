@@ -21,7 +21,7 @@
     --council-border: var(--SmartThemeBorderColor, #444);
     --council-border-active: var(--council-primary);
     --council-text: var(--SmartThemeBodyColor, #eee);
-    --council-text-muted: rgba(255, 255, 255, 0.6);
+    --council-text-muted: rgba(255, 255, 255, 0.85);
 
     --council-font-family: var(--mainFontFamily, sans-serif);
     --council-font-mono: var(--monoFontFamily, monospace);
@@ -196,9 +196,9 @@
 }
 
 .council-header-btn {
-    background: var(--council-bg-hover);
+    background: rgba(0, 0, 0, 0.3);
     border: none;
-    color: var(--council-text-muted);
+    color: var(--council-text);
     font-size: 16px;
     width: 32px;
     height: 32px;
@@ -801,9 +801,9 @@
 }
 
 .council-gavel-btn.skip {
-    background: transparent;
+    background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--council-border);
-    color: var(--council-text-muted);
+    color: var(--council-text);
 }
 
 .council-gavel-btn.skip:hover {
@@ -854,9 +854,9 @@
 }
 
 #council-toggle {
-    background: var(--council-bg-hover);
+    background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--council-border);
-    color: var(--council-text-muted);
+    color: var(--council-text);
     width: 36px;
     height: 36px;
     border-radius: var(--council-radius-md);
