@@ -2,7 +2,42 @@
 
 **Source**: Block 4.1-4.2 Verification (Tasks 4.1.1, 4.2.1, 4.2.2)
 **Date**: 2025-12-15
+**Updated**: 2025-12-17 (UI test results added)
 **Author**: Task Runner Agent
+
+---
+
+## UI Test Results: Curation Modal (2025-12-17)
+
+**Agent**: ui-feature-verification-test-opus
+**Status**: ✅ PASSED (15+ tests, 1 confirmed bug)
+
+### Tab Testing Results
+
+| Tab | Status | Notes |
+|-----|--------|-------|
+| Overview | ✅ PASS | Default tab, stats correct, all 14 stores displayed |
+| Stores | ✅ PASS | Table view, View/Add buttons work, Create Entry form comprehensive |
+| Search | ✅ PASS | Search input, filters, empty state all working |
+| Team | ✅ PASS | 6 positions, 6 agents, Edit modal with Prompt Builder works |
+| Pipelines | ⚠️ PASS (bug) | 17 CRUD + 19 RAG pipelines listed, but has JS error |
+
+### Bug Confirmed
+
+**Task 5.1.1** (curation-pipeline-builder TypeError) - **CONFIRMED** via live browser testing
+
+### Visual Issues Check
+
+**No color/readability issues found in Curation Modal.** The reported issues may be in:
+- Navigation Modal
+- Character Modal
+- Pipeline Modal
+- Injection Modal
+- Gavel Modal
+
+**Recommendation**: Run `/ui-test nav`, `/ui-test character`, etc. to locate the color/readability issues.
+
+---
 
 ## Bug Fixes
 

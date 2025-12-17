@@ -17,6 +17,60 @@ You are orchestrating a UI testing pipeline for The Council extension.
 
 ---
 
+## ⛔⛔⛔ CRITICAL: AGENT SPAWNING IS MANDATORY ⛔⛔⛔
+
+**THIS COMMAND MUST BE EXECUTED VIA SPAWNED AGENTS, NOT DIRECTLY.**
+
+### What This Means
+
+1. **DO NOT execute UI tests yourself** - You are the orchestrator, not the tester
+2. **DO spawn ui-feature-verification-test-opus agents** using the Task tool
+3. **EVERY spawned agent MUST output Agent Identity Verification** before any work
+4. **If you catch yourself testing directly**, STOP and spawn an agent instead
+
+### Required Agent for UI Testing
+
+| Component | Value |
+|-----------|-------|
+| **Agent Name** | `ui-feature-verification-test-opus` |
+| **Agent Definition** | `.claude/agents/ui-feature-verification-test-opus.md` |
+| **Model** | `opus` |
+| **subagent_type** | `general-purpose` |
+
+### Agent Identity Verification (MANDATORY)
+
+**EVERY spawned agent MUST produce this verification as their FIRST output:**
+
+```markdown
+## ⛔ AGENT IDENTITY VERIFICATION
+
+### Agent Definition Loaded
+- **File Read**: `.claude/agents/ui-feature-verification-test-opus.md` ✅
+- **Frontmatter Model**: opus
+- **Agent Name from Definition**: ui-feature-verification-test-opus
+- **Definition Line Count**: [X] lines
+
+### Task Tool Configuration
+- **subagent_type**: general-purpose
+- **model parameter**: opus
+
+### Identity Confirmation
+I am operating as **ui-feature-verification-test-opus** loaded from `.claude/agents/ui-feature-verification-test-opus.md`.
+
+**VERIFICATION HASH**: [First 50 chars of agent Description from definition file]
+```
+
+**If an agent cannot produce accurate verification → SPAWN IS INVALID → RE-SPAWN**
+
+### Why This Matters
+
+- Different agents have different capabilities and behaviors
+- Using the wrong agent (e.g., sonnet instead of opus) may produce inferior results
+- Agent identity verification proves the correct agent was spawned with correct instructions
+- "Beyond a shadow of a doubt" confirmation is REQUIRED
+
+---
+
 ## OBSERVABILITY CHECKPOINT #0: Read the Bible
 
 **MANDATORY: Read PROCESS_README.md FIRST.**
@@ -230,8 +284,36 @@ Based on `.claude/agents/index.md`, resolve these agents:
 | Phase | Agent | Purpose |
 |-------|-------|---------|
 | Phase 1 (Spec) | `uiux-expert-opus` | Create/update UI_BEHAVIOR.md |
-| Phase 2 (Test) | `ui-feature-verification-test-sonnet` | Test each modal |
+| Phase 2 (Test) | `ui-feature-verification-test-opus` | Test each modal |
 | Phase 3 (Review) | `code-audit-opus` | Review results, generate tasks |
+
+### ⛔ MANDATORY: Agent Identity Verification
+
+**Every spawned agent MUST verify its identity beyond a shadow of a doubt.**
+
+This verification MUST appear in every agent's output:
+
+```markdown
+## ⛔ AGENT IDENTITY VERIFICATION
+
+### Agent Definition Loaded
+- **File Read**: `.claude/agents/[agent-name].md` ✅
+- **Frontmatter Model**: [opus/sonnet/haiku]
+- **Agent Name from Definition**: [exact name from file]
+- **Definition Line Count**: [X] lines
+
+### Task Tool Configuration
+- **subagent_type**: general-purpose
+- **model parameter**: [opus/sonnet/haiku]
+
+### Identity Confirmation
+I am operating as **[AGENT NAME]** loaded from `.claude/agents/[agent-name].md`.
+My behavior follows the instructions in that definition file.
+
+**VERIFICATION HASH**: [First 50 chars of agent description from definition]
+```
+
+**If an agent cannot produce this verification, the spawn is INVALID.**
 
 ### Agent Resolution Process
 
@@ -255,12 +337,13 @@ For EACH agent:
 - [ ] MANDATORY sections present: [list]
 - [ ] Instructions captured: [line count] lines
 
-### ui-feature-verification-test-sonnet (Phase 2)
+### ui-feature-verification-test-opus (Phase 2)
 - [ ] Found in agents index: YES
-- [ ] Definition read: `.claude/agents/ui-feature-verification-test-sonnet.md`
-- [ ] Model: sonnet
+- [ ] Definition read: `.claude/agents/ui-feature-verification-test-opus.md`
+- [ ] Model: opus
 - [ ] MANDATORY sections present: [list]
 - [ ] Instructions captured: [line count] lines
+- [ ] Agent Identity Verification: REQUIRED in output
 
 ### code-audit-opus (Phase 3)
 - [ ] Found in agents index: YES
@@ -416,14 +499,15 @@ After Phase 1 completes, spawn all 6 testing agents in parallel.
 
 | Field | Value |
 |-------|-------|
-| Agent | ui-feature-verification-test-sonnet |
-| Model | sonnet |
-| Definition | `.claude/agents/ui-feature-verification-test-sonnet.md` |
+| Agent | ui-feature-verification-test-opus |
+| Model | opus |
+| Definition | `.claude/agents/ui-feature-verification-test-opus.md` |
 | Instructions | [X] lines included |
 | Modal | [MODAL_NAME] |
 | Instance ID | [ui-XXX] |
 | UI_BEHAVIOR.md Section | [N] |
 | VIEWS.md Section | [N] |
+| Identity Verification | REQUIRED |
 ```
 
 ### Testing Agent Spawn Template
@@ -432,11 +516,39 @@ After Phase 1 completes, spawn all 6 testing agents in parallel.
 Task({
   description: "Test [MODAL_NAME] Modal",
   subagent_type: "general-purpose",
-  model: "sonnet",
+  model: "opus",
   prompt: `
-## ⛔ MCP TOOL VERIFICATION (MANDATORY FIRST STEP)
+## ⛔ AGENT IDENTITY VERIFICATION (MANDATORY FIRST OUTPUT)
 
-**BEFORE ANY OTHER WORK**, verify browser tools are available:
+**You MUST output this verification BEFORE anything else to prove your identity.**
+
+\`\`\`markdown
+## ⛔ AGENT IDENTITY VERIFICATION
+
+### Agent Definition Loaded
+- **File Read**: \`.claude/agents/ui-feature-verification-test-opus.md\` ✅
+- **Frontmatter Model**: opus
+- **Agent Name from Definition**: ui-feature-verification-test-opus
+- **Definition Line Count**: [COUNT from reading the file]
+
+### Task Tool Configuration
+- **subagent_type**: general-purpose
+- **model parameter**: opus
+
+### Identity Confirmation
+I am operating as **ui-feature-verification-test-opus** loaded from \`.claude/agents/ui-feature-verification-test-opus.md\`.
+My behavior follows the instructions in that definition file.
+
+**VERIFICATION HASH**: [First 50 chars of agent Description section from the definition file]
+\`\`\`
+
+**If you cannot produce this verification with accurate information, STOP IMMEDIATELY.**
+
+---
+
+## ⛔ MCP TOOL VERIFICATION (MANDATORY SECOND STEP)
+
+**AFTER identity verification**, verify browser tools are available:
 
 1. Call mcp__memory-keeper__context_session_start() - MUST SUCCEED
 2. Call mcp__concurrent-browser__browser_create_instance() or mcp__playwright__browser_navigate() - MUST SUCCEED
@@ -475,7 +587,7 @@ Task({
 
 ## Agent Instructions
 
-[PASTE FULL CONTENTS OF .claude/agents/ui-feature-verification-test-sonnet.md HERE]
+[PASTE FULL CONTENTS OF .claude/agents/ui-feature-verification-test-opus.md HERE]
 
 ---
 
@@ -649,17 +761,18 @@ mcp__playwright__browser_navigate({ url: "http://127.0.0.1:8000/" })
 - .claude/definitions/UI_BEHAVIOR.md: [created/updated]
 
 ### Phase 2: Modal Testing (Parallel via concurrent-browser)
-- Agent: ui-feature-verification-test-sonnet (x6)
-- Definition: `.claude/agents/ui-feature-verification-test-sonnet.md`
+- Agent: ui-feature-verification-test-opus (x6)
+- Definition: `.claude/agents/ui-feature-verification-test-opus.md`
+- Identity Verification: REQUIRED for each agent
 
-| Modal | Instance | Agent Confirmed | Result |
-|-------|----------|-----------------|--------|
-| Navigation | ui-nav | YES | [X pass, Y issues] |
-| Curation | ui-curation | YES | [X pass, Y issues] |
-| Character | ui-character | YES | [X pass, Y issues] |
-| Pipeline | ui-pipeline | YES | [X pass, Y issues] |
-| Injection | ui-injection | YES | [X pass, Y issues] |
-| Gavel + Components | ui-gavel | YES | [X pass, Y issues] |
+| Modal | Instance | Agent Identity Verified | Result |
+|-------|----------|------------------------|--------|
+| Navigation | ui-nav | ✅ ui-feature-verification-test-opus | [X pass, Y issues] |
+| Curation | ui-curation | ✅ ui-feature-verification-test-opus | [X pass, Y issues] |
+| Character | ui-character | ✅ ui-feature-verification-test-opus | [X pass, Y issues] |
+| Pipeline | ui-pipeline | ✅ ui-feature-verification-test-opus | [X pass, Y issues] |
+| Injection | ui-injection | ✅ ui-feature-verification-test-opus | [X pass, Y issues] |
+| Gavel + Components | ui-gavel | ✅ ui-feature-verification-test-opus | [X pass, Y issues] |
 
 ### Phase 3: Review
 - Agent: code-audit-opus

@@ -66,9 +66,11 @@ This document defines ALL paths, conventions, and requirements. Follow it exactl
 ### Tool Verification Process
 
 ```javascript
-// VERIFY MCP TOOLS FIRST - BEFORE ANYTHING ELSE
+// VERIFY THAT AGENTS CAN USE MCP TOOLS FIRST - BEFORE ANYTHING ELSE
+// 
+// SPAWN A dev-haiku agent to test
 
-// Test 1: Memory-keeper (REQUIRED for ALL tasks)
+// Test 1: Memory-keeper (REQUIRED for ALL tasks and agents)
 mcp__memory-keeper__context_session_start({
   name: "TheCouncil-TaskRunner-ToolVerify",
   projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"

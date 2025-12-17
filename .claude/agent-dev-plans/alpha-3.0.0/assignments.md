@@ -90,13 +90,40 @@
 
 ---
 
+## Group 5: Curation System - Working Alpha
+
+| Task | Agent | Rationale | Status |
+|------|-------|-----------|--------|
+| 5.1.1 | dev-sonnet | Moderate - event handler debugging | ⏳ |
+| 5.1.2 | dev-sonnet | Moderate - CSS styling | ⏳ |
+| 5.1.3 | dev-haiku | Simple - null check fix | ⏳ |
+| 5.2.1 | ui-feature-verification-test-opus | Complex - full modal audit | ⏳ |
+| 5.2.2 | ui-feature-verification-test-opus | Complex - controls audit | ⏳ |
+| 5.2.3 | ui-feature-verification-test-opus | Complex - injection audit | ⏳ |
+| 5.3.1 | ui-feature-verification-test-opus | Complex - stores CRUD | ⏳ |
+| 5.3.2 | ui-feature-verification-test-opus | Complex - 17 pipelines | ⏳ |
+| 5.3.3 | ui-feature-verification-test-opus | Complex - 19 pipelines | ⏳ |
+| 5.3.4 | ui-feature-verification-test-sonnet | Moderate - prompt builder | ⏳ |
+| 5.4.1 | ui-feature-verification-test-opus | Complex - E2E execution | ⏳ |
+| 5.4.2 | ui-feature-verification-test-opus | Complex - LLM execution | ⏳ |
+| 5.4.3 | ui-feature-verification-test-opus | Complex - LLM execution | ⏳ |
+| 5.6.1 | ui-feature-verification-test-opus | Complex - final verification | ⏳ |
+| 5.6.2 | project-manager-opus | Sign-off | ⏳ |
+
+**Quality Agents** (planned):
+- ui-feature-verification-test-opus: All visual/functional audits and execution tests
+- project-manager-opus: Final sign-off
+
+---
+
 ## Agent Workload Summary
 
 | Agent | Assigned | Completed |
 |-------|----------|-----------|
 | dev-opus | 4 | 4 |
-| dev-sonnet | 7 | 7 |
-| dev-haiku | 3 | 3 |
+| dev-sonnet | 9 | 7 |
+| dev-haiku | 4 | 3 |
 | code-audit-opus | 3 | 3 |
-| ui-feature-verification-test-opus | 11 | 1 |
-| ui-feature-verification-test-sonnet | 10 | 2 |
+| ui-feature-verification-test-opus | 21 | 1 |
+| ui-feature-verification-test-sonnet | 11 | 2 |
+| project-manager-opus | 1 | 0 |

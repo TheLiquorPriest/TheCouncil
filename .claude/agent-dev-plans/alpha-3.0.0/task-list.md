@@ -186,12 +186,91 @@ Group 4:
   All above → 4.8.1 → 4.9.1
 ```
 
+---
+
+## Group 5: Curation System - Working Alpha ⏳ PENDING
+
+**Focus**: Curation System (with Kernel, Orchestration, Prompt Builder as always-present concerns)
+
+### Block 5.1: Known Critical Bugs (P0)
+
+| ID | Task | Priority | Agent | Status |
+|----|------|----------|-------|--------|
+| 5.1.1 | prompt-builder-drag-drop-duplicates | P0 | dev-sonnet | ⏳ PENDING |
+| 5.1.2 | modal-color-readability | P0 | dev-sonnet | ⏳ PENDING |
+| 5.1.3 | curation-pipeline-builder-typeerror | P0 | dev-haiku | ⏳ PENDING |
+
+### Block 5.2: Curation Visual/UI Audit (P0)
+
+| ID | Task | Priority | Agent | Status |
+|----|------|----------|-------|--------|
+| 5.2.1 | curation-modal-visual-audit | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+| 5.2.2 | nav-modal-curation-audit | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+| 5.2.3 | injection-modal-visual-audit | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+
+### Block 5.3: Curation Functional Audit (P0)
+
+| ID | Task | Priority | Agent | Status |
+|----|------|----------|-------|--------|
+| 5.3.1 | curation-stores-functional-audit | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+| 5.3.2 | curation-crud-pipelines-audit | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+| 5.3.3 | curation-rag-pipelines-audit | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+| 5.3.4 | prompt-builder-curation-audit | P0 | ui-feature-verification-test-sonnet | ⏳ PENDING |
+
+### Block 5.4: Curation Pipeline Execution (P0)
+
+| ID | Task | Priority | Agent | Status |
+|----|------|----------|-------|--------|
+| 5.4.1 | injection-mode-execution | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+| 5.4.2 | crud-pipeline-execution | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+| 5.4.3 | rag-pipeline-execution | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+
+### Block 5.5: Discovery Fixes (P0/P1)
+
+*Tasks created dynamically based on 5.2 and 5.3 findings*
+
+| ID | Task | Priority | Agent | Status |
+|----|------|----------|-------|--------|
+| 5.5.x | TBD | TBD | TBD | ⏳ PENDING |
+
+### Block 5.6: Curation Alpha Verification (P0)
+
+| ID | Task | Priority | Agent | Status |
+|----|------|----------|-------|--------|
+| 5.6.1 | curation-final-verification | P0 | ui-feature-verification-test-opus | ⏳ PENDING |
+| 5.6.2 | group5-sign-off | P0 | project-manager-opus | ⏳ PENDING |
+
+---
+
+## Group 5 Task Dependencies
+
+```
+Block 5.1 (Known Bugs)
+    ↓
+Block 5.2 (Visual Audit) ──┬──→ Block 5.5 (Discovery Fixes)
+Block 5.3 (Functional Audit) ┘        ↓
+    ↓                              Block 5.6 (Verification)
+Block 5.4 (Execution) ─────────────────┘
+
+Specific dependencies:
+  5.3.2 → depends on 5.1.3
+  5.3.3 → depends on 5.1.3
+  5.3.4 → depends on 5.1.1
+  5.4.1 → depends on 5.2.3, 5.3.1
+  5.4.2 → depends on 5.3.2
+  5.4.3 → depends on 5.3.3
+  5.6.1 → depends on all 5.1-5.5 tasks
+  5.6.2 → depends on 5.6.1
+```
+
+---
+
 ## Summary
 
 | Status | Count |
 |--------|-------|
 | ✅ COMPLETE | 14 |
 | 🔄 IN_PROGRESS | 0 |
-| ⏳ PENDING | 18 |
+| ⏳ PENDING | 33 |
 | 🚫 BLOCKED | 0 |
-| **Total** | **32** |
+| **Total** | **47** |
