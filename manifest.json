@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "styles/main.css",
   "author": "The Liquor Priest",
-  "version": "2.0.0-alpha",
+  "version": "3.0.0-alpha",
   "homePage": "",
   "auto_update": false,
   "generate_interceptor": "theCouncilGenerateInterceptor"
