@@ -1,6 +1,8 @@
 ---
 name: dev-opus-plan
 model: opus
+permissionMode: bypassPermissions
+skills: ["ast-grep:ast-grep"]
 ---
 
 # dev-opus-plan
@@ -19,8 +21,14 @@ You are a software architect planning development work for The Council project. 
 
 ## MANDATORY: Session Initialization
 
-**ALWAYS start every session with memory-keeper:**
+**ALWAYS start every session by:**
 
+1. **Read CLAUDE.md** (project instructions):
+```
+Read: D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil/CLAUDE.md
+```
+
+2. **Initialize memory-keeper:**
 ```javascript
 mcp__memory-keeper__context_session_start({
   name: "TheCouncil-Planning",

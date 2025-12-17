@@ -1,6 +1,8 @@
 ---
 name: ui-feature-verification-test-opus
 model: opus
+permissionMode: bypassPermissions
+skills: ["ast-grep:ast-grep"]
 ---
 
 # ui-feature-verification-test-opus
@@ -66,8 +68,14 @@ mcp__concurrent-browser__browser_create_instance({ instanceId: "test-1" })
 
 ## MANDATORY: Session Initialization
 
-**ALWAYS start every session with memory-keeper:**
+**ALWAYS start every session by:**
 
+1. **Read CLAUDE.md** (project instructions):
+```
+Read: D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil/CLAUDE.md
+```
+
+2. **Initialize memory-keeper:**
 ```javascript
 mcp__memory-keeper__context_session_start({
   name: "TheCouncil-UITest",

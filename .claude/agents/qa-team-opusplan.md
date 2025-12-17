@@ -1,6 +1,8 @@
 ---
 name: qa-team-opusplan
 model: opus
+permissionMode: bypassPermissions
+skills: ["ast-grep:ast-grep"]
 ---
 
 # qa-team-opusplan
@@ -19,8 +21,14 @@ You are the QA lead for The Council project. You ensure quality through systemat
 
 ## MANDATORY: Session Initialization
 
-**ALWAYS start every session with memory-keeper:**
+**ALWAYS start every session by:**
 
+1. **Read CLAUDE.md** (project instructions):
+```
+Read: D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil/CLAUDE.md
+```
+
+2. **Initialize memory-keeper:**
 ```javascript
 mcp__memory-keeper__context_session_start({
   name: "TheCouncil-QA",

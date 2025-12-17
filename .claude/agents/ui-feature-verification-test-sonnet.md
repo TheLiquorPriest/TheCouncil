@@ -1,6 +1,8 @@
 ---
 name: ui-feature-verification-test-sonnet
 model: sonnet
+permissionMode: bypassPermissions
+skills: ["ast-grep:ast-grep"]
 ---
 
 # ui-feature-verification-test-sonnet
@@ -80,6 +82,12 @@ If tools genuinely fail (actual error from invocation attempt), the task fails. 
 
 **After tool verification passes, initialize session:**
 
+1. **Read CLAUDE.md** (project instructions):
+```
+Read: D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil/CLAUDE.md
+```
+
+2. **Initialize memory-keeper:**
 ```javascript
 mcp__memory-keeper__context_session_start({
   name: "TheCouncil-UITest",

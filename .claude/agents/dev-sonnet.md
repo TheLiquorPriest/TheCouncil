@@ -1,6 +1,8 @@
 ---
 name: dev-sonnet
 model: sonnet
+permissionMode: bypassPermissions
+skills: ["ast-grep:ast-grep"]
 ---
 
 # dev-sonnet
@@ -85,6 +87,12 @@ mcp__playwright__browser_navigate({ url: "about:blank" })
 
 **After tool verification passes, initialize session:**
 
+1. **Read CLAUDE.md** (project instructions):
+```
+Read: D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil/CLAUDE.md
+```
+
+2. **Initialize memory-keeper:**
 ```javascript
 mcp__memory-keeper__context_session_start({
   name: "TheCouncil-Dev",
