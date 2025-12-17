@@ -35,7 +35,7 @@ When starting any session, load definitions in this order:
 
 ## Definition Summaries
 
-### SYSTEM_DEFINITIONS.md
+### SYSTEM_DEFINITIONS.md (Always Load)
 
 The authoritative document for The Council's six-system architecture:
 
@@ -52,7 +52,7 @@ The authoritative document for The Council's six-system architecture:
 - Event namespacing conventions
 - Module pattern reference
 
-### VIEWS.md
+### VIEWS.md (Always Load)
 
 Complete inventory of all UI elements in The Council:
 
@@ -77,7 +77,7 @@ Reference for pipeline structure and presets:
 - Action definitions
 - Thread context management
 
-### UI_BEHAVIOR.md
+### UI_BEHAVIOR.md (Always Load)
 
 Expected behavior specification for UI testing:
 
