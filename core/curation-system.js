@@ -3188,33 +3188,387 @@ Return list of character IDs/names with relevance reasoning.`,
   },
 
   /**
-   * Execute a CRUD pipeline
+   * Execute a CRUD pipeline with full step execution
    * @param {Object} pipeline - CRUD pipeline definition
    * @param {Object} input - Input data
    * @param {Object} options - Execution options
-   * @returns {Promise<Object>} Execution result
+   * @param {boolean} options.preview - Preview mode (non-destructive)
+   * @param {boolean} options.verbose - Verbose logging
+   * @param {boolean} options.continueOnError - Continue execution on step error
+   * @returns {Promise<Object>} Execution result with step results
    */
   async _executeCRUDPipeline(pipeline, input, options = {}) {
-    const { preview = false } = options;
+    // Build execution context with all necessary state
+    const executionContext = {
+      // Pipeline metadata
+      pipeline: {
+        id: pipeline.id,
+        name: pipeline.name,
+        storeId: pipeline.storeId,
+        operation: pipeline.operation
+      },
 
-    // For now, simple implementation
-    // Future: implement full action execution with agents
+      // Original input to pipeline
+      pipelineInput: input,
+
+      // Step tracking
+      currentStepIndex: 0,
+      totalSteps: pipeline.steps?.length || 0,
+      steps: pipeline.steps || [],
+
+      // Data flow between steps
+      previousStepOutput: null,
+      variables: {},  // Named variables from steps with outputTarget: "variable"
+
+      // Store references
+      targetStore: this._stores.get(pipeline.storeId),
+      targetStoreSchema: this._storeSchemas.get(pipeline.storeId),
+
+      // Execution results
+      stepResults: [],
+      errors: [],
+      warnings: [],
+
+      // Options
+      preview: options.preview || false,
+      verbose: options.verbose || false,
+      continueOnError: options.continueOnError || false,
+
+      // Timing
+      startTime: Date.now(),
+      stepTimings: []
+    };
+
+    this._log('info', `[CurationSystem] Executing CRUD pipeline: ${pipeline.name} (${executionContext.totalSteps} steps, preview: ${executionContext.preview})`);
+
+    // Execute steps in sequence
+    for (let i = 0; i < executionContext.steps.length; i++) {
+      executionContext.currentStepIndex = i;
+      const step = executionContext.steps[i];
+      const stepStartTime = Date.now();
+
+      try {
+        // Emit step start event
+        this._emit('pipeline:step:start', {
+          pipelineId: pipeline.id,
+          stepIndex: i,
+          stepId: step.id,
+          stepName: step.name,
+          totalSteps: executionContext.totalSteps
+        });
+
+        if (executionContext.verbose) {
+          this._log('debug', `[CurationSystem] Step ${i + 1}/${executionContext.totalSteps}: ${step.name}`);
+        }
+
+        // Execute the step (calls methods from 5.7.2-5.7.4)
+        const stepResult = await this._executeStep(step, executionContext);
+
+        const stepDuration = Date.now() - stepStartTime;
+        executionContext.stepTimings.push(stepDuration);
+
+        // Record successful result
+        executionContext.stepResults.push({
+          stepId: step.id,
+          stepIndex: i,
+          stepName: step.name,
+          success: true,
+          output: stepResult.output,
+          duration: stepDuration
+        });
+
+        // Handle output routing (implemented in 5.7.4)
+        await this._routeStepOutput(step, stepResult, executionContext);
+
+        // Emit step complete event
+        this._emit('pipeline:step:complete', {
+          pipelineId: pipeline.id,
+          stepIndex: i,
+          stepId: step.id,
+          stepName: step.name,
+          success: true,
+          duration: stepDuration
+        });
+
+      } catch (error) {
+        const stepDuration = Date.now() - stepStartTime;
+        executionContext.stepTimings.push(stepDuration);
+
+        // Record error in context
+        executionContext.errors.push({
+          stepIndex: i,
+          stepId: step.id,
+          stepName: step.name,
+          error: error.message,
+          stack: error.stack
+        });
+
+        // Record failed result
+        executionContext.stepResults.push({
+          stepId: step.id,
+          stepIndex: i,
+          stepName: step.name,
+          success: false,
+          error: error.message,
+          duration: stepDuration
+        });
+
+        this._log('error', `[CurationSystem] Step ${step.name} failed: ${error.message}`);
+
+        // Emit step error event
+        this._emit('pipeline:step:error', {
+          pipelineId: pipeline.id,
+          stepIndex: i,
+          stepId: step.id,
+          stepName: step.name,
+          error: error.message
+        });
+
+        // Decide whether to continue or abort
+        if (!executionContext.continueOnError) {
+          break;
+        }
+      }
+    }
+
+    // Build final result
+    const totalDuration = Date.now() - executionContext.startTime;
+    const hasErrors = executionContext.errors.length > 0;
 
     const result = {
       operation: pipeline.operation,
       storeId: pipeline.storeId,
-      affectedRecords: [],
-      changes: {},
-      message: `CRUD pipeline executed: ${pipeline.name}`
+      preview: executionContext.preview,
+      totalSteps: executionContext.totalSteps,
+      completedSteps: executionContext.stepResults.filter(r => r.success).length,
+      stepResults: executionContext.stepResults,
+      variables: executionContext.variables,
+      errors: executionContext.errors,
+      warnings: executionContext.warnings,
+      timing: {
+        totalDuration,
+        stepTimings: executionContext.stepTimings
+      },
+      message: hasErrors
+        ? `CRUD pipeline ${pipeline.name}: ${executionContext.errors.length} error(s)`
+        : `CRUD pipeline ${pipeline.name} completed successfully`,
+      success: !hasErrors
     };
 
-    // If preview mode, don't actually modify data
-    if (preview) {
-      result.message += ' (preview mode - no changes made)';
-      result.preview = true;
+    if (executionContext.preview) {
+      result.message += ' (preview mode)';
     }
 
     return result;
+  },
+
+  /**
+   * Resolve the input for a step based on its inputSource configuration
+   * @param {Object} step - Step configuration
+   * @param {Object} executionContext - Current execution context
+   * @returns {*} Resolved input for the step
+   */
+  _resolveStepInput(step, executionContext) {
+    switch (step.inputSource) {
+      case 'pipeline_input':
+        return executionContext.pipelineInput;
+
+      case 'previous_step':
+        return executionContext.previousStepOutput;
+
+      case 'store_data':
+        // Get data from the target store
+        if (executionContext.targetStore) {
+          const schema = executionContext.targetStoreSchema;
+          if (schema?.isSingleton) {
+            return executionContext.targetStore;
+          } else {
+            // Return all entries as array
+            return Array.from(executionContext.targetStore.values());
+          }
+        }
+        return null;
+
+      case 'step_prompt':
+        // The step's prompt template serves as the input
+        return step.promptTemplate || '';
+
+      case 'custom':
+        // Use custom input defined in step configuration
+        return step.customInput || step.inputMapping || {};
+
+      default:
+        this._log('warn', `[CurationSystem] Unknown inputSource: ${step.inputSource}, using pipeline_input`);
+        return executionContext.pipelineInput;
+    }
+  },
+
+  /**
+   * Execute a single pipeline step
+   * This is a skeleton method that will be fully implemented in tasks 5.7.2-5.7.4
+   * @param {Object} step - Step configuration
+   * @param {Object} executionContext - Current execution context
+   * @returns {Promise<Object>} Step execution result
+   */
+  async _executeStep(step, executionContext) {
+    // 1. Resolve step input
+    const stepInput = this._resolveStepInput(step, executionContext);
+
+    // 2. Resolve agent (5.7.3 will implement full agent resolution)
+    const agent = step.agentId ? this.getCurationAgent(step.agentId) : null;
+
+    // 3. Build prompt context (5.7.2 will implement)
+    const promptContext = this._buildStepPromptContext(step, stepInput, executionContext);
+
+    // 4. Resolve prompt (5.7.2 will implement)
+    const resolvedPrompt = await this._resolveStepPrompt(step, promptContext);
+
+    // 5. If preview mode, don't call LLM (5.7.5 will implement)
+    if (executionContext.preview) {
+      return this._generatePreviewResult(step, resolvedPrompt, promptContext);
+    }
+
+    // 6. Call LLM (5.7.3 will implement)
+    const llmResponse = await this._callAgentLLM(agent, resolvedPrompt, step, executionContext);
+
+    // 7. Parse response (5.7.4 will implement)
+    const parsedOutput = this._parseStepOutput(step, llmResponse);
+
+    return {
+      input: stepInput,
+      prompt: resolvedPrompt,
+      rawResponse: llmResponse,
+      output: parsedOutput
+    };
+  },
+
+  /**
+   * Build prompt context for a step
+   * Skeleton method - will be fully implemented in 5.7.2
+   * @param {Object} step - Step configuration
+   * @param {*} stepInput - Resolved input for the step
+   * @param {Object} executionContext - Current execution context
+   * @returns {Object} Prompt context for token resolution
+   */
+  _buildStepPromptContext(step, stepInput, executionContext) {
+    // Skeleton implementation - 5.7.2 will add full context building
+    return {
+      input: stepInput,
+      pipeline: executionContext.pipeline,
+      variables: executionContext.variables,
+      store: executionContext.targetStore,
+      previousOutput: executionContext.previousStepOutput
+    };
+  },
+
+  /**
+   * Resolve step prompt with token substitution
+   * Skeleton method - will be fully implemented in 5.7.2
+   * @param {Object} step - Step configuration
+   * @param {Object} promptContext - Context for token resolution
+   * @returns {Promise<string>} Resolved prompt string
+   */
+  async _resolveStepPrompt(step, promptContext) {
+    // Skeleton implementation - 5.7.2 will add PromptBuilder integration
+    let prompt = step.promptTemplate || '';
+
+    // Basic {{input}} replacement for now
+    if (promptContext.input !== undefined) {
+      const inputStr = typeof promptContext.input === 'string'
+        ? promptContext.input
+        : JSON.stringify(promptContext.input, null, 2);
+      prompt = prompt.replace(/\{\{input\}\}/g, inputStr);
+    }
+
+    return prompt;
+  },
+
+  /**
+   * Generate preview result without calling LLM
+   * Skeleton method - will be fully implemented in 5.7.5
+   * @param {Object} step - Step configuration
+   * @param {string} resolvedPrompt - The resolved prompt
+   * @param {Object} promptContext - Prompt context
+   * @returns {Object} Preview result
+   */
+  _generatePreviewResult(step, resolvedPrompt, promptContext) {
+    // Skeleton implementation - 5.7.5 will add proper preview generation
+    return {
+      input: promptContext.input,
+      prompt: resolvedPrompt,
+      rawResponse: '[PREVIEW MODE - No LLM call made]',
+      output: {
+        preview: true,
+        stepName: step.name,
+        promptLength: resolvedPrompt.length,
+        inputSummary: typeof promptContext.input === 'string'
+          ? promptContext.input.substring(0, 100)
+          : JSON.stringify(promptContext.input).substring(0, 100)
+      }
+    };
+  },
+
+  /**
+   * Call LLM with agent configuration
+   * Skeleton method - will be fully implemented in 5.7.3
+   * @param {Object} agent - Agent configuration (may be null)
+   * @param {string} prompt - Resolved prompt
+   * @param {Object} step - Step configuration
+   * @param {Object} executionContext - Execution context
+   * @returns {Promise<string>} LLM response
+   */
+  async _callAgentLLM(agent, prompt, step, executionContext) {
+    // Skeleton implementation - 5.7.3 will add full LLM integration
+    throw new Error(`[CurationSystem] _callAgentLLM not implemented - Task 5.7.3 required`);
+  },
+
+  /**
+   * Parse step output based on expected format
+   * Skeleton method - will be fully implemented in 5.7.4
+   * @param {Object} step - Step configuration
+   * @param {string} llmResponse - Raw LLM response
+   * @returns {*} Parsed output
+   */
+  _parseStepOutput(step, llmResponse) {
+    // Skeleton implementation - 5.7.4 will add format parsing
+    return llmResponse;
+  },
+
+  /**
+   * Route step output to appropriate destination
+   * Skeleton method - will be fully implemented in 5.7.4
+   * @param {Object} step - Step configuration
+   * @param {Object} stepResult - Result from step execution
+   * @param {Object} executionContext - Current execution context
+   * @returns {Promise<void>}
+   */
+  async _routeStepOutput(step, stepResult, executionContext) {
+    // Update previousStepOutput for next step
+    executionContext.previousStepOutput = stepResult.output;
+
+    // Route based on outputTarget
+    switch (step.outputTarget) {
+      case 'next_step':
+        // Already handled by previousStepOutput update
+        break;
+
+      case 'variable':
+        // Store in named variable
+        if (step.variableName) {
+          executionContext.variables[step.variableName] = stepResult.output;
+        }
+        break;
+
+      case 'store':
+        // 5.7.4 will implement store writing
+        // For now, just log the intent
+        this._log('debug', `[CurationSystem] Output routing to store: ${executionContext.pipeline.storeId}`);
+        break;
+
+      default:
+        // Default behavior: just pass to next step
+        break;
+    }
   },
 
   // ===== PIPELINE PREVIEW MODE =====
