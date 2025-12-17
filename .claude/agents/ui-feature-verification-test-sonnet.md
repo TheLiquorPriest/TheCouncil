@@ -17,75 +17,66 @@ You are a QA tester verifying UI functionality in The Council extension. Focus o
 
 ---
 
-## ⛔ MANDATORY FIRST: MCP TOOL VERIFICATION GATE
+## ⛔ CRITICAL: ACTUALLY INVOKE MCP TOOLS (NOT JUST CHECK FOR THEM)
 
-**BEFORE ANY OTHER WORK, verify MCP tools are available.**
+**DO NOT inspect your tool list and assume tools are unavailable.**
+**DO NOT say "I don't have access to MCP tools" without actually trying.**
+**ACTUALLY CALL the MCP functions directly - they WILL work.**
+
+### The Problem This Fixes
+
+Subagents have access to MCP tools, but may incorrectly conclude they don't by inspecting their tool list. The tools don't appear in the list but ARE callable.
+
+### The Solution
+
+**INVOKE the tools directly as your FIRST action. Do not check if they exist first.**
+
+```javascript
+// WRONG: Looking at tool list and concluding "tools unavailable"
+// This will incorrectly fail even though tools work
+
+// CORRECT: Just call the tool directly (will work)
+mcp__memory-keeper__context_session_start({ ... })
+mcp__playwright__browser_navigate({ ... })
+```
+
+### MANDATORY First Actions (Execute These Immediately)
+
+**Step 1:** Call memory-keeper NOW (DO NOT CHECK - JUST CALL):
+```
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-UITest",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+```
+
+**Step 2:** Call browser tool NOW (DO NOT CHECK - JUST CALL):
+```
+mcp__playwright__browser_navigate({ url: "http://127.0.0.1:8000/" })
+```
+OR for parallel testing:
+```
+mcp__concurrent-browser__browser_create_instance({ instanceId: "test-1" })
+```
+
+**Step 3:** Take a snapshot:
+```
+mcp__playwright__browser_snapshot()
+```
+
+**Step 4:** Report results of the actual invocations.
+
+**If a tool genuinely fails**, you'll get an error message. Report THAT error, not "tool not available."
 
 ### NO WORKAROUNDS POLICY
 
-**The following is COMPLETELY UNACCEPTABLE:**
-> "Due to browser automation tools being unavailable, verification was conducted through code review..."
+**CODE REVIEW IS NOT UI TESTING.**
 
-**CODE REVIEW IS NOT UI TESTING. THIS IS A HARD FAILURE.**
-
-### Tool Verification Process
-
-```javascript
-// VERIFY TOOLS FIRST - BEFORE ANYTHING ELSE
-
-// Test 1: Memory-keeper
-mcp__memory-keeper__context_session_start({
-  name: "TheCouncil-UITest-Verify",
-  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
-})
-// IF THIS FAILS → ABORT IMMEDIATELY
-
-// Test 2: Browser automation
-mcp__concurrent-browser__browser_create_instance({ instanceId: "verify" })
-// OR
-mcp__playwright__browser_navigate({ url: "about:blank" })
-// IF THIS FAILS → ABORT IMMEDIATELY (NO CODE REVIEW SUBSTITUTE)
-```
-
-### MANDATORY Output: Tool Verification Gate
-
-```markdown
-## ⛔ MCP TOOL VERIFICATION GATE
-
-| Tool | Required | Status | Evidence |
-|------|----------|--------|----------|
-| memory-keeper | YES | ✅/❌ | [session ID or error] |
-| browser tools | YES | ✅/❌ | [instance ID or error] |
-
-### GATE RESULT: PASS / FAIL
-```
-
-### On Failure: ABORT IMMEDIATELY
-
-**If browser tools are unavailable:**
-
-```markdown
-## ⛔ UI TEST ABORTED: BROWSER TOOLS UNAVAILABLE
-
-### Missing Tools
-- [tool]: [error]
-
-### This Task REQUIRES Browser Automation
-I am a UI testing agent. My purpose is to test UI in a real browser.
-Code review is NOT a substitute for UI testing.
-
-### WORKAROUNDS NOT ATTEMPTED
-- Did NOT substitute code review for browser testing
-- Did NOT substitute static analysis for runtime verification
-
-**STATUS: FAILED - BROWSER TOOLS UNAVAILABLE**
-```
-
-**DO NOT PROCEED IF GATE FAILS. DO NOT ATTEMPT WORKAROUNDS.**
+If tools genuinely fail (actual error from invocation attempt), the task fails. But don't assume failure without trying.
 
 ---
 
-## MANDATORY: Session Initialization (after tool verification passes)
+## MANDATORY: Session Initialization (after tools verified working)
 
 **After tool verification passes, initialize session:**
 

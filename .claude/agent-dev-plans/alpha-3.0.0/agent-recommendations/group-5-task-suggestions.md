@@ -266,3 +266,315 @@ All verification points in Blocks 4.1-4.6 passed. The Kernel infrastructure, Cur
 | P2 (Medium) | 6 |
 | P3 (Low) | 10 |
 | **Total** | **16** |
+
+---
+
+# Active Pipeline Testing Tasks (Group 4.7 Gap)
+
+**Source**: Block 4.7 UI Modal Verification
+**Date**: 2025-12-15
+**Reason**: 2 tests require active pipeline execution
+
+## Executive Summary
+
+Group 4 verification achieved 96.7% coverage (58/60 tests). The 2 remaining tests require an **active pipeline execution** to verify:
+
+1. **Run/Stop button functionality** - Requires pipeline to be running
+2. **Gavel Modal intervention** - Only appears during execution at gavel points
+
+---
+
+## Block 5.3: Pipeline Execution Setup
+
+### Task 5.3.1: create-test-pipeline-preset
+
+**Priority:** P0 (Required for all active pipeline tests)
+**Agent:** dev-sonnet
+**Complexity:** Moderate (1-2 hours)
+
+**Description:**
+Create a dedicated test pipeline preset that:
+- Has all required components (agents, positions, teams, phases, actions)
+- Includes at least one gavel intervention point
+- Runs quickly (minimal API calls or mock responses)
+- Is reproducible and deterministic
+
+**Files:**
+- Create: `data/presets/test-pipeline.json`
+- Modify: `tests/integration-test.js` (add preset validation)
+
+**Acceptance Criteria:**
+- [ ] Preset loads without errors
+- [ ] Preset contains at least 2 agents
+- [ ] Preset contains at least 1 team
+- [ ] Preset contains at least 2 phases
+- [ ] Preset includes 1+ gavel intervention point
+- [ ] Preset documented in comments
+
+---
+
+### Task 5.3.2: implement-mock-api-mode
+
+**Priority:** P1 (Enables testing without real API calls)
+**Agent:** dev-sonnet
+**Complexity:** Moderate (2-3 hours)
+
+**Description:**
+Add a mock mode to the API client that returns predetermined responses, enabling pipeline execution testing without consuming API credits.
+
+**Files:**
+- `utils/api-client.js` (add mock mode)
+- `core/orchestration-system.js` (respect mock setting)
+
+**Acceptance Criteria:**
+- [ ] `ApiClient.setMockMode(true)` enables mocking
+- [ ] Mock responses are configurable
+- [ ] Pipeline executes with mock responses
+- [ ] No actual API calls made in mock mode
+- [ ] Console logs indicate mock mode active
+
+---
+
+## Block 5.4: Run/Stop Button Verification
+
+### Task 5.4.1: run-button-verification
+
+**Priority:** P0 (Critical - untested in Group 4)
+**Agent:** ui-feature-verification-test-opus
+**Browser Test:** Yes
+**Dependencies:** 5.3.1
+
+**Description:**
+Verify Run button starts pipeline execution and all associated UI state changes.
+
+**Verification Points:**
+
+| ID | Feature | Method | Pass Criteria |
+|----|---------|--------|---------------|
+| RUN1 | Run button click | Click Run in Nav Modal | Pipeline starts |
+| RUN2 | Button state change | Observe Run button | Becomes disabled during run |
+| RUN3 | Stop button enable | Observe Stop button | Becomes enabled during run |
+| RUN4 | Status bar update | Observe status | Shows "Running..." |
+| RUN5 | Progress indicator | Observe progress | Shows phase/action progress |
+
+**Acceptance Criteria:**
+- [ ] Run button initiates pipeline execution
+- [ ] Run button disabled during execution
+- [ ] Stop button enabled during execution
+- [ ] Status bar shows running state
+- [ ] No console errors during execution
+
+---
+
+### Task 5.4.2: stop-button-verification
+
+**Priority:** P0 (Critical - untested in Group 4)
+**Agent:** ui-feature-verification-test-opus
+**Browser Test:** Yes
+**Dependencies:** 5.4.1
+
+**Description:**
+Verify Stop button aborts pipeline execution cleanly.
+
+**Verification Points:**
+
+| ID | Feature | Method | Pass Criteria |
+|----|---------|--------|---------------|
+| STOP1 | Stop button click | Click Stop during run | Execution aborts |
+| STOP2 | State cleanup | Observe UI | Returns to idle state |
+| STOP3 | Run re-enable | Observe Run button | Becomes enabled again |
+| STOP4 | Stop disable | Observe Stop button | Becomes disabled again |
+| STOP5 | Status update | Observe status | Shows "Aborted" then "Ready" |
+
+**Acceptance Criteria:**
+- [ ] Stop button halts execution immediately
+- [ ] UI returns to idle state
+- [ ] Run/Stop buttons reset correctly
+- [ ] No orphaned processes or hanging state
+
+---
+
+### Task 5.4.3: pause-resume-verification
+
+**Priority:** P1 (Important for full coverage)
+**Agent:** ui-feature-verification-test-sonnet
+**Browser Test:** Yes
+**Dependencies:** 5.4.1
+
+**Description:**
+Verify Pause and Resume functionality during pipeline execution.
+
+**Acceptance Criteria:**
+- [ ] Pause halts execution without aborting
+- [ ] State preserved at pause point
+- [ ] Resume continues from pause point
+
+---
+
+## Block 5.5: Gavel Modal Verification
+
+### Task 5.5.1: gavel-modal-appearance
+
+**Priority:** P0 (Critical - untested in Group 4)
+**Agent:** ui-feature-verification-test-opus
+**Browser Test:** Yes
+**Dependencies:** 5.3.1 (test pipeline with gavel point)
+
+**Description:**
+Verify Gavel Modal appears at intervention points during pipeline execution.
+
+**Verification Points:**
+
+| ID | Feature | Method | Pass Criteria |
+|----|---------|--------|---------------|
+| GAV1 | Modal trigger | Run pipeline to gavel point | Modal appears |
+| GAV2 | Execution pause | Observe state | Pipeline paused at gavel |
+| GAV3 | Content display | Observe modal | Shows current output for review |
+| GAV4 | Intervention options | Observe buttons | Approve/Edit/Reject visible |
+| GAV5 | Keyboard shortcuts | Test Ctrl+Enter, Escape | Shortcuts work |
+
+**Acceptance Criteria:**
+- [ ] Gavel modal appears automatically at gavel points
+- [ ] Pipeline execution paused while modal open
+- [ ] Current phase output displayed for review
+- [ ] All intervention buttons present
+
+---
+
+### Task 5.5.2: gavel-approve-action
+
+**Priority:** P0 (Critical)
+**Agent:** ui-feature-verification-test-opus
+**Browser Test:** Yes
+**Dependencies:** 5.5.1
+
+**Description:**
+Verify Approve action in Gavel Modal continues execution.
+
+**Acceptance Criteria:**
+- [ ] Approve continues pipeline
+- [ ] Modal closes automatically
+- [ ] Execution proceeds to next phase
+- [ ] Ctrl+Enter keyboard shortcut works
+
+---
+
+### Task 5.5.3: gavel-edit-action
+
+**Priority:** P1 (Important)
+**Agent:** ui-feature-verification-test-opus
+**Browser Test:** Yes
+**Dependencies:** 5.5.1
+
+**Description:**
+Verify Edit action in Gavel Modal allows modification before continuing.
+
+**Acceptance Criteria:**
+- [ ] Edit mode allows content modification
+- [ ] Modified content used for next phase
+- [ ] Cancel edit returns to review mode
+
+---
+
+### Task 5.5.4: gavel-reject-action
+
+**Priority:** P1 (Important)
+**Agent:** ui-feature-verification-test-opus
+**Browser Test:** Yes
+**Dependencies:** 5.5.1
+
+**Description:**
+Verify Reject action in Gavel Modal triggers retry or abort.
+
+**Acceptance Criteria:**
+- [ ] Reject triggers appropriate action (retry or abort)
+- [ ] User feedback captured if configured
+- [ ] Escape keyboard shortcut works
+
+---
+
+## Block 5.6: Execution State Verification
+
+### Task 5.6.1: execution-state-transitions
+
+**Priority:** P1 (Important for completeness)
+**Agent:** ui-feature-verification-test-sonnet
+**Browser Test:** Yes
+**Dependencies:** 5.3.1
+
+**Description:**
+Verify all execution state transitions are correct and UI reflects them.
+
+**State Diagram:**
+```
+IDLE → RUNNING → COMPLETED
+  ↑        ↓
+  ↑    [PAUSED]
+  ↑        ↓
+  ←── ABORTED
+  ←── FAILED
+```
+
+**Acceptance Criteria:**
+- [ ] All 6 state transitions work correctly
+- [ ] UI updates for each state
+- [ ] State persists correctly
+- [ ] No invalid state combinations
+
+---
+
+## Task Dependency Graph
+
+```
+Block 5.3: Setup
+├── 5.3.1: create-test-pipeline-preset (FIRST)
+└── 5.3.2: implement-mock-api-mode
+
+Block 5.4: Run/Stop (depends on 5.3.1)
+├── 5.4.1: run-button-verification
+├── 5.4.2: stop-button-verification (depends on 5.4.1)
+└── 5.4.3: pause-resume-verification (depends on 5.4.1)
+
+Block 5.5: Gavel Modal (depends on 5.3.1)
+├── 5.5.1: gavel-modal-appearance
+├── 5.5.2: gavel-approve-action (depends on 5.5.1)
+├── 5.5.3: gavel-edit-action (depends on 5.5.1)
+└── 5.5.4: gavel-reject-action (depends on 5.5.1)
+
+Block 5.6: State Verification (depends on 5.3.1)
+└── 5.6.1: execution-state-transitions
+```
+
+---
+
+## Estimated Effort: Active Pipeline Testing
+
+| Block | Tasks | Priority | Hours |
+|-------|-------|----------|-------|
+| 5.3 Setup | 2 | P0/P1 | 3-5 |
+| 5.4 Run/Stop | 3 | P0/P1 | 2-3 |
+| 5.5 Gavel | 4 | P0/P1 | 3-4 |
+| 5.6 State | 1 | P1 | 1-2 |
+| **Total** | **10** | | **9-14 hours** |
+
+---
+
+## Quick Reference: Active Pipeline Tasks
+
+| Task ID | Priority | Agent | Browser | Dependency |
+|---------|----------|-------|---------|------------|
+| 5.3.1 | P0 | dev-sonnet | No | None |
+| 5.3.2 | P1 | dev-sonnet | No | None |
+| 5.4.1 | P0 | ui-test-opus | Yes | 5.3.1 |
+| 5.4.2 | P0 | ui-test-opus | Yes | 5.4.1 |
+| 5.4.3 | P1 | ui-test-sonnet | Yes | 5.4.1 |
+| 5.5.1 | P0 | ui-test-opus | Yes | 5.3.1 |
+| 5.5.2 | P0 | ui-test-opus | Yes | 5.5.1 |
+| 5.5.3 | P1 | ui-test-opus | Yes | 5.5.1 |
+| 5.5.4 | P1 | ui-test-opus | Yes | 5.5.1 |
+| 5.6.1 | P1 | ui-test-sonnet | Yes | 5.3.1 |
+
+---
+
+*Updated: 2025-12-15*
+*Source: Group 4 Block 4.7 Verification - Untested Areas*

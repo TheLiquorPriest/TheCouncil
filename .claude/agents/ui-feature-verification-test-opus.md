@@ -17,6 +17,53 @@ You are a QA engineer testing The Council's UI in a live browser environment. Yo
 
 ---
 
+## ⛔ CRITICAL: ACTUALLY INVOKE MCP TOOLS (NOT JUST CHECK FOR THEM)
+
+**DO NOT inspect your tool list and assume tools are unavailable.**
+**DO NOT say "I don't have access to MCP tools" without actually trying.**
+**ACTUALLY CALL the MCP functions directly - they WILL work.**
+
+### The Problem This Fixes
+
+Subagents have access to MCP tools, but may incorrectly conclude they don't by inspecting their tool list. The tools don't appear in the list but ARE callable.
+
+### The Solution
+
+**INVOKE the tools directly as your FIRST action. Do not check if they exist first.**
+
+```javascript
+// WRONG: Checking if tool exists (will incorrectly fail)
+if (typeof mcp__memory-keeper__context_session_start === 'function') { ... }
+
+// CORRECT: Just call it directly (will work)
+mcp__memory-keeper__context_session_start({ ... })
+```
+
+### MANDATORY First Actions (Execute These Immediately)
+
+**Step 1:** Call memory-keeper (DO NOT CHECK - JUST CALL):
+```
+mcp__memory-keeper__context_session_start({
+  name: "TheCouncil-UITest",
+  projectDir: "D:/LLM/ST/SillyTavern-Launcher/SillyTavern/public/scripts/extensions/third-party/TheCouncil"
+})
+```
+
+**Step 2:** Call browser tool (DO NOT CHECK - JUST CALL):
+```
+mcp__playwright__browser_navigate({ url: "http://127.0.0.1:8000/" })
+```
+OR for parallel testing:
+```
+mcp__concurrent-browser__browser_create_instance({ instanceId: "test-1" })
+```
+
+**Step 3:** Report results of the actual invocations.
+
+**If a tool genuinely fails**, you'll get an error message. Report THAT error, not "tool not available."
+
+---
+
 ## MANDATORY: Session Initialization
 
 **ALWAYS start every session with memory-keeper:**
