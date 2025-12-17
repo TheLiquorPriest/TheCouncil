@@ -4240,51 +4240,592 @@ Return list of character IDs/names with relevance reasoning.`,
 
   /**
    * Parse step output based on expected format
-   * Skeleton method - will be fully implemented in 5.7.4
    * @param {Object} step - Step configuration
-   * @param {string} llmResponse - Raw LLM response
-   * @returns {*} Parsed output
+   * @param {Object} llmResponse - LLM response object
+   * @returns {Object} Parsed output with raw, parsed, and type properties
    */
   _parseStepOutput(step, llmResponse) {
-    // Skeleton implementation - 5.7.4 will add format parsing
-    return llmResponse;
+    const content = llmResponse?.content || llmResponse;
+
+    if (!content) {
+      return { raw: '', parsed: null, type: 'empty' };
+    }
+
+    // Check if output should be JSON
+    const expectJson = step.outputTarget === 'store' || step.expectJson === true;
+
+    if (expectJson) {
+      return this._parseJsonOutput(content, step);
+    }
+
+    // Text output
+    return {
+      raw: content,
+      parsed: typeof content === 'string' ? content.trim() : content,
+      type: 'text'
+    };
+  },
+
+  /**
+   * Parse JSON output from LLM response
+   * Handles markdown code blocks and raw JSON
+   * @param {string} content - Raw content to parse
+   * @param {Object} step - Step configuration
+   * @returns {Object} Parsed JSON output
+   */
+  _parseJsonOutput(content, step) {
+    // Handle non-string content
+    if (typeof content !== 'string') {
+      if (typeof content === 'object') {
+        return {
+          raw: JSON.stringify(content),
+          parsed: content,
+          type: 'json'
+        };
+      }
+      return {
+        raw: String(content),
+        parsed: null,
+        type: 'json_error',
+        error: 'Content is not a string or object'
+      };
+    }
+
+    let jsonStr = content;
+
+    // Try extracting from code block
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      jsonStr = codeBlockMatch[1].trim();
+    }
+
+    // Try extracting from raw JSON bounds (object or array)
+    const jsonMatch = content.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    if (!codeBlockMatch && jsonMatch) {
+      jsonStr = jsonMatch[1];
+    }
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+      return {
+        raw: content,
+        parsed,
+        type: 'json'
+      };
+    } catch (error) {
+      this._log('warn', `Failed to parse JSON output for step ${step.id}: ${error.message}`);
+      return {
+        raw: content,
+        parsed: null,
+        type: 'json_error',
+        error: error.message
+      };
+    }
   },
 
   /**
    * Route step output to appropriate destination
-   * Skeleton method - will be fully implemented in 5.7.4
    * @param {Object} step - Step configuration
    * @param {Object} stepResult - Result from step execution
    * @param {Object} executionContext - Current execution context
    * @returns {Promise<void>}
    */
   async _routeStepOutput(step, stepResult, executionContext) {
-    // Update previousStepOutput for next step
-    executionContext.previousStepOutput = stepResult.output;
+    const { outputTarget, variableName } = step;
+    const output = stepResult.output;
 
-    // Route based on outputTarget
-    switch (step.outputTarget) {
+    switch (outputTarget) {
       case 'next_step':
-        // Already handled by previousStepOutput update
+        // Store for next step's input
+        executionContext.previousStepOutput = output.parsed !== undefined ? output.parsed : output.raw;
+        this._log('debug', `Step ${step.id} output routed to next step`);
+        break;
+
+      case 'store':
+        // Write to curation store
+        if (!executionContext.preview) {
+          await this._writeToStore(output, executionContext);
+        } else {
+          // Record what would be written for preview
+          executionContext.previewWrites = executionContext.previewWrites || [];
+          executionContext.previewWrites.push({
+            stepId: step.id,
+            stepName: step.name,
+            storeId: executionContext.pipeline.storeId,
+            operation: executionContext.pipeline.operation,
+            data: output.parsed
+          });
+        }
+        // Also pass to next step
+        executionContext.previousStepOutput = output.parsed !== undefined ? output.parsed : output.raw;
         break;
 
       case 'variable':
         // Store in named variable
-        if (step.variableName) {
-          executionContext.variables[step.variableName] = stepResult.output;
+        if (variableName) {
+          executionContext.variables[variableName] = output.parsed !== undefined ? output.parsed : output.raw;
+          this._log('debug', `Step ${step.id} output stored in variable: ${variableName}`);
+        } else {
+          this._log('warn', `Step ${step.id} has variable output but no variableName`);
         }
-        break;
-
-      case 'store':
-        // 5.7.4 will implement store writing
-        // For now, just log the intent
-        this._log('debug', `[CurationSystem] Output routing to store: ${executionContext.pipeline.storeId}`);
+        // Also pass to next step
+        executionContext.previousStepOutput = output.parsed !== undefined ? output.parsed : output.raw;
         break;
 
       default:
-        // Default behavior: just pass to next step
-        break;
+        this._log('warn', `Unknown outputTarget: ${outputTarget}, defaulting to next_step`);
+        executionContext.previousStepOutput = output.parsed !== undefined ? output.parsed : output.raw;
     }
+  },
+
+  // ===== STORE WRITE OPERATIONS (Pipeline Integration) =====
+
+  /**
+   * Write parsed output to the target store
+   * Routes to appropriate CRUD operation based on pipeline configuration
+   * @param {Object} output - Parsed output from step
+   * @param {Object} executionContext - Current execution context
+   * @returns {Promise<Object>} Write operation result
+   */
+  async _writeToStore(output, executionContext) {
+    const { storeId, operation } = executionContext.pipeline;
+    const store = executionContext.targetStore;
+    const schema = executionContext.targetStoreSchema;
+
+    if (!store) {
+      throw new Error(`Target store not found: ${storeId}`);
+    }
+
+    const data = output.parsed;
+    if (!data) {
+      throw new Error('No valid data to write to store (JSON parse failed or empty)');
+    }
+
+    this._log('debug', `Writing to store ${storeId} with operation ${operation}:`, this._summarizeData(data));
+
+    // Emit store write start event
+    this._emit('pipeline:store:write:start', {
+      pipelineId: executionContext.pipeline.id,
+      storeId,
+      operation,
+      dataPreview: this._summarizeData(data)
+    });
+
+    try {
+      let result;
+
+      switch (operation) {
+        case 'create':
+          result = await this._storeCreate(store, schema, data, executionContext);
+          break;
+
+        case 'update':
+          result = await this._storeUpdate(store, schema, data, executionContext);
+          break;
+
+        case 'delete':
+          result = await this._storeDelete(store, schema, data, executionContext);
+          break;
+
+        case 'upsert':
+          result = await this._storeUpsert(store, schema, data, executionContext);
+          break;
+
+        default:
+          throw new Error(`Unknown store operation: ${operation}`);
+      }
+
+      // Record affected records
+      executionContext.affectedRecords = executionContext.affectedRecords || [];
+      executionContext.affectedRecords.push(...(result.affectedRecords || []));
+
+      // Emit store write complete event
+      this._emit('pipeline:store:write:complete', {
+        pipelineId: executionContext.pipeline.id,
+        storeId,
+        operation,
+        affectedCount: result.affectedRecords?.length || 0
+      });
+
+      return result;
+
+    } catch (error) {
+      // Emit store write error event
+      this._emit('pipeline:store:write:error', {
+        pipelineId: executionContext.pipeline.id,
+        storeId,
+        operation,
+        error: error.message
+      });
+
+      throw error;
+    }
+  },
+
+  /**
+   * Create new records in store
+   * @param {Map|Object} store - Target store
+   * @param {Object} schema - Store schema
+   * @param {Object|Array} data - Data to create
+   * @param {Object} executionContext - Execution context
+   * @returns {Promise<Object>} Result with affected records
+   */
+  async _storeCreate(store, schema, data, executionContext) {
+    const records = Array.isArray(data) ? data : [data];
+    const affectedRecords = [];
+
+    for (const record of records) {
+      // Validate against schema if available
+      if (schema) {
+        this._validateRecordAgainstSchema(record, schema);
+      }
+
+      // Generate key if not provided - use schema's primaryKey field
+      const primaryKey = schema?.primaryKey || 'id';
+      const key = record[primaryKey] || record.key || record.id || this._generateRecordKey(record);
+
+      // Check if key already exists
+      const exists = store instanceof Map ? store.has(key) : (key in store);
+      if (exists) {
+        throw new Error(`Record with key ${key} already exists. Use 'update' or 'upsert' operation.`);
+      }
+
+      // Add metadata
+      const enrichedRecord = {
+        ...record,
+        [primaryKey]: key,  // Ensure primary key is set
+        _meta: {
+          createdAt: new Date().toISOString(),
+          createdBy: executionContext.pipeline.id,
+          version: 1
+        }
+      };
+
+      // Write to store
+      if (store instanceof Map) {
+        store.set(key, enrichedRecord);
+      } else {
+        store[key] = enrichedRecord;
+      }
+
+      affectedRecords.push({ key, operation: 'create', record: enrichedRecord });
+    }
+
+    // Trigger persistence
+    await this._persistStore(executionContext.pipeline.storeId);
+
+    return { affectedRecords };
+  },
+
+  /**
+   * Update existing records in store
+   * @param {Map|Object} store - Target store
+   * @param {Object} schema - Store schema
+   * @param {Object|Array} data - Data to update
+   * @param {Object} executionContext - Execution context
+   * @returns {Promise<Object>} Result with affected records
+   */
+  async _storeUpdate(store, schema, data, executionContext) {
+    const records = Array.isArray(data) ? data : [data];
+    const affectedRecords = [];
+
+    for (const record of records) {
+      const primaryKey = schema?.primaryKey || 'id';
+      const key = record[primaryKey] || record.key || record.id;
+      if (!key) {
+        throw new Error('Update operation requires a key or id field');
+      }
+
+      // Get existing record
+      const existing = store instanceof Map ? store.get(key) : store[key];
+      if (!existing) {
+        throw new Error(`Record with key ${key} not found for update`);
+      }
+
+      // Merge with existing
+      const updated = {
+        ...existing,
+        ...record,
+        _meta: {
+          ...existing._meta,
+          updatedAt: new Date().toISOString(),
+          updatedBy: executionContext.pipeline.id,
+          version: (existing._meta?.version || 0) + 1
+        }
+      };
+
+      // Validate
+      if (schema) {
+        this._validateRecordAgainstSchema(updated, schema);
+      }
+
+      // Write
+      if (store instanceof Map) {
+        store.set(key, updated);
+      } else {
+        store[key] = updated;
+      }
+
+      affectedRecords.push({ key, operation: 'update', record: updated, previousRecord: existing });
+    }
+
+    await this._persistStore(executionContext.pipeline.storeId);
+
+    return { affectedRecords };
+  },
+
+  /**
+   * Delete records from store
+   * @param {Map|Object} store - Target store
+   * @param {Object} schema - Store schema
+   * @param {Object|Array|string} data - Keys or objects with keys to delete
+   * @param {Object} executionContext - Execution context
+   * @returns {Promise<Object>} Result with affected records
+   */
+  async _storeDelete(store, schema, data, executionContext) {
+    const primaryKey = schema?.primaryKey || 'id';
+
+    // Extract keys from data - handle various formats
+    let keys;
+    if (Array.isArray(data)) {
+      keys = data.map(d => {
+        if (typeof d === 'string') return d;
+        return d[primaryKey] || d.key || d.id || d;
+      });
+    } else if (typeof data === 'object') {
+      keys = [data[primaryKey] || data.key || data.id];
+    } else {
+      keys = [data];
+    }
+
+    const affectedRecords = [];
+
+    for (const key of keys) {
+      if (!key) continue;
+
+      const existing = store instanceof Map ? store.get(key) : store[key];
+
+      if (!existing) {
+        this._log('warn', `Record with key ${key} not found for delete`);
+        continue;
+      }
+
+      // Delete
+      if (store instanceof Map) {
+        store.delete(key);
+      } else {
+        delete store[key];
+      }
+
+      affectedRecords.push({ key, operation: 'delete', previousRecord: existing });
+    }
+
+    await this._persistStore(executionContext.pipeline.storeId);
+
+    return { affectedRecords };
+  },
+
+  /**
+   * Upsert records in store (create or update)
+   * @param {Map|Object} store - Target store
+   * @param {Object} schema - Store schema
+   * @param {Object|Array} data - Data to upsert
+   * @param {Object} executionContext - Execution context
+   * @returns {Promise<Object>} Result with affected records
+   */
+  async _storeUpsert(store, schema, data, executionContext) {
+    const records = Array.isArray(data) ? data : [data];
+    const affectedRecords = [];
+
+    for (const record of records) {
+      const primaryKey = schema?.primaryKey || 'id';
+      const key = record[primaryKey] || record.key || record.id || this._generateRecordKey(record);
+      const existing = store instanceof Map ? store.get(key) : store[key];
+
+      if (existing) {
+        // Update
+        const updated = {
+          ...existing,
+          ...record,
+          [primaryKey]: key,
+          _meta: {
+            ...existing._meta,
+            updatedAt: new Date().toISOString(),
+            updatedBy: executionContext.pipeline.id,
+            version: (existing._meta?.version || 0) + 1
+          }
+        };
+
+        if (schema) this._validateRecordAgainstSchema(updated, schema);
+
+        if (store instanceof Map) {
+          store.set(key, updated);
+        } else {
+          store[key] = updated;
+        }
+
+        affectedRecords.push({ key, operation: 'update', record: updated, previousRecord: existing });
+      } else {
+        // Create
+        const newRecord = {
+          ...record,
+          [primaryKey]: key,
+          _meta: {
+            createdAt: new Date().toISOString(),
+            createdBy: executionContext.pipeline.id,
+            version: 1
+          }
+        };
+
+        if (schema) this._validateRecordAgainstSchema(newRecord, schema);
+
+        if (store instanceof Map) {
+          store.set(key, newRecord);
+        } else {
+          store[key] = newRecord;
+        }
+
+        affectedRecords.push({ key, operation: 'create', record: newRecord });
+      }
+    }
+
+    await this._persistStore(executionContext.pipeline.storeId);
+
+    return { affectedRecords };
+  },
+
+  /**
+   * Generate a unique key for a record
+   * @param {Object} record - Record to generate key for
+   * @returns {string} Generated key
+   */
+  _generateRecordKey(record) {
+    const timestamp = Date.now();
+    const hash = this._simpleHash(JSON.stringify(record));
+    return `record_${timestamp}_${hash}`;
+  },
+
+  /**
+   * Simple hash function for key generation
+   * @param {string} str - String to hash
+   * @returns {string} Hash as base36 string
+   */
+  _simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36);
+  },
+
+  /**
+   * Validate record against schema
+   * Basic validation for required fields
+   * @param {Object} record - Record to validate
+   * @param {Object} schema - Schema to validate against
+   * @returns {boolean} True if valid
+   * @throws {Error} If validation fails
+   */
+  _validateRecordAgainstSchema(record, schema) {
+    // Check required fields from schema
+    if (schema.required) {
+      for (const field of schema.required) {
+        if (!(field in record)) {
+          throw new Error(`Required field missing: ${field}`);
+        }
+      }
+    }
+
+    // Also check fields marked as required in field definitions
+    if (schema.fields) {
+      for (const [fieldName, fieldDef] of Object.entries(schema.fields)) {
+        if (fieldDef.required && !(fieldName in record)) {
+          throw new Error(`Required field missing: ${fieldName}`);
+        }
+      }
+    }
+
+    return true;
+  },
+
+  /**
+   * Persist store changes to settings
+   * Triggers debounced save via SillyTavern context
+   * @param {string} storeId - Store ID to persist
+   * @returns {Promise<void>}
+   */
+  async _persistStore(storeId) {
+    // Mark store as dirty
+    this._markDirty(storeId);
+
+    // Trigger Kernel settings save
+    const stContext = this._kernel.getModule('stContext');
+    if (stContext?.saveSettingsDebounced) {
+      stContext.saveSettingsDebounced();
+    }
+
+    // Emit persistence event
+    this._emit('store:persisted', { storeId });
+  },
+
+  /**
+   * Summarize data for logging
+   * @param {*} data - Data to summarize
+   * @returns {string} Summary string
+   */
+  _summarizeData(data) {
+    if (Array.isArray(data)) {
+      return `Array with ${data.length} items`;
+    }
+    if (typeof data === 'object' && data !== null) {
+      const keys = Object.keys(data);
+      const preview = keys.slice(0, 5).join(', ');
+      return `Object with keys: ${preview}${keys.length > 5 ? '...' : ''}`;
+    }
+    return String(data).slice(0, 100);
+  },
+
+  /**
+   * Assemble final pipeline execution result
+   * @param {Object} executionContext - Execution context with all results
+   * @returns {Object} Final result object
+   */
+  _assembleFinalResult(executionContext) {
+    const { pipeline, stepResults, errors, affectedRecords, previewWrites, warnings, variables } = executionContext;
+
+    return {
+      success: errors.length === 0,
+      pipeline: {
+        id: pipeline.id,
+        name: pipeline.name,
+        operation: pipeline.operation,
+        storeId: pipeline.storeId
+      },
+      execution: {
+        startTime: executionContext.startTime,
+        endTime: Date.now(),
+        duration: Date.now() - executionContext.startTime,
+        stepsExecuted: stepResults.length,
+        totalSteps: executionContext.totalSteps,
+        preview: executionContext.preview
+      },
+      stepResults: stepResults.map(r => ({
+        stepId: r.stepId,
+        stepName: r.stepName,
+        success: r.success,
+        duration: r.duration,
+        outputType: r.output?.type,
+        outputLength: r.output?.raw?.length,
+        error: r.error
+      })),
+      affectedRecords: affectedRecords || [],
+      previewWrites: executionContext.preview ? previewWrites : undefined,
+      errors: errors.length > 0 ? errors : undefined,
+      warnings: warnings?.length > 0 ? warnings : undefined,
+      variables: Object.keys(variables || {}).length > 0 ? variables : undefined
+    };
   },
 
   // ===== PIPELINE PREVIEW MODE =====
