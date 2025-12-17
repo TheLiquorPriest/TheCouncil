@@ -18,6 +18,53 @@
  * @version 2.0.0
  */
 
+// ===== PIPELINE ERROR HANDLING =====
+
+/**
+ * Error type categories for pipeline execution
+ */
+const PipelineErrorTypes = {
+  VALIDATION: 'validation',
+  AGENT: 'agent',
+  PROMPT: 'prompt',
+  LLM: 'llm',
+  PARSE: 'parse',
+  STORE: 'store',
+  TIMEOUT: 'timeout',
+  CANCELLED: 'cancelled',
+  UNKNOWN: 'unknown'
+};
+
+/**
+ * Custom error class for pipeline errors
+ * Categorizes errors and determines if they are recoverable/retryable
+ */
+class PipelineError extends Error {
+  constructor(type, message, details = {}) {
+    super(message);
+    this.name = 'PipelineError';
+    this.type = type;
+    this.details = details;
+    this.recoverable = this._isRecoverable(type);
+    this.retryable = this._isRetryable(type);
+  }
+
+  _isRecoverable(type) {
+    return [
+      PipelineErrorTypes.PROMPT,
+      PipelineErrorTypes.LLM,
+      PipelineErrorTypes.PARSE
+    ].includes(type);
+  }
+
+  _isRetryable(type) {
+    return [
+      PipelineErrorTypes.LLM,
+      PipelineErrorTypes.TIMEOUT
+    ].includes(type);
+  }
+}
+
 const CurationSystem = {
   // ===== VERSION =====
   VERSION: "2.1.0",
@@ -126,6 +173,13 @@ const CurationSystem = {
    * @type {Promise|null}
    */
   _defaultPipelinesPromise: null,
+
+  /**
+   * Active pipeline executions for cancellation support
+   * Map<executionId, { pipelineId, cancelled, cancelledAt }>
+   * @type {Map<string, Object>}
+   */
+  _activeExecutions: new Map(),
 
   // ===== VALIDATION ERROR MESSAGES =====
 
@@ -3198,8 +3252,14 @@ Return list of character IDs/names with relevance reasoning.`,
    * @returns {Promise<Object>} Execution result with step results
    */
   async _executeCRUDPipeline(pipeline, input, options = {}) {
+    // Generate execution ID for tracking and cancellation
+    const executionId = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     // Build execution context with all necessary state
     const executionContext = {
+      // Execution tracking
+      executionId,
+
       // Pipeline metadata
       pipeline: {
         id: pipeline.id,
@@ -3239,96 +3299,133 @@ Return list of character IDs/names with relevance reasoning.`,
       stepTimings: []
     };
 
-    this._log('info', `[CurationSystem] Executing CRUD pipeline: ${pipeline.name} (${executionContext.totalSteps} steps, preview: ${executionContext.preview})`);
+    // Register execution for cancellation support
+    this._activeExecutions.set(executionId, {
+      pipelineId: pipeline.id,
+      cancelled: false,
+      cancelledAt: null
+    });
 
-    // Execute steps in sequence
-    for (let i = 0; i < executionContext.steps.length; i++) {
-      executionContext.currentStepIndex = i;
-      const step = executionContext.steps[i];
-      const stepStartTime = Date.now();
+    try {
+      this._log('info', `[CurationSystem] Executing CRUD pipeline: ${pipeline.name} (${executionContext.totalSteps} steps, preview: ${executionContext.preview})`);
 
-      try {
-        // Emit step start event
-        this._emit('pipeline:step:start', {
-          pipelineId: pipeline.id,
-          stepIndex: i,
-          stepId: step.id,
-          stepName: step.name,
-          totalSteps: executionContext.totalSteps
-        });
+      // Emit pipeline start event
+      this._emit('pipeline:execution:start', {
+        executionId,
+        pipelineId: pipeline.id,
+        pipelineName: pipeline.name,
+        totalSteps: executionContext.totalSteps,
+        preview: executionContext.preview
+      });
 
-        if (executionContext.verbose) {
-          this._log('debug', `[CurationSystem] Step ${i + 1}/${executionContext.totalSteps}: ${step.name}`);
-        }
+      // Execute steps in sequence
+      for (let i = 0; i < executionContext.steps.length; i++) {
+        executionContext.currentStepIndex = i;
+        const step = executionContext.steps[i];
+        const stepStartTime = Date.now();
 
-        // Execute the step (calls methods from 5.7.2-5.7.4)
-        const stepResult = await this._executeStep(step, executionContext);
+        try {
+          // Emit step start event
+          this._emit('pipeline:step:start', {
+            executionId,
+            pipelineId: pipeline.id,
+            stepIndex: i,
+            stepId: step.id,
+            stepName: step.name,
+            totalSteps: executionContext.totalSteps
+          });
 
-        const stepDuration = Date.now() - stepStartTime;
-        executionContext.stepTimings.push(stepDuration);
+          if (executionContext.verbose) {
+            this._log('debug', `[CurationSystem] Step ${i + 1}/${executionContext.totalSteps}: ${step.name}`);
+          }
 
-        // Record successful result
-        executionContext.stepResults.push({
-          stepId: step.id,
-          stepIndex: i,
-          stepName: step.name,
-          success: true,
-          output: stepResult.output,
-          duration: stepDuration
-        });
+          // Execute the step with retry logic (calls methods from 5.7.2-5.7.4)
+          const stepResult = await this._executeStepWithRetry(step, executionContext);
 
-        // Handle output routing (implemented in 5.7.4)
-        await this._routeStepOutput(step, stepResult, executionContext);
+          const stepDuration = Date.now() - stepStartTime;
+          executionContext.stepTimings.push(stepDuration);
 
-        // Emit step complete event
-        this._emit('pipeline:step:complete', {
-          pipelineId: pipeline.id,
-          stepIndex: i,
-          stepId: step.id,
-          stepName: step.name,
-          success: true,
-          duration: stepDuration
-        });
+          // Record successful result
+          executionContext.stepResults.push({
+            stepId: step.id,
+            stepIndex: i,
+            stepName: step.name,
+            success: true,
+            output: stepResult.output,
+            duration: stepDuration
+          });
 
-      } catch (error) {
-        const stepDuration = Date.now() - stepStartTime;
-        executionContext.stepTimings.push(stepDuration);
+          // Handle output routing (implemented in 5.7.4)
+          await this._routeStepOutput(step, stepResult, executionContext);
 
-        // Record error in context
-        executionContext.errors.push({
-          stepIndex: i,
-          stepId: step.id,
-          stepName: step.name,
-          error: error.message,
-          stack: error.stack
-        });
+          // Emit step complete progress
+          this._emitProgress(executionContext, 'step_complete');
 
-        // Record failed result
-        executionContext.stepResults.push({
-          stepId: step.id,
-          stepIndex: i,
-          stepName: step.name,
-          success: false,
-          error: error.message,
-          duration: stepDuration
-        });
+          // Emit step complete event
+          this._emit('pipeline:step:complete', {
+            executionId,
+            pipelineId: pipeline.id,
+            stepIndex: i,
+            stepId: step.id,
+            stepName: step.name,
+            success: true,
+            duration: stepDuration
+          });
 
-        this._log('error', `[CurationSystem] Step ${step.name} failed: ${error.message}`);
+        } catch (error) {
+          const stepDuration = Date.now() - stepStartTime;
+          executionContext.stepTimings.push(stepDuration);
 
-        // Emit step error event
-        this._emit('pipeline:step:error', {
-          pipelineId: pipeline.id,
-          stepIndex: i,
-          stepId: step.id,
-          stepName: step.name,
-          error: error.message
-        });
+          // Normalize error to PipelineError
+          const normalizedError = this._normalizeError(error, step, i);
 
-        // Decide whether to continue or abort
-        if (!executionContext.continueOnError) {
-          break;
+          // Record error in context (with type information)
+          executionContext.errors.push({
+            stepIndex: i,
+            stepId: step.id,
+            stepName: step.name,
+            error: normalizedError.message,
+            type: normalizedError.type,
+            recoverable: normalizedError.recoverable,
+            retryable: normalizedError.retryable,
+            stack: normalizedError.stack,
+            details: normalizedError.details
+          });
+
+          // Record failed result
+          executionContext.stepResults.push({
+            stepId: step.id,
+            stepIndex: i,
+            stepName: step.name,
+            success: false,
+            error: normalizedError.message,
+            errorType: normalizedError.type,
+            duration: stepDuration
+          });
+
+          this._log('error', `[CurationSystem] Step ${step.name} failed: ${normalizedError.message}`);
+
+          // Emit step error event
+          this._emit('pipeline:step:error', {
+            executionId,
+            pipelineId: pipeline.id,
+            stepIndex: i,
+            stepId: step.id,
+            stepName: step.name,
+            error: normalizedError.message,
+            errorType: normalizedError.type
+          });
+
+          // Decide whether to continue or abort using new helper
+          if (!this._shouldContinueAfterError(normalizedError, executionContext)) {
+            break;
+          }
         }
       }
+
+    } finally {
+      // Always clean up execution tracking
+      this._activeExecutions.delete(executionId);
     }
 
     // Build final result
@@ -3359,7 +3456,94 @@ Return list of character IDs/names with relevance reasoning.`,
       result.message += ' (preview mode)';
     }
 
+    // Emit pipeline completion or error event
+    if (hasErrors) {
+      this._emit('pipeline:execution:error', {
+        pipelineId: pipeline.id,
+        pipelineName: pipeline.name,
+        error: executionContext.errors[0]?.error,
+        stepsCompleted: executionContext.stepResults.length,
+        totalSteps: executionContext.totalSteps
+      });
+    } else {
+      this._emit('pipeline:execution:complete', {
+        pipelineId: pipeline.id,
+        pipelineName: pipeline.name,
+        success: true,
+        duration: totalDuration,
+        stepsCompleted: executionContext.stepResults.filter(r => r.success).length,
+        totalSteps: executionContext.totalSteps
+      });
+    }
+
     return result;
+  },
+
+  /**
+   * Emit detailed progress event with percentage calculation
+   * @param {Object} executionContext - Current execution context
+   * @param {string} phase - Current phase (prompt_resolving, llm_calling, etc.)
+   * @param {Object} details - Additional details for the phase
+   */
+  _emitProgress(executionContext, phase, details = {}) {
+    const { currentStepIndex, totalSteps, pipeline } = executionContext;
+
+    // Calculate progress percentage
+    let baseProgress = (currentStepIndex / totalSteps) * 100;
+    let phaseProgress = 0;
+
+    switch (phase) {
+      case 'prompt_resolving':
+        phaseProgress = 5;
+        break;
+      case 'llm_calling':
+        phaseProgress = 10;
+        break;
+      case 'llm_streaming':
+        phaseProgress = 10 + (details.streamProgress || 0) * 60;
+        break;
+      case 'output_parsing':
+        phaseProgress = 80;
+        break;
+      case 'store_writing':
+        phaseProgress = 90;
+        break;
+      case 'step_complete':
+        phaseProgress = 100;
+        break;
+    }
+
+    const stepProgress = phaseProgress / 100;
+    const totalProgress = baseProgress + (stepProgress * (100 / totalSteps));
+
+    this._emit('pipeline:progress', {
+      pipelineId: pipeline.id,
+      pipelineName: pipeline.name,
+      currentStep: currentStepIndex + 1,
+      totalSteps,
+      currentStepName: executionContext.steps[currentStepIndex]?.name,
+      phase,
+      phaseLabel: this._getPhaseLabel(phase),
+      progress: Math.min(Math.round(totalProgress), 100),
+      details
+    });
+  },
+
+  /**
+   * Get human-readable label for execution phase
+   * @param {string} phase - Phase identifier
+   * @returns {string} Human-readable label
+   */
+  _getPhaseLabel(phase) {
+    const labels = {
+      'prompt_resolving': 'Resolving prompt...',
+      'llm_calling': 'Calling LLM...',
+      'llm_streaming': 'Receiving response...',
+      'output_parsing': 'Parsing output...',
+      'store_writing': 'Writing to store...',
+      'step_complete': 'Step complete'
+    };
+    return labels[phase] || phase;
   },
 
   /**
@@ -3422,18 +3606,21 @@ Return list of character IDs/names with relevance reasoning.`,
     const promptContext = this._buildStepPromptContext(step, stepInput, executionContext);
 
     // 4. Resolve prompt with token substitution (5.7.2)
+    this._emitProgress(executionContext, 'prompt_resolving');
     const resolvedPrompt = await this._resolveStepPrompt(step, promptContext);
 
-    // 5. If preview mode, don't call LLM (5.7.5 will implement full preview)
+    // 5. If preview mode, generate comprehensive preview without LLM call
     if (executionContext.preview) {
-      return this._generatePreviewResult(step, resolvedPrompt, promptContext);
+      return this._generatePreviewResult(step, resolvedPrompt, promptContext, executionContext);
     }
 
     // 6. Call LLM with agent configuration (5.7.3)
     // Validation happens inside _callAgentLLM
+    this._emitProgress(executionContext, 'llm_calling');
     const llmResponse = await this._callAgentLLM(agent, resolvedPrompt, step, executionContext);
 
     // 7. Parse response based on expected format (5.7.4 will implement full parsing)
+    this._emitProgress(executionContext, 'output_parsing');
     const parsedOutput = this._parseStepOutput(step, llmResponse);
 
     return {
@@ -3898,26 +4085,211 @@ Return list of character IDs/names with relevance reasoning.`,
   },
 
   /**
-   * Generate preview result without calling LLM
-   * Skeleton method - will be fully implemented in 5.7.5
+   * Generate comprehensive preview result without calling LLM
+   * Shows what would happen during execution without actually making LLM calls
    * @param {Object} step - Step configuration
    * @param {string} resolvedPrompt - The resolved prompt
    * @param {Object} promptContext - Prompt context
-   * @returns {Object} Preview result
+   * @param {Object} executionContext - Full execution context
+   * @returns {Object} Comprehensive preview result
    */
-  _generatePreviewResult(step, resolvedPrompt, promptContext) {
-    // Skeleton implementation - 5.7.5 will add proper preview generation
+  _generatePreviewResult(step, resolvedPrompt, promptContext, executionContext) {
+    // Get agent configuration for preview
+    const agent = step.agentId ? this.getCurationAgent(step.agentId) : null;
+
+    // Validate agent (same validation as real execution)
+    const agentValidation = this._validateAgentForExecution(agent, step);
+
+    // Estimate token count for the prompt
+    const promptTokenEstimate = this._estimateTokenCount(resolvedPrompt);
+
+    // Build agent info for preview
+    const agentInfo = agent ? {
+      id: agent.id,
+      name: agent.name,
+      positionId: agent.positionId,
+      hasSystemPrompt: !!agent.systemPrompt,
+      systemPromptSource: agent.systemPrompt?.source || 'none',
+      apiConfig: {
+        useCurrentConnection: agent.apiConfig?.useCurrentConnection !== false,
+        model: agent.apiConfig?.model || '(default)',
+        temperature: agent.apiConfig?.temperature ?? 0.7,
+        maxTokens: agent.apiConfig?.maxTokens || 2000
+      }
+    } : {
+      id: null,
+      name: '(default ST connection)',
+      useCurrentConnection: true
+    };
+
+    // Generate simulated response structure
+    const simulatedResponse = this._generateSimulatedResponse(step, promptContext);
+
+    // Build comprehensive preview result
     return {
+      // Standard step result fields
       input: promptContext.input,
       prompt: resolvedPrompt,
-      rawResponse: '[PREVIEW MODE - No LLM call made]',
-      output: {
-        preview: true,
+      rawResponse: simulatedResponse.raw,
+      output: simulatedResponse.output,
+
+      // Preview-specific metadata
+      preview: {
+        isPreview: true,
         stepName: step.name,
-        promptLength: resolvedPrompt.length,
-        inputSummary: typeof promptContext.input === 'string'
-          ? promptContext.input.substring(0, 100)
-          : JSON.stringify(promptContext.input).substring(0, 100)
+        stepId: step.id,
+        stepIndex: executionContext?.currentStepIndex ?? promptContext.step?.index,
+
+        // Prompt analysis
+        promptAnalysis: {
+          length: resolvedPrompt.length,
+          estimatedTokens: promptTokenEstimate,
+          truncated: this._truncateForPreview(resolvedPrompt, 500),
+          hasTokens: /\{\{[^}]+\}\}/.test(step.promptTemplate || ''),
+          resolvedTokenCount: (resolvedPrompt.match(/\{\{[^}]+\}\}/g) || []).length
+        },
+
+        // Input analysis
+        inputAnalysis: {
+          type: Array.isArray(promptContext.input) ? 'array' : typeof promptContext.input,
+          summary: this._truncateForPreview(
+            typeof promptContext.input === 'string'
+              ? promptContext.input
+              : JSON.stringify(promptContext.input, null, 2),
+            300
+          ),
+          size: typeof promptContext.input === 'string'
+            ? promptContext.input.length
+            : JSON.stringify(promptContext.input).length
+        },
+
+        // Agent configuration
+        agent: agentInfo,
+        agentValidation: {
+          valid: agentValidation.valid,
+          errors: agentValidation.errors,
+          warnings: agentValidation.warnings
+        },
+
+        // Output routing preview
+        outputRouting: {
+          target: step.outputTarget || 'next_step',
+          variableName: step.variableName || null,
+          expectJson: step.outputTarget === 'store' || step.expectJson === true,
+          wouldWriteToStore: step.outputTarget === 'store'
+        },
+
+        // Cost estimate (rough)
+        costEstimate: this._estimateStepCost(promptTokenEstimate, agentInfo)
+      },
+
+      // Agent info for result compatibility
+      agent: agent ? {
+        id: agent.id,
+        name: agent.name,
+        positionId: agent.positionId
+      } : null
+    };
+  },
+
+  /**
+   * Truncate text for preview display
+   * @param {string} text - Text to truncate
+   * @param {number} maxLength - Maximum length
+   * @returns {string} Truncated text with ellipsis if needed
+   */
+  _truncateForPreview(text, maxLength = 200) {
+    if (!text) return '';
+    const str = String(text);
+    if (str.length <= maxLength) return str;
+    return str.substring(0, maxLength) + '...';
+  },
+
+  /**
+   * Estimate token count for text (rough approximation)
+   * Uses ~4 characters per token as a rough estimate
+   * @param {string} text - Text to estimate
+   * @returns {number} Estimated token count
+   */
+  _estimateTokenCount(text) {
+    if (!text) return 0;
+    // Rough estimate: ~4 chars per token for English text
+    // This is a simplification; actual tokenization varies by model
+    return Math.ceil(String(text).length / 4);
+  },
+
+  /**
+   * Estimate cost for a step based on token count and agent config
+   * @param {number} promptTokens - Estimated prompt tokens
+   * @param {Object} agentInfo - Agent configuration info
+   * @returns {Object} Cost estimate
+   */
+  _estimateStepCost(promptTokens, agentInfo) {
+    // Rough cost estimates per 1K tokens (varies greatly by model/provider)
+    // These are placeholder values for preview purposes
+    const estimatedResponseTokens = agentInfo.apiConfig?.maxTokens || 2000;
+
+    return {
+      estimatedPromptTokens: promptTokens,
+      estimatedResponseTokens: Math.min(estimatedResponseTokens, promptTokens * 2),
+      estimatedTotalTokens: promptTokens + Math.min(estimatedResponseTokens, promptTokens * 2),
+      note: 'Token estimates are approximate. Actual usage depends on model and response length.'
+    };
+  },
+
+  /**
+   * Generate simulated response structure for preview
+   * Creates a placeholder response showing what format would be returned
+   * @param {Object} step - Step configuration
+   * @param {Object} promptContext - Prompt context
+   * @returns {Object} Simulated response with raw and output
+   */
+  _generateSimulatedResponse(step, promptContext) {
+    const expectJson = step.outputTarget === 'store' || step.expectJson === true;
+
+    if (expectJson) {
+      // Generate example JSON structure based on store schema if available
+      const storeId = promptContext.pipeline?.storeId;
+      const schema = storeId ? this._storeSchemas.get(storeId) : null;
+
+      let exampleData = { _preview: true, _note: 'This is simulated output' };
+
+      if (schema && schema.fields) {
+        // Build example based on schema fields
+        for (const [fieldName, fieldDef] of Object.entries(schema.fields)) {
+          if (fieldDef.type === 'string') {
+            exampleData[fieldName] = `[${fieldName} would be generated here]`;
+          } else if (fieldDef.type === 'number') {
+            exampleData[fieldName] = 0;
+          } else if (fieldDef.type === 'boolean') {
+            exampleData[fieldName] = false;
+          } else if (fieldDef.type === 'array') {
+            exampleData[fieldName] = [];
+          } else if (fieldDef.type === 'enum' && fieldDef.enumValues?.length) {
+            exampleData[fieldName] = fieldDef.enumValues[0];
+          }
+        }
+      }
+
+      return {
+        raw: '[PREVIEW MODE - No LLM call made]\n```json\n' + JSON.stringify(exampleData, null, 2) + '\n```',
+        output: {
+          raw: JSON.stringify(exampleData),
+          parsed: exampleData,
+          type: 'json',
+          preview: true
+        }
+      };
+    }
+
+    // Text output
+    return {
+      raw: '[PREVIEW MODE - No LLM call made]\n\n[Text response would be generated here based on the prompt above]',
+      output: {
+        raw: '[Preview: Text response would appear here]',
+        parsed: '[Preview: Text response would appear here]',
+        type: 'text',
+        preview: true
       }
     };
   },
@@ -4795,6 +5167,17 @@ Return list of character IDs/names with relevance reasoning.`,
   _assembleFinalResult(executionContext) {
     const { pipeline, stepResults, errors, affectedRecords, previewWrites, warnings, variables } = executionContext;
 
+    // Format errors for user-friendly display
+    const formattedErrors = errors.length > 0
+      ? errors.map(err => ({
+          ...err,
+          userMessage: this._formatErrorForUser(err)
+        }))
+      : undefined;
+
+    // Generate error summary
+    const errorSummary = errors.length > 0 ? this._summarizeErrors(errors) : null;
+
     return {
       success: errors.length === 0,
       pipeline: {
@@ -4818,11 +5201,13 @@ Return list of character IDs/names with relevance reasoning.`,
         duration: r.duration,
         outputType: r.output?.type,
         outputLength: r.output?.raw?.length,
-        error: r.error
+        error: r.error,
+        errorType: r.errorType
       })),
       affectedRecords: affectedRecords || [],
       previewWrites: executionContext.preview ? previewWrites : undefined,
-      errors: errors.length > 0 ? errors : undefined,
+      errors: formattedErrors,
+      errorSummary: errorSummary,
       warnings: warnings?.length > 0 ? warnings : undefined,
       variables: Object.keys(variables || {}).length > 0 ? variables : undefined
     };
@@ -4960,68 +5345,287 @@ Return list of character IDs/names with relevance reasoning.`,
   },
 
   /**
+  /**
    * Execute CRUD pipeline in preview mode using cloned stores
+   * Runs through the full pipeline execution with preview=true, showing what would happen
    * @param {Object} pipeline - Pipeline definition
    * @param {Object} input - Input data
    * @param {Map} previewStores - Cloned stores for preview
-   * @returns {Promise<Object>} Execution result
+   * @returns {Promise<Object>} Comprehensive preview execution result
    */
   async _executeCRUDPipelinePreview(pipeline, input, previewStores) {
-    // Simulate CRUD operation on preview stores
-    const previewStore = previewStores.get(pipeline.storeId);
-    const schema = this._storeSchemas.get(pipeline.storeId);
+    // Execute the pipeline with preview mode enabled
+    // This runs through all the step execution logic but skips LLM calls
+    const executionResult = await this._executeCRUDPipeline(pipeline, input, {
+      preview: true,
+      verbose: true
+    });
 
-    const result = {
-      operation: pipeline.operation,
-      storeId: pipeline.storeId,
-      affectedRecords: [],
-      changes: {},
-      message: `CRUD preview: ${pipeline.name}`
-    };
-
-    // Simulate changes based on operation type
-    if (pipeline.operation === 'create' && input.data) {
-      const id = input.data.id || `preview_${Date.now()}`;
-      if (schema?.isSingleton) {
-        // Singleton update
-        Object.assign(previewStore, input.data);
-        result.affectedRecords.push(id);
-        result.changes = { updated: input.data };
-      } else {
-        // Collection add
-        previewStore.set(id, { ...input.data, id });
-        result.affectedRecords.push(id);
-        result.changes = { added: { id, ...input.data } };
-      }
-    } else if (pipeline.operation === 'update' && input.id && input.data) {
-      if (schema?.isSingleton) {
-        Object.assign(previewStore, input.data);
-        result.affectedRecords.push(input.id);
-        result.changes = { updated: input.data };
-      } else if (previewStore.has(input.id)) {
-        const existing = previewStore.get(input.id);
-        previewStore.set(input.id, { ...existing, ...input.data });
-        result.affectedRecords.push(input.id);
-        result.changes = { updated: { before: existing, after: { ...existing, ...input.data } } };
-      }
-    } else if (pipeline.operation === 'delete' && input.id) {
-      if (!schema?.isSingleton && previewStore.has(input.id)) {
-        const deleted = previewStore.get(input.id);
-        previewStore.delete(input.id);
-        result.affectedRecords.push(input.id);
-        result.changes = { deleted };
-      }
-    }
-
-    return result;
+    // Build comprehensive preview summary
+    return this._assemblePreviewResult(pipeline, input, executionResult, previewStores);
   },
 
   /**
-   * Deep clone store data
-   * @param {Map|Object} store - Store to clone
-   * @param {boolean} isSingleton - Whether store is singleton
-   * @returns {Map|Object} Cloned store
+   * Assemble comprehensive preview result from execution
+   * @param {Object} pipeline - Pipeline definition
+   * @param {Object} input - Original input
+   * @param {Object} executionResult - Result from _executeCRUDPipeline with preview=true
+   * @param {Map} previewStores - Preview store references
+   * @returns {Object} Comprehensive preview result
    */
+  _assemblePreviewResult(pipeline, input, executionResult, previewStores) {
+    const steps = pipeline.steps || [];
+
+    // Collect all preview data from step results
+    const stepPreviews = executionResult.stepResults.map((stepResult, index) => {
+      const step = steps[index] || {};
+      const previewData = stepResult.output?.preview || {};
+
+      return {
+        stepIndex: index,
+        stepId: step.id || `step_${index}`,
+        stepName: stepResult.stepName || step.name || `Step ${index + 1}`,
+        success: stepResult.success,
+
+        // Prompt info
+        prompt: {
+          resolved: previewData.promptAnalysis?.truncated || '[No prompt]',
+          fullLength: previewData.promptAnalysis?.length || 0,
+          estimatedTokens: previewData.promptAnalysis?.estimatedTokens || 0,
+          hasUnresolvedTokens: (previewData.promptAnalysis?.resolvedTokenCount || 0) > 0
+        },
+
+        // Input info
+        input: {
+          type: previewData.inputAnalysis?.type || typeof stepResult.input,
+          summary: previewData.inputAnalysis?.summary || this._truncateForPreview(
+            JSON.stringify(stepResult.input), 200
+          )
+        },
+
+        // Agent info
+        agent: previewData.agent || {
+          name: '(default ST connection)',
+          useCurrentConnection: true
+        },
+
+        // Validation
+        validation: previewData.agentValidation || { valid: true, errors: [], warnings: [] },
+
+        // Output routing
+        outputRouting: previewData.outputRouting || {
+          target: step.outputTarget || 'next_step',
+          variableName: step.variableName
+        },
+
+        // Cost estimate
+        costEstimate: previewData.costEstimate || { estimatedTotalTokens: 0 },
+
+        // Timing
+        duration: stepResult.duration || 0
+      };
+    });
+
+    // Calculate totals
+    const totalTokenEstimate = this._calculateTotalTokenEstimate(stepPreviews);
+    const costEstimate = this._estimateTotalCost(totalTokenEstimate, stepPreviews);
+
+    // Generate preview summary
+    const summary = this._generatePreviewSummary(pipeline, stepPreviews);
+
+    // Summarize store changes
+    const storeChangesSummary = this._summarizePreviewStoreChanges(executionResult, pipeline);
+
+    // Collect all warnings
+    const allWarnings = [];
+    for (const stepPreview of stepPreviews) {
+      if (stepPreview.validation?.warnings) {
+        allWarnings.push(...stepPreview.validation.warnings.map(w => ({
+          step: stepPreview.stepName,
+          warning: w
+        })));
+      }
+    }
+    if (executionResult.warnings) {
+      allWarnings.push(...executionResult.warnings.map(w => ({
+        step: 'pipeline',
+        warning: typeof w === 'string' ? w : w.message
+      })));
+    }
+
+    return {
+      // Pipeline metadata
+      pipeline: {
+        id: pipeline.id,
+        name: pipeline.name,
+        operation: pipeline.operation,
+        storeId: pipeline.storeId,
+        description: pipeline.description
+      },
+
+      // Summary of what would happen
+      summary,
+
+      // Step-by-step preview details
+      steps: stepPreviews,
+
+      // Data flow tracking
+      dataFlow: {
+        input: {
+          type: typeof input,
+          summary: this._truncateForPreview(JSON.stringify(input), 300)
+        },
+        variables: executionResult.variables || {},
+        previewWrites: executionResult.previewWrites || []
+      },
+
+      // Store changes summary
+      storeChanges: storeChangesSummary,
+
+      // Token and cost estimates
+      tokenEstimate: totalTokenEstimate,
+      costEstimate,
+
+      // Warnings collected during preview
+      warnings: allWarnings.length > 0 ? allWarnings : undefined,
+
+      // Execution metadata
+      execution: {
+        totalSteps: steps.length,
+        previewedSteps: stepPreviews.length,
+        successfulPreviews: stepPreviews.filter(s => s.success).length,
+        timing: executionResult.timing
+      },
+
+      // Result status
+      success: executionResult.success,
+      message: `Preview: ${pipeline.name} would execute ${steps.length} step(s) with estimated ${totalTokenEstimate.total} tokens`,
+      preview: true
+    };
+  },
+
+  /**
+   * Generate human-readable preview summary
+   * @param {Object} pipeline - Pipeline definition
+   * @param {Array} stepPreviews - Preview data for each step
+   * @returns {Object} Summary with description and highlights
+   */
+  _generatePreviewSummary(pipeline, stepPreviews) {
+    const stepsWithStoreWrite = stepPreviews.filter(s => s.outputRouting?.target === 'store');
+    const stepsWithVariables = stepPreviews.filter(s => s.outputRouting?.target === 'variable');
+    const stepsWithWarnings = stepPreviews.filter(s => s.validation?.warnings?.length > 0);
+    const stepsWithErrors = stepPreviews.filter(s => !s.validation?.valid);
+
+    const highlights = [];
+
+    if (stepsWithStoreWrite.length > 0) {
+      highlights.push(`${stepsWithStoreWrite.length} step(s) would write to store "${pipeline.storeId}"`);
+    }
+    if (stepsWithVariables.length > 0) {
+      const varNames = stepsWithVariables.map(s => s.outputRouting.variableName).filter(Boolean);
+      highlights.push(`${stepsWithVariables.length} step(s) would set variables: ${varNames.join(', ') || '(unnamed)'}`);
+    }
+    if (stepsWithWarnings.length > 0) {
+      highlights.push(`${stepsWithWarnings.length} step(s) have configuration warnings`);
+    }
+    if (stepsWithErrors.length > 0) {
+      highlights.push(`WARNING: ${stepsWithErrors.length} step(s) have validation errors`);
+    }
+
+    return {
+      description: `Pipeline "${pipeline.name}" (${pipeline.operation}) would execute ${stepPreviews.length} step(s)`,
+      storeTarget: pipeline.storeId,
+      operation: pipeline.operation,
+      totalLLMCalls: stepPreviews.length,
+      highlights,
+      wouldModifyStore: stepsWithStoreWrite.length > 0,
+      hasWarnings: stepsWithWarnings.length > 0,
+      hasErrors: stepsWithErrors.length > 0
+    };
+  },
+
+  /**
+   * Summarize what store changes would occur
+   * @param {Object} executionResult - Execution result with previewWrites
+   * @param {Object} pipeline - Pipeline definition
+   * @returns {Object} Store changes summary
+   */
+  _summarizePreviewStoreChanges(executionResult, pipeline) {
+    const previewWrites = executionResult.previewWrites || [];
+
+    if (previewWrites.length === 0) {
+      return {
+        wouldModify: false,
+        storeId: pipeline.storeId,
+        operation: pipeline.operation,
+        changeCount: 0,
+        changes: []
+      };
+    }
+
+    return {
+      wouldModify: true,
+      storeId: pipeline.storeId,
+      operation: pipeline.operation,
+      changeCount: previewWrites.length,
+      changes: previewWrites.map(write => ({
+        stepId: write.stepId,
+        stepName: write.stepName,
+        operation: write.operation,
+        dataPreview: this._truncateForPreview(JSON.stringify(write.data), 200)
+      }))
+    };
+  },
+
+  /**
+   * Calculate total token estimate from all steps
+   * @param {Array} stepPreviews - Preview data for each step
+   * @returns {Object} Total token estimates
+   */
+  _calculateTotalTokenEstimate(stepPreviews) {
+    let promptTokens = 0;
+    let responseTokens = 0;
+
+    for (const step of stepPreviews) {
+      const estimate = step.costEstimate || {};
+      promptTokens += estimate.estimatedPromptTokens || 0;
+      responseTokens += estimate.estimatedResponseTokens || 0;
+    }
+
+    return {
+      promptTokens,
+      responseTokens,
+      total: promptTokens + responseTokens,
+      perStep: stepPreviews.map(s => ({
+        stepName: s.stepName,
+        tokens: s.costEstimate?.estimatedTotalTokens || 0
+      }))
+    };
+  },
+
+  /**
+   * Estimate total cost for pipeline execution
+   * @param {Object} tokenEstimate - Token estimates
+   * @param {Array} stepPreviews - Step preview data
+   * @returns {Object} Cost estimate with notes
+   */
+  _estimateTotalCost(tokenEstimate, stepPreviews) {
+    // Check if any steps use non-default models
+    const modelsUsed = new Set();
+    for (const step of stepPreviews) {
+      const model = step.agent?.apiConfig?.model || '(default)';
+      modelsUsed.add(model);
+    }
+
+    return {
+      totalTokens: tokenEstimate.total,
+      modelsUsed: Array.from(modelsUsed),
+      llmCalls: stepPreviews.length,
+      note: `Cost depends on model pricing. ${tokenEstimate.total} tokens across ${stepPreviews.length} LLM call(s).`,
+      disclaimer: 'Token estimates are approximate. Actual usage varies by model and response length.'
+    };
+  },
+
   _deepCloneStore(store, isSingleton) {
     if (isSingleton) {
       // Deep clone singleton object
@@ -5475,6 +6079,260 @@ Return list of character IDs/names with relevance reasoning.`,
   },
 
   // ===== LOGGING =====
+
+  // ===== ERROR HANDLING & RECOVERY =====
+
+  /**
+   * Normalize any error to a PipelineError
+   * @param {Error} error - Original error
+   * @param {Object} step - Step that failed
+   * @param {number} stepIndex - Step index
+   * @returns {PipelineError} Normalized error
+   */
+  _normalizeError(error, step, stepIndex) {
+    // Already a PipelineError
+    if (error instanceof PipelineError) {
+      return error;
+    }
+
+    // Categorize based on error message
+    let type = PipelineErrorTypes.UNKNOWN;
+    const message = error.message || String(error);
+
+    if (message.includes('agent') || message.includes('Agent')) {
+      type = PipelineErrorTypes.AGENT;
+    } else if (message.includes('prompt') || message.includes('resolve')) {
+      type = PipelineErrorTypes.PROMPT;
+    } else if (message.includes('API') || message.includes('LLM') || message.includes('timeout')) {
+      type = PipelineErrorTypes.LLM;
+    } else if (message.includes('parse') || message.includes('JSON')) {
+      type = PipelineErrorTypes.PARSE;
+    } else if (message.includes('store') || message.includes('Store')) {
+      type = PipelineErrorTypes.STORE;
+    } else if (message.includes('timeout')) {
+      type = PipelineErrorTypes.TIMEOUT;
+    } else if (message.includes('validat')) {
+      type = PipelineErrorTypes.VALIDATION;
+    }
+
+    return new PipelineError(type, message, {
+      originalError: error,
+      step: {
+        id: step.id,
+        name: step.name,
+        index: stepIndex
+      },
+      stack: error.stack
+    });
+  },
+
+  /**
+   * Execute a step with retry logic for transient failures
+   * @param {Object} step - Step configuration
+   * @param {Object} executionContext - Execution context
+   * @returns {Promise<Object>} Step result
+   */
+  async _executeStepWithRetry(step, executionContext) {
+    const maxRetries = 3;
+    const retryDelayMs = [1000, 2000, 4000]; // Exponential backoff
+    let lastError = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        // Check for cancellation
+        if (executionContext.executionId) {
+          const execution = this._activeExecutions.get(executionContext.executionId);
+          if (execution?.cancelled) {
+            throw new PipelineError(
+              PipelineErrorTypes.CANCELLED,
+              'Pipeline execution was cancelled',
+              { cancelledAt: execution.cancelledAt }
+            );
+          }
+        }
+
+        // Execute the step
+        const result = await this._executeStep(step, executionContext);
+
+        // Success - return result
+        if (attempt > 0) {
+          this._log('info', `[CurationSystem] Step ${step.name} succeeded after ${attempt} retries`);
+        }
+        return result;
+
+      } catch (error) {
+        lastError = this._normalizeError(error, step, executionContext.currentStepIndex);
+
+        // Don't retry non-retryable errors
+        if (!lastError.retryable || attempt >= maxRetries) {
+          throw lastError;
+        }
+
+        // Log retry attempt
+        const delay = retryDelayMs[attempt] || 4000;
+        this._log('warn', `[CurationSystem] Step ${step.name} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms: ${lastError.message}`);
+
+        // Emit retry event
+        this._emit('pipeline:step:retry', {
+          pipelineId: executionContext.pipeline.id,
+          stepIndex: executionContext.currentStepIndex,
+          stepId: step.id,
+          stepName: step.name,
+          attempt: attempt + 1,
+          maxRetries: maxRetries + 1,
+          error: lastError.message,
+          retryDelay: delay
+        });
+
+        // Wait before retry
+        await this._sleep(delay);
+      }
+    }
+
+    // All retries exhausted
+    throw lastError;
+  },
+
+  /**
+   * Check if execution should continue after error
+   * @param {PipelineError} error - The error that occurred
+   * @param {Object} executionContext - Execution context
+   * @returns {boolean} True if should continue
+   */
+  _shouldContinueAfterError(error, executionContext) {
+    // Never continue after cancellation
+    if (error.type === PipelineErrorTypes.CANCELLED) {
+      return false;
+    }
+
+    // Check continueOnError flag
+    if (!executionContext.continueOnError) {
+      return false;
+    }
+
+    // Continue only for recoverable errors
+    return error.recoverable;
+  },
+
+  /**
+   * Simple sleep helper
+   * @param {number} ms - Milliseconds to sleep
+   * @returns {Promise<void>}
+   */
+  _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  },
+
+  /**
+   * Cancel a running pipeline execution
+   * @param {string} executionId - Execution ID to cancel
+   * @returns {boolean} True if execution was found and cancelled
+   */
+  cancelExecution(executionId) {
+    const execution = this._activeExecutions.get(executionId);
+    if (!execution) {
+      this._log('warn', `[CurationSystem] Cannot cancel execution ${executionId}: not found`);
+      return false;
+    }
+
+    execution.cancelled = true;
+    execution.cancelledAt = Date.now();
+
+    this._log('info', `[CurationSystem] Cancelled execution ${executionId} for pipeline ${execution.pipelineId}`);
+    this._emit('pipeline:execution:cancelled', {
+      executionId,
+      pipelineId: execution.pipelineId,
+      cancelledAt: execution.cancelledAt
+    });
+
+    return true;
+  },
+
+  /**
+   * Cancel all executions for a specific pipeline
+   * @param {string} pipelineId - Pipeline ID
+   * @returns {number} Number of executions cancelled
+   */
+  cancelPipelineExecutions(pipelineId) {
+    let cancelledCount = 0;
+
+    for (const [executionId, execution] of this._activeExecutions.entries()) {
+      if (execution.pipelineId === pipelineId && !execution.cancelled) {
+        execution.cancelled = true;
+        execution.cancelledAt = Date.now();
+        cancelledCount++;
+
+        this._emit('pipeline:execution:cancelled', {
+          executionId,
+          pipelineId: execution.pipelineId,
+          cancelledAt: execution.cancelledAt
+        });
+      }
+    }
+
+    if (cancelledCount > 0) {
+      this._log('info', `[CurationSystem] Cancelled ${cancelledCount} executions for pipeline ${pipelineId}`);
+    }
+
+    return cancelledCount;
+  },
+
+  /**
+   * Format error for user-friendly display
+   * @param {Object} error - Error object from executionContext
+   * @returns {string} User-friendly error message
+   */
+  _formatErrorForUser(error) {
+    const stepInfo = error.stepName ? ` in step "${error.stepName}"` : '';
+
+    // If it's a PipelineError with details, provide specific guidance
+    if (error.type) {
+      switch (error.type) {
+        case PipelineErrorTypes.AGENT:
+          return `Agent error${stepInfo}: ${error.error}. Check that the agent is properly configured.`;
+        case PipelineErrorTypes.PROMPT:
+          return `Prompt resolution failed${stepInfo}: ${error.error}. Check your token syntax and variable names.`;
+        case PipelineErrorTypes.LLM:
+          return `LLM call failed${stepInfo}: ${error.error}. Check your API connection and rate limits.`;
+        case PipelineErrorTypes.PARSE:
+          return `Failed to parse LLM response${stepInfo}: ${error.error}. The LLM may have returned invalid JSON.`;
+        case PipelineErrorTypes.STORE:
+          return `Store operation failed${stepInfo}: ${error.error}. Check store configuration and data schema.`;
+        case PipelineErrorTypes.TIMEOUT:
+          return `Operation timed out${stepInfo}: ${error.error}. Try again or increase timeout settings.`;
+        case PipelineErrorTypes.CANCELLED:
+          return `Execution cancelled${stepInfo}.`;
+        case PipelineErrorTypes.VALIDATION:
+          return `Validation error${stepInfo}: ${error.error}. Check your pipeline configuration.`;
+        default:
+          return `Error${stepInfo}: ${error.error}`;
+      }
+    }
+
+    // Fallback for plain error objects
+    return `Error${stepInfo}: ${error.error || error.message || 'Unknown error'}`;
+  },
+
+  /**
+   * Summarize errors for final result
+   * @param {Array<Object>} errors - Array of error objects
+   * @returns {string} Summary string
+   */
+  _summarizeErrors(errors) {
+    if (!errors || errors.length === 0) return '';
+
+    const errorCounts = {};
+    for (const error of errors) {
+      const type = error.type || 'unknown';
+      errorCounts[type] = (errorCounts[type] || 0) + 1;
+    }
+
+    const parts = Object.entries(errorCounts).map(([type, count]) =>
+      `${count} ${type} error${count > 1 ? 's' : ''}`
+    );
+
+    return parts.join(', ');
+  },
 
   /**
    * Log a message
