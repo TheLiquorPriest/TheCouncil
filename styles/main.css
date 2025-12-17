@@ -215,6 +215,113 @@
     color: #fff;
 }
 
+/* ===== MODAL BUTTONS (Curation, Character, Injection modals) ===== */
+.council-curation-btn,
+.council-modal-btn {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--council-border);
+    color: var(--council-text);
+    font-size: 13px;
+    padding: 8px 16px;
+    border-radius: var(--council-radius-md);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all var(--council-transition);
+}
+
+.council-curation-btn:hover,
+.council-modal-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: var(--council-primary);
+    color: #fff;
+}
+
+.council-curation-btn-icon,
+.council-modal-btn-icon {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid transparent;
+    color: var(--council-text);
+    font-size: 16px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: var(--council-radius-md);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--council-transition);
+}
+
+.council-curation-btn-icon:hover,
+.council-modal-btn-icon:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.council-curation-close,
+.council-modal-close {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid transparent;
+    color: var(--council-text);
+    font-size: 20px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: var(--council-radius-md);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--council-transition);
+    line-height: 1;
+}
+
+.council-curation-close:hover,
+.council-modal-close:hover {
+    background: rgba(248, 113, 113, 0.3);
+    color: var(--council-error);
+}
+
+.council-curation-btn-sm {
+    font-size: 12px;
+    padding: 6px 12px;
+}
+
+.council-curation-btn-primary {
+    background: var(--council-primary);
+    border-color: var(--council-primary);
+    color: #fff;
+}
+
+.council-curation-btn-primary:hover {
+    background: var(--council-primary-dark);
+    border-color: var(--council-primary-dark);
+}
+
+.council-curation-btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--council-border);
+}
+
+.council-curation-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.council-curation-btn-danger {
+    background: rgba(248, 113, 113, 0.2);
+    border-color: rgba(248, 113, 113, 0.5);
+    color: var(--council-error);
+}
+
+.council-curation-btn-danger:hover {
+    background: rgba(248, 113, 113, 0.4);
+    border-color: var(--council-error);
+}
+
 /* ===== PHASE INDICATOR BAR ===== */
 .council-phase-bar {
     display: flex;
