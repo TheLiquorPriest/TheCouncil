@@ -3444,43 +3444,450 @@ Return list of character IDs/names with relevance reasoning.`,
 
   /**
    * Build prompt context for a step
-   * Skeleton method - will be fully implemented in 5.7.2
+   * Creates comprehensive context with all data needed for token resolution
    * @param {Object} step - Step configuration
    * @param {*} stepInput - Resolved input for the step
    * @param {Object} executionContext - Current execution context
    * @returns {Object} Prompt context for token resolution
    */
   _buildStepPromptContext(step, stepInput, executionContext) {
-    // Skeleton implementation - 5.7.2 will add full context building
-    return {
+    const pipeline = executionContext.pipeline || {};
+    const currentStepIndex = executionContext.currentStep || 0;
+
+    // Build store data for context
+    const storeData = this._getStoreDataForContext(
+      executionContext.targetStore,
+      executionContext.targetStoreSchema,
+      step
+    );
+
+    // Build comprehensive context
+    const context = {
+      // Current step's input (JSON stringified if object)
       input: stepInput,
-      pipeline: executionContext.pipeline,
-      variables: executionContext.variables,
-      store: executionContext.targetStore,
-      previousOutput: executionContext.previousStepOutput
+
+      // Previous step output
+      previousOutput: executionContext.previousStepOutput,
+
+      // All named variables from prior steps
+      variables: executionContext.variables || {},
+
+      // Pipeline metadata
+      pipeline: {
+        id: pipeline.id,
+        name: pipeline.name,
+        operation: pipeline.operation,
+        storeId: pipeline.storeId,
+        description: pipeline.description
+      },
+
+      // Step metadata
+      step: {
+        id: step.id,
+        name: step.name,
+        index: currentStepIndex,
+        totalSteps: executionContext.totalSteps || 0,
+        inputSource: step.inputSource,
+        outputTarget: step.outputTarget
+      },
+
+      // Store data for RAG operations
+      store: storeData,
+
+      // Step results from previous steps
+      stepResults: executionContext.stepResults || [],
+
+      // Timing information
+      timing: {
+        startTime: executionContext.startTime,
+        elapsed: Date.now() - (executionContext.startTime || Date.now())
+      },
+
+      // ST context tokens (available through PromptBuilder)
+      st: this._getSTContext(),
+
+      // Global context from pipeline configuration
+      global: pipeline.globalContext || {},
+      globals: pipeline.globalContext || {},
+
+      // Execution mode flags
+      preview: executionContext.preview || false,
+      verbose: executionContext.verbose || false
+    };
+
+    return context;
+  },
+
+  /**
+   * Get SillyTavern context for token resolution
+   * @returns {Object|null} ST context or null
+   */
+  _getSTContext() {
+    if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+      return SillyTavern.getContext();
+    }
+    return null;
+  },
+
+  /**
+   * Extract store data for prompt context
+   * @param {Map|Object} store - Store data
+   * @param {Object} schema - Store schema
+   * @param {Object} step - Step configuration
+   * @returns {Object} Store data context
+   */
+  _getStoreDataForContext(store, schema, step) {
+    if (!store) {
+      return { count: 0, keys: [], data: null };
+    }
+
+    if (schema?.isSingleton) {
+      return {
+        count: 1,
+        keys: Object.keys(store || {}),
+        data: store,
+        isSingleton: true
+      };
+    }
+
+    // Collection store
+    const entries = store instanceof Map ? Array.from(store.values()) : [];
+    const keys = store instanceof Map ? Array.from(store.keys()) : [];
+
+    return {
+      count: entries.length,
+      keys: keys,
+      data: entries,
+      isSingleton: false
     };
   },
 
   /**
    * Resolve step prompt with token substitution
-   * Skeleton method - will be fully implemented in 5.7.2
+   * Integrates with PromptBuilder system for full token resolution
    * @param {Object} step - Step configuration
    * @param {Object} promptContext - Context for token resolution
    * @returns {Promise<string>} Resolved prompt string
    */
   async _resolveStepPrompt(step, promptContext) {
-    // Skeleton implementation - 5.7.2 will add PromptBuilder integration
-    let prompt = step.promptTemplate || '';
+    // Get PromptBuilder from kernel
+    const promptBuilder = this._kernel?.getModule('promptBuilder');
 
-    // Basic {{input}} replacement for now
-    if (promptContext.input !== undefined) {
-      const inputStr = typeof promptContext.input === 'string'
-        ? promptContext.input
-        : JSON.stringify(promptContext.input, null, 2);
-      prompt = prompt.replace(/\{\{input\}\}/g, inputStr);
+    // Determine prompt config mode
+    const promptConfig = step.promptConfig || {};
+    const mode = promptConfig.mode || 'custom';
+
+    let resolvedPrompt = '';
+
+    try {
+      switch (mode) {
+        case 'preset':
+          // Load preset prompt and resolve
+          resolvedPrompt = await this._resolvePresetPrompt(
+            promptConfig.presetName || promptConfig.presetId,
+            promptContext,
+            promptBuilder
+          );
+          break;
+
+        case 'tokens':
+          // Build from token stack
+          resolvedPrompt = await this._resolveTokenStackPrompt(
+            promptConfig.tokens || [],
+            promptContext,
+            promptBuilder
+          );
+          break;
+
+        case 'custom':
+        default:
+          // Custom text with embedded tokens
+          const customPrompt = promptConfig.customPrompt || step.promptTemplate || '';
+          resolvedPrompt = await this._resolveCustomPrompt(
+            customPrompt,
+            promptContext,
+            promptBuilder
+          );
+          break;
+      }
+
+      // If prompt is empty, try legacy promptTemplate field
+      if (!resolvedPrompt && step.promptTemplate) {
+        resolvedPrompt = await this._resolveCustomPrompt(
+          step.promptTemplate,
+          promptContext,
+          promptBuilder
+        );
+      }
+
+    } catch (error) {
+      this._log('warn', `[CurationSystem] Error resolving prompt for step "${step.name}": ${error.message}`);
+      // Fall back to basic template resolution
+      resolvedPrompt = this._resolveTemplateTokens(
+        promptConfig.customPrompt || step.promptTemplate || '',
+        promptContext
+      );
     }
 
-    return prompt;
+    return resolvedPrompt;
+  },
+
+  /**
+   * Resolve a custom prompt with embedded tokens
+   * @param {string} customPrompt - Custom prompt text with tokens
+   * @param {Object} context - Prompt context
+   * @param {Object} promptBuilder - PromptBuilder system reference
+   * @returns {Promise<string>} Resolved prompt
+   */
+  async _resolveCustomPrompt(customPrompt, context, promptBuilder) {
+    if (!customPrompt) {
+      return '';
+    }
+
+    // First, resolve context-specific variables ({{input}}, {{variables.x}}, etc.)
+    let resolved = this._resolveContextVariables(customPrompt, context);
+
+    // Then use PromptBuilder for full token resolution if available
+    if (promptBuilder && promptBuilder.resolveTemplate) {
+      resolved = promptBuilder.resolveTemplate(resolved, context, {
+        preserveUnresolved: false, // Remove unresolved tokens
+        passSTMacros: true         // Pass ST macros through for later resolution
+      });
+    }
+
+    return resolved;
+  },
+
+  /**
+   * Resolve context-specific variables in prompt text
+   * Handles {{input}}, {{previousOutput}}, {{variables.x}}, {{pipeline.x}}, {{step.x}}, {{store.x}}
+   * @param {string} text - Text with placeholders
+   * @param {Object} context - Prompt context
+   * @returns {string} Text with variables replaced
+   */
+  _resolveContextVariables(text, context) {
+    if (!text || typeof text !== 'string') {
+      return text || '';
+    }
+
+    let result = text;
+
+    // {{input}} - Step input (JSON stringified if object)
+    if (context.input !== undefined) {
+      const inputStr = typeof context.input === 'string'
+        ? context.input
+        : JSON.stringify(context.input, null, 2);
+      result = result.replace(/\{\{input\}\}/g, inputStr);
+    }
+
+    // {{previousOutput}} - Previous step's output
+    if (context.previousOutput !== undefined) {
+      const prevStr = typeof context.previousOutput === 'string'
+        ? context.previousOutput
+        : JSON.stringify(context.previousOutput, null, 2);
+      result = result.replace(/\{\{previousOutput\}\}/g, prevStr);
+    }
+
+    // {{variables.name}} - Named variables
+    result = result.replace(/\{\{variables\.([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g, (match, varName) => {
+      const value = context.variables?.[varName];
+      if (value === undefined) {
+        this._log('debug', `[CurationSystem] Variable "${varName}" not found in context`);
+        return match; // Keep placeholder if not found
+      }
+      return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    });
+
+    // {{pipeline.name}}, {{pipeline.operation}}, etc.
+    result = result.replace(/\{\{pipeline\.([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g, (match, field) => {
+      const value = context.pipeline?.[field];
+      if (value === undefined) {
+        return '';
+      }
+      return typeof value === 'string' ? value : String(value);
+    });
+
+    // {{step.name}}, {{step.index}}, etc.
+    result = result.replace(/\{\{step\.([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g, (match, field) => {
+      const value = context.step?.[field];
+      if (value === undefined) {
+        return '';
+      }
+      return typeof value === 'string' ? value : String(value);
+    });
+
+    // {{store.count}}, {{store.keys}}, {{store.data}}
+    result = result.replace(/\{\{store\.([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g, (match, field) => {
+      const value = context.store?.[field];
+      if (value === undefined) {
+        return '';
+      }
+      if (Array.isArray(value)) {
+        return JSON.stringify(value, null, 2);
+      }
+      return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    });
+
+    // {{globals.name}} or {{global.name}}
+    result = result.replace(/\{\{globals?\.([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g, (match, field) => {
+      const value = context.globals?.[field] || context.global?.[field];
+      if (value === undefined) {
+        return '';
+      }
+      return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    });
+
+    return result;
+  },
+
+  /**
+   * Resolve a preset prompt
+   * @param {string} presetName - Name or ID of the preset
+   * @param {Object} context - Prompt context
+   * @param {Object} promptBuilder - PromptBuilder system reference
+   * @returns {Promise<string>} Resolved preset prompt
+   */
+  async _resolvePresetPrompt(presetName, context, promptBuilder) {
+    if (!presetName) {
+      this._log('warn', '[CurationSystem] No preset name provided for preset mode');
+      return '';
+    }
+
+    if (!promptBuilder) {
+      this._log('warn', '[CurationSystem] PromptBuilder not available for preset resolution');
+      return '';
+    }
+
+    // Try to load the preset
+    const preset = promptBuilder.loadPromptPreset
+      ? promptBuilder.loadPromptPreset(presetName)
+      : promptBuilder.getPreset?.(presetName);
+
+    if (!preset) {
+      this._log('warn', `[CurationSystem] Preset "${presetName}" not found`);
+      return '';
+    }
+
+    // Resolve based on preset config
+    const presetConfig = preset.config || preset;
+
+    if (presetConfig.stack && Array.isArray(presetConfig.stack)) {
+      // Token stack preset
+      return this._resolveTokenStackPrompt(presetConfig.stack, context, promptBuilder);
+    } else if (presetConfig.customPrompt) {
+      // Custom prompt preset
+      return this._resolveCustomPrompt(presetConfig.customPrompt, context, promptBuilder);
+    }
+
+    this._log('warn', `[CurationSystem] Preset "${presetName}" has no resolvable content`);
+    return '';
+  },
+
+  /**
+   * Build prompt from token stack
+   * @param {Array} tokens - Array of token configurations
+   * @param {Object} context - Prompt context
+   * @param {Object} promptBuilder - PromptBuilder system reference
+   * @returns {Promise<string>} Built prompt
+   */
+  async _resolveTokenStackPrompt(tokens, context, promptBuilder) {
+    if (!tokens || !Array.isArray(tokens) || tokens.length === 0) {
+      return '';
+    }
+
+    // Use PromptBuilder's buildPrompt if available
+    if (promptBuilder && promptBuilder.buildPrompt) {
+      try {
+        // Build configuration for PromptBuilder
+        const buildConfig = {
+          stack: tokens.map(token => {
+            // Normalize token format
+            if (typeof token === 'string') {
+              return { type: 'text', content: token, enabled: true };
+            }
+            return {
+              type: token.type || 'token',
+              content: token.content || token.value || token.text,
+              tokenId: token.tokenId || token.id,
+              template: token.template,
+              enabled: token.enabled !== false,
+              transforms: token.transforms
+            };
+          }),
+          separator: '\n\n',
+          trim: true
+        };
+
+        return promptBuilder.buildPrompt(buildConfig, context);
+      } catch (error) {
+        this._log('warn', `[CurationSystem] Error building from token stack: ${error.message}`);
+      }
+    }
+
+    // Fallback: simple concatenation
+    const parts = [];
+    for (const token of tokens) {
+      if (token.enabled === false) continue;
+
+      let content = '';
+      if (typeof token === 'string') {
+        content = token;
+      } else if (token.content || token.value || token.text) {
+        content = token.content || token.value || token.text;
+      } else if (token.tokenId || token.id) {
+        // Try to resolve token ID
+        const tokenId = token.tokenId || token.id;
+        if (promptBuilder && promptBuilder.resolveToken) {
+          content = promptBuilder.resolveToken(tokenId, context) || '';
+        } else {
+          content = `{{${tokenId}}}`;
+        }
+      }
+
+      if (content) {
+        // Resolve any context variables in the content
+        content = this._resolveContextVariables(content, context);
+        parts.push(content.trim());
+      }
+    }
+
+    return parts.join('\n\n');
+  },
+
+  /**
+   * Legacy template token resolution (fallback)
+   * @param {string} template - Template with tokens
+   * @param {Object} context - Context object
+   * @returns {string} Resolved template
+   */
+  _resolveTemplateTokens(template, context) {
+    if (!template || typeof template !== 'string') {
+      return '';
+    }
+
+    let result = template;
+
+    // Simple token pattern: {{token.path}}
+    result = result.replace(/\{\{([a-zA-Z_][a-zA-Z0-9_.]*)\}\}/g, (match, path) => {
+      const parts = path.split('.');
+      let value = context;
+
+      for (const part of parts) {
+        if (value && typeof value === 'object' && part in value) {
+          value = value[part];
+        } else {
+          return match; // Keep placeholder if path doesn't resolve
+        }
+      }
+
+      if (value === undefined || value === null) {
+        return '';
+      }
+
+      return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    });
+
+    return result;
   },
 
   /**
