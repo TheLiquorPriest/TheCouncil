@@ -2141,17 +2141,17 @@ const CurationModal = {
           ${result.type === 'crud' ? `
             <div class="council-pipeline-result-section">
               <h4>CRUD Operation</h4>
-              <p><strong>Operation:</strong> ${result.result.operation}</p>
-              <p><strong>Store:</strong> ${result.result.storeId}</p>
-              <p><strong>Message:</strong> ${result.result.message}</p>
+              <p><strong>Operation:</strong> ${result.result?.operation || 'N/A'}</p>
+              <p><strong>Store:</strong> ${result.result?.storeId || 'N/A'}</p>
+              <p><strong>Message:</strong> ${result.result?.message || 'Completed'}</p>
               ${result.preview ? '<p class="council-warning">⚠️ Preview mode - no changes were made</p>' : ''}
             </div>
           ` : result.type === 'rag' ? `
             <div class="council-pipeline-result-section">
               <h4>RAG Results</h4>
-              <p><strong>Query:</strong> ${result.result.query || 'N/A'}</p>
-              <p><strong>Results:</strong> ${result.result.count} items found</p>
-              ${result.result.results && result.result.results.length > 0 ? `
+              <p><strong>Query:</strong> ${result.result?.query || 'N/A'}</p>
+              <p><strong>Results:</strong> ${result.result?.count || 0} items found</p>
+              ${result.result?.results && result.result.results.length > 0 ? `
                 <div class="council-pipeline-result-items">
                   ${result.result.results.slice(0, 5).map(item => `
                     <div class="council-result-item">
@@ -2168,7 +2168,7 @@ const CurationModal = {
             </div>
           ` : `
             <div class="council-pipeline-result-section">
-              <pre>${JSON.stringify(result.result, null, 2)}</pre>
+              <pre>${JSON.stringify(result.result || {}, null, 2)}</pre>
             </div>
           `}
         </div>

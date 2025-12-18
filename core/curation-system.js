@@ -3271,10 +3271,10 @@ Return list of character IDs/names with relevance reasoning.`,
       // Original input to pipeline
       pipelineInput: input,
 
-      // Step tracking
+      // Step tracking - CRUD pipelines use 'actions' array for steps
       currentStepIndex: 0,
-      totalSteps: pipeline.steps?.length || 0,
-      steps: pipeline.steps || [],
+      totalSteps: pipeline.actions?.length || 0,
+      steps: pipeline.actions || [],
 
       // Data flow between steps
       previousStepOutput: null,
